@@ -13,7 +13,7 @@ license: MIT (see THIRD_PARTY_NOTICES.md, humanlayer/skills)
 <!-- AOS notes: start (local addition, not upstream) -->
 ## AOS notes
 
-- **Manual, opt-in.** Start it yourself (`/design-control-loop`) for a recurring improvement loop in CI. It is not a pipeline node and not part of `/startcycle-graph`; the dispatcher never calls it. After shipping, it is an optional follow-up.
+- **Manual, opt-in.** Start it yourself (`/design-control-loop`) for a recurring improvement loop in CI. It is not a pipeline node and not part of `/fabric-graph`; the dispatcher never calls it. After shipping, it is an optional follow-up.
 - **Runs outside the GO gate.** The loops it generates run unattended in CI, often with `--dangerously-skip-permissions` and API secrets, so the AOS GO gate does not cover them. That is a deliberate design choice; you decide per loop. When generating workflows, pin CLI versions instead of `@latest` and keep secrets in the CI secret store.
 - **Output lives in the target repo.** The generated actuator skill, scripts and workflow are written to the TARGET repo, not to AOS.
 - **Source.** Vendored from https://github.com/humanlayer/skills at commit `ca7c8088db69e315a8b2deea43820270457f8f3c` (MIT, see `THIRD_PARTY_NOTICES.md`). Everything below this section is upstream text.

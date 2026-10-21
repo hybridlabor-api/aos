@@ -3,7 +3,7 @@ description: Run the AOS multi-agent build graph (Architect, TechLead, build nod
 agent: build
 ---
 
-# AOS `/startcycle-graph`
+# AOS `/fabric-graph`
 
 Goal: $ARGUMENTS
 
@@ -54,4 +54,4 @@ already flagged, escalate instead of repeating the cycle. At
 `state.iteration >= max_iterations`, set `phase: escalated` and hand control back
 to the user.
 
-Full contract: `skills/basic/startcycle-graph/SKILL.md`.
+Full contract: `skills/basic/fabric-graph/SKILL.md`.

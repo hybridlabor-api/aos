@@ -1,8 +1,8 @@
-// Dispatcher for /teamwork-preview. Turns the 9-step prompt-crafting protocol
-// from skills/basic/teamwork-preview/SKILL.md into an actual runnable sequence.
+// Dispatcher for /fabric-teamwork. Turns the 9-step prompt-crafting protocol
+// from skills/basic/fabric-teamwork/SKILL.md into an actual runnable sequence.
 //
 // Why a script and not prose: this repo has already paid for the alternative
-// once, recorded verbatim in skills/basic/startcycle-graph/SKILL.md --
+// once, recorded verbatim in skills/basic/fabric-graph/SKILL.md --
 //
 //   "an earlier version of this file embedded the full pipeline description in
 //    prose, and the model followed it 'in spirit' inline instead of invoking the
@@ -13,7 +13,7 @@
 // kind of thing that gets followed approximately. A script either runs or it
 // does not.
 //
-// Runtime constraints inherited from startcycle-dispatch.mjs, all four of which
+// Runtime constraints inherited from fabric-dispatch.mjs, all four of which
 // this script obeys:
 //   1. No filesystem access from the script itself. Every read and write happens
 //      inside an agent() call; the script branches on schema-validated returns.
@@ -31,7 +31,7 @@
 // different runtime, and it will behave differently.
 
 export const meta = {
-  name: 'teamwork-dispatch',
+  name: 'fabric-teamwork-dispatch',
   description:
     'Interactive 9-step prompt crafting for multi-agent delegation: elicit, disambiguate, set integrity mode, draft requirements, design verification, set acceptance criteria, then assemble and validate a spec. Produces prompt_draft.md; does not build anything.',
 };

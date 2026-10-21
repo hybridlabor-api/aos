@@ -49,7 +49,7 @@
 ## Tool routing (automatic)
 
 Use these tools by yourself, from the situation. The user never has to say
-"use plan-canvas", "use agenttrail", "use subagents" or "run a startcycle".
+"use plan-canvas", "use agenttrail", "use subagents" or "run a fabric".
 
 If the user says "plan", "Plan", "planen" or "roadmap" with nothing else: run `aos-plan-canvas templates`, offer the matching template, then `aos-plan-canvas new <id> <dir>` and `aos-plan-canvas open <dir>/plan.mdx --mode bdb-plan-builder --await`.
 **plan-canvas** — open the browser review canvas for any plan. Check
@@ -78,9 +78,9 @@ stored as markdown/artifact where task, project and plan type say it belongs
 
 **Multi-agent runs** — pick these from the situation: agenttrail for a live
 map of any multi-agent run (subagents, worktrees, a bdb pipeline such as
-`startcycle*`, or a workflow), subagents for independent slices of work, and the
-startcycle variant (`startcycle`, `startcycle-graph` or
-`startcycle-graph-user`) that fits the task. Monitor every such run on the
+`fabric*`, or a workflow), subagents for independent slices of work, and the
+fabric variant (`fabric`, `fabric-graph` or
+`fabric-multigraph`) that fits the task. Monitor every such run on the
 agenttrail map, and let GO approvals surface there: after
 `aos-plan-canvas open` of a plan in a pipeline context, also run
 `aos-plan-canvas trail <plan-dir>` (writes the execution plan file), then
@@ -94,7 +94,7 @@ message — counts.
 
 ---
 
-# Autonomous Development Cycle Workflow (/startcycle-graph)
+# Autonomous Development Cycle Workflow (/fabric-graph)
 
 This workflow defines the zero-prompting, multi-agent execution pipeline triggered after a `/bdbrainstorm` or `/grill-me` session.
 
@@ -110,7 +110,7 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
                                          │
                                          ▼
                   ┌──────────────────────────────────────────────┐
-                  │ 2. AUTONOMOUS CYCLE (/startcycle-graph)            │
+                  │ 2. AUTONOMOUS CYCLE (/fabric-graph)            │
                   │    • Task Decomposition & Architecture       │
                   │    • Parallel Frontend/Backend/Media Streams │
                   │    • Verification & Quality Gate             │
@@ -143,10 +143,10 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
 contract — state schema, node table, edge predicates, the Stop-hook
 loop-keeper — lives in `.agents/graph.md` and `.agents/state.schema.json`;
 this file is a summary, kept in sync with
-`skills/basic/startcycle-graph/SKILL.md`'s canonical version.
+`skills/basic/fabric-graph/SKILL.md`'s canonical version.
 
 **The one rule:** these seven agents never invoke each other. A dispatcher —
-the main session running `/startcycle-graph`, or whatever plays that role in a
+the main session running `/fabric-graph`, or whatever plays that role in a
 given harness — reads `production_artifacts/state.json` after each agent
 returns and decides which one runs next. The version of this file below this
 notice previously described "streams" and "hand-offs" in a way that read as

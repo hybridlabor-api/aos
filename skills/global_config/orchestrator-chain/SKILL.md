@@ -17,7 +17,7 @@ tools:
 | Level | Job | Mechanism |
 |---|---|---|
 | Master session | Overview of sessions, status requests, relays the human's GO | `master-session` skill |
-| Project orchestrator | Coordinates one repo or several | `ao-orchestrator` skill (AO daemon, optional) or a pipeline dispatcher (`startcycle-graph`, `.agents/graph.md`) |
+| Project orchestrator | Coordinates one repo or several | `ao-orchestrator` skill (AO daemon, optional) or a pipeline dispatcher (`fabric-graph`, `.agents/graph.md`) |
 | Package orchestrator | Runs one slice of that repo | an `aos-acp` worker, an `aos-a2a` peer, or a pipeline build node |
 
 ## Channels between levels

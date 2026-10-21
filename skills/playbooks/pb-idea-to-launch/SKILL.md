@@ -2,13 +2,13 @@
 name: pb-idea-to-launch
 description: >-
   Turn an idea into a deployed prototype: spec from brainstorming, ComfyUI
-  plan, startcycle build, hero image, green CI, push and deploy after GOs.
+  plan, fabric build, hero image, green CI, push and deploy after GOs.
 category: engineering-method
 kind: playbook
 trigger: ["idea to launch", "from idea to live prototype", "build and deploy this idea"]
 inputs: [idea, repo_or_new_project, comfy_workflow, deploy_target]
 requires:
-  skills: [bdbrainstorm, grill-me, plan-canvas, prototype, startcycle, pb-ci-fix, bdb-deploy, github, "gh (external)"]
+  skills: [bdbrainstorm, grill-me, plan-canvas, prototype, fabric, pb-ci-fix, bdb-deploy, github, "gh (external)"]
   agents: [architect, techlead, reviewer]
   mcps: [comfyui-mcp]
   store: []
@@ -45,7 +45,7 @@ On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The
 1. Preflight — one probe `check_comfyui_health` on `comfyui-mcp` (MCP tools may be deferred in the harness: try to load the tool once via the harness MCP list before declaring it missing) → run log header — tool not loaded, call errors, or `status` is not `"online"` → log "Availability: needs the comfyui-mcp server configured in the harness (no config is shipped). Start ComfyUI and check `mcpServers.comfyui-mcp`." and mark step 5 to stop; steps 2 to 4 still run
 2. bdbrainstorm or grill-me — idea → `production_artifacts/pb-idea-to-launch-<date>/spec.md` — spec written, open questions listed
 3. plan-canvas (Plan Builder mode) — the workflow and the planned prototype screens → `plan.md` in the same folder — stops for approval
-4. prototype, then startcycle (architect, techlead, reviewer; no subagent support → the main session reads agents/reviewer.md and runs the review inline, using only the diff and the contract, never the session's reasoning) — spec and plan → prototype in the repo (a new project: a new local directory, no remote yet) — reviewer reports no open `blocking` finding
+4. prototype, then fabric (architect, techlead, reviewer; no subagent support → the main session reads agents/reviewer.md and runs the review inline, using only the diff and the contract, never the session's reasoning) — spec and plan → prototype in the repo (a new project: a new local directory, no remote yet) — reviewer reports no open `blocking` finding
    - Commit: a new project gets `git init` first; the reviewed prototype files are staged by explicit path (never `git add -A`) and committed — SHA in the run log; the working tree has no uncommitted product files afterwards
 5. ComfyUI — the workflow file's text (prompt filled in) as the JSON string for `queue_prompt` → `get_history <prompt_id>` status success → `get_output_media_info` path copied to `hero.png` in the run folder — one image; `local_path` is only set when `COMFYUI_DIR` is set, so if `local_path` is empty or `exists_locally` is false, stop with a clear message and copy nothing; preflight failed in step 1 → stop with the Availability message and write nothing except the run log
 6. pb-ci-fix (setup path) — run its steps up to and including the commit, but not its push step → workflow files committed, SHA in the run log — validator zero errors, commit succeeds (any hook failure is reported, never bypassed with --no-verify); the push is covered by step 7, so pb-ci-fix's own push GO is skipped here

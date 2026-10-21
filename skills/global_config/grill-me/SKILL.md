@@ -4,7 +4,7 @@ description: >-
   A relentless interview to sharpen a plan or design before committing to an
   approach. Use on any "grill me" or "grill this plan" trigger phrase, when the
   user asks to stress-test a decision, plan or design, and before handing a
-  finished plan off to a startcycle run or a plan-canvas review.
+  finished plan off to a fabric run or a plan-canvas review.
 category: engineering-method
 ---
 

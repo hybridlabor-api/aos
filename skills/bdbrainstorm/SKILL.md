@@ -1,6 +1,6 @@
 ---
 name: bdbrainstorm
-description: Multi-agent brainstorming with /grill-me and Godmodes incl. godmode-engineering. Ideation → technical design → plan-canvas → /startcycle-graph.
+description: Multi-agent brainstorming with /grill-me and Godmodes incl. godmode-engineering. Ideation → technical design → plan-canvas → /fabric-graph.
 category: bdb-core
 ---
 
@@ -36,16 +36,16 @@ You are strictly required to enforce the following 6 pillars in your process:
 
 ### 6. Shipping Godmode & Pipeline Hand-off
 - Before the brainstorm concludes, verify that the plan satisfies the `godmode-shipping` rules (Spec-Driven Development, feature flags, rollback strategies).
-- **Mandatory — Plan Canvas review.** Write the aligned plan to a file. Resolve the planning mode with `aos-plan-canvas modes`: use `bdb-plan-builder` whenever it is available (it is the default when detected), `standard` only as fallback — do not ask the user to choose (see the "Planning mode choice" section in the `plan-canvas` skill). Then run `aos-plan-canvas open <file> --mode <resolved>` followed by `aos-plan-canvas await <file>` and leave it running. The user reviews and annotates in the browser (Mermaid diagrams render live, click-to-annotate, chat rail); do not write `state.goal` or hand off to `/startcycle-graph` before an `approve` verdict comes back. A `request_changes` verdict means revise the plan file and reopen the session — it live-reloads. This runs identically regardless of which agent harness is executing this skill; it is a plain CLI, not a Claude-Code-specific mechanism. See the `plan-canvas` skill.
+- **Mandatory — Plan Canvas review.** Write the aligned plan to a file. Resolve the planning mode with `aos-plan-canvas modes`: use `bdb-plan-builder` whenever it is available (it is the default when detected), `standard` only as fallback — do not ask the user to choose (see the "Planning mode choice" section in the `plan-canvas` skill). Then run `aos-plan-canvas open <file> --mode <resolved>` followed by `aos-plan-canvas await <file>` and leave it running. The user reviews and annotates in the browser (Mermaid diagrams render live, click-to-annotate, chat rail); do not write `state.goal` or hand off to `/fabric-graph` before an `approve` verdict comes back. A `request_changes` verdict means revise the plan file and reopen the session — it live-reloads. This runs identically regardless of which agent harness is executing this skill; it is a plain CLI, not a Claude-Code-specific mechanism. See the `plan-canvas` skill.
 - Write the plan in the agenttrail component convention (`## Name {#id}` components with `needs:` / `files:` lines, tasks as `- [ ] ... {#id}`) and render the architecture with `aos-archify` so the canvas review includes the diagram; this is a pipeline context, so after `aos-plan-canvas open` also run `aos-plan-canvas trail <plan-dir>`, and after the `approve` verdict, Trigger A starts the live map (`aos-trail --ensure`). GO requests surface in the agenttrail hub, where the human answers them by typing GO. See the `agenttrail` and `archify` skills.
-- Present the aligned plan and hand off to `/startcycle-graph` for execution — write `state.goal` from this session's output and let `/startcycle-graph`'s dispatcher take it from there (see `.agents/graph.md`). This skill does not invoke `/startcycle-graph`'s agents itself; it produces the goal they read.
+- Present the aligned plan and hand off to `/fabric-graph` for execution — write `state.goal` from this session's output and let `/fabric-graph`'s dispatcher take it from there (see `.agents/graph.md`). This skill does not invoke `/fabric-graph`'s agents itself; it produces the goal they read.
 - For a recurring quality goal, run `/design-control-loop` after shipping (manual, opt-in; not part of the graph).
 
 ## Competing Plans
 
 If the brainstorm yields two viable directions, have two different agents each
 write a plan file and compare them with the `plan-arbiter` skill before
-handing off to `/startcycle-graph`. Review the arbiter's memo in `plan-canvas`.
+handing off to `/fabric-graph`. Review the arbiter's memo in `plan-canvas`.
 
 ## Execution Rules
 1. **Never skip the debate:** Ideas must be contested by subagents and the user before finalization.

@@ -1,17 +1,18 @@
-# BDB Agent Graph — `/startcycle-graph` v2
+# BDB Agent Graph — `/fabric-graph` v2
 
 Harness-neutral contract for the autonomous build pipeline. This is the
-dispatcher-mediated graph, invoked as `/startcycle-graph`. It does not replace
-the linear pipeline — the two ship side by side: `skills/basic/startcycle/`
-is the linear variant (plain file hand-offs, no `state.json`, no repair loop,
-no escalation machinery), and this graph is what you reach for when you need
-the durable record, the Reviewer repair loop, the automated gate, and a
-human-escalation edge. `skills/basic/startcycle-graph-user/` is the third
-sibling: a throwaway 2-4 node fan-out with nothing persistent left behind.
+dispatcher-mediated graph, invoked as `/fabric-graph`. It is the only full
+pipeline of the fabric family. A straight-line run with plain file hand-offs
+and no `state.json` is described in `skills/basic/fabric-graph/linear.md`;
+this graph is what you reach for when you need the durable record, the
+Reviewer repair loop, the automated gate, and a human-escalation edge.
+`skills/basic/fabric/` is the master that picks a mode, and
+`skills/basic/fabric-multigraph/` is a throwaway 2-4 node fan-out with
+nothing persistent left behind.
 See `audit-agents.md` §6 and F-17 for the analysis behind this design; this
 file is the buildable spec for the graph variant only.
 
-**Read this before touching `/startcycle-graph`'s control flow.** The single rule
+**Read this before touching `/fabric-graph`'s control flow.** The single rule
 that matters: **nodes never call each other.** A node reads `state.json`, does
 its work, writes `state.json`, and returns. The dispatcher — the main session,
 or a slash command acting on the user's behalf — is the only thing that
@@ -44,14 +45,14 @@ Existing state files without these fields continue to validate strictly against 
 
 ## Mandatory Skill Injection
 
-`/startcycle-graph --skill=<name> <goal>` (repeatable: `--skill=a --skill=b
+`/fabric-graph --skill=<name> <goal>` (repeatable: `--skill=a --skill=b
 <goal>`, quote a name containing spaces) forces a specific skill into this
 run — for the case where you have your own private skill (never part of
 `.agents/nodes.json`'s registry, and never touched by AOS's installer per
 its foreign-file conflict policy) that you need applied regardless of what
 the registry's own per-node allowlist would have reached for.
 
-- The dispatcher script (`startcycle-dispatch.mjs`) extracts every
+- The dispatcher script (`fabric-dispatch.mjs`) extracts every
   `--skill=` flag from the invocation text before anything else runs, then
   validates each name resolves to a real installed skill (a `SKILL.md`
   under any harness's global skills directory — `~/.claude/skills/<name>/`,
@@ -81,8 +82,8 @@ the registry's own per-node allowlist would have reached for.
 - Nodes that do **not** receive the mandate, deliberately: `shipping` (runs
   mechanical gates — lint/typecheck/tests — and produces no artifact a skill
   would shape).
-- `/startcycle` (the linear variant, no `state.json`) and
-  `/startcycle-graph-user` (throwaway, nothing persistent) support the same
+- The linear run (`skills/basic/fabric-graph/linear.md`, no `state.json`) and
+  `/fabric-multigraph` (throwaway, nothing persistent) support the same
   `--skill=<name>` syntax — see each skill's own `SKILL.md` for how the
   orchestrator threads it through without a durable state file to carry it
   in.
@@ -127,7 +128,7 @@ this discipline exists to prevent:
 4. **No-progress guard, adapted from B3's "doubt theater" concept.** B3's
    original framing — escalate after 2 consecutive *clean* Reviewer cycles on
    the same artifact — doesn't have a reachable trigger once this contract
-   became an actual runnable script (`.claude/workflows/startcycle-dispatch.mjs`): a
+   became an actual runnable script (`.claude/workflows/fabric-dispatch.mjs`): a
    clean result exits the build/review loop immediately, so Reviewer is never
    asked to re-confirm an already-clean artifact twice in a row. What the
    script implements instead, in the same spirit: if a repair round reports
@@ -167,7 +168,7 @@ never inside a node's own prompt.
 | Shipping | any `gate.*` is `fail` | `iteration++`, invoke whichever build node(s) Shipping's own structured output names as owning the failing check(s) — the dispatcher does not guess a lint/test-to-node mapping itself |
 | Shipping | all `gate.*` are `pass`/`skip` | `phase: ready_to_ship`, stop — surface "ready to ship, needs GO" to the user. The dispatcher does not itself check `approvals` for a prior GO here (see the Harness section's noted exception); the actual push/version/publish is a separate GO-gated step, enforced by `go-gate.mjs`, which does the GO check at the point it matters. |
 | any | `iteration >= max_iterations` | **stop unconditionally**, `phase: escalated`, set `needs_human: true` — do not invoke anything further automatically |
-| any | a node sets `needs_human: true` itself | stop, surface to the user (in-loop feedback edge, per B5's diagram — `/startcycle-graph`'s original "zero-prompting" framing had removed this; it's restored here as an edge, not a constant interruption) |
+| any | a node sets `needs_human: true` itself | stop, surface to the user (in-loop feedback edge, per B5's diagram — `/fabric-graph`'s original "zero-prompting" framing had removed this; it's restored here as an edge, not a constant interruption) |
 
 ## Harness (the loop-keeper)
 
@@ -178,7 +179,7 @@ a Claude-only file:
   dispatcher role — the main Claude Code session, an Antigravity subagent
   loop, or an OpenCode primary agent. The edge table above is the contract
   regardless of which harness executes it.
-- **Executable dispatcher (Claude Code only)**: `.claude/workflows/startcycle-dispatch.mjs`
+- **Executable dispatcher (Claude Code only)**: `.claude/workflows/fabric-dispatch.mjs`
   is the actual runnable implementation of this contract, using Claude
   Code's Dynamic Workflows runtime (a script holds the loop and branches;
   the seven agents are leaves it calls via `agent()`/`pipeline()`, never
@@ -226,7 +227,7 @@ a Claude-only file:
   turn-end while `state.json` shows a failing gate and
   `iteration < max_iterations` — see that file's own comments for the exact
   predicate. This exists independently of the workflow script above: it
-  catches the case where someone continues a `/startcycle-graph` run manually,
+  catches the case where someone continues a `/fabric-graph` run manually,
   turn by turn, outside the workflow runtime, and stops early despite a
   known-failing gate. It fails *open* (allows the stop) on a missing or
   malformed `state.json`, unlike `go-gate.mjs`'s fail-closed default — a
@@ -244,7 +245,7 @@ turn without one.
 The dispatcher is one level of a chain: `master session -> project orchestrator -> package orchestrator`. The mapping for this graph (`nodes.json` `chain` block carries the same mapping as data):
 
 - **Master session** — not a node. Supervises sessions and relays the human's `GO <session>`. It never grants a GO itself.
-- **Project orchestrator** — the dispatcher (`.claude/workflows/startcycle-dispatch.mjs`). It runs `architect`, `techlead`, `reviewer` and `shipping` in edge order and decides every next step.
+- **Project orchestrator** — the dispatcher (`.claude/workflows/fabric-dispatch.mjs`). It runs `architect`, `techlead`, `reviewer` and `shipping` in edge order and decides every next step.
 - **Package orchestrator** — the build nodes `ui_ux`, `engineering` and `media_eventtech` (`executor: builder`, `scope: worktree-write`). Each works one slice and returns through `state.json`.
 
 Reach and limits per hop:
@@ -276,8 +277,8 @@ the Reviewer node.
   is additive infrastructure, not a replacement for the markdown.
 - Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) were evaluated and
   deferred for this graph specifically because spawning teammates requires an
-  interactive session and `/startcycle-graph` needs to run headless — see F-17's
-  addendum in `audit-agents.md` for the full reasoning. Revisit if `/startcycle-graph`
+  interactive session and `/fabric-graph` needs to run headless — see F-17's
+  addendum in `audit-agents.md` for the full reasoning. Revisit if `/fabric-graph`
   ever becomes interactive-only by design.
 
 ## Domain profiles (opt-in)
@@ -296,7 +297,7 @@ Reviewer/Shipping prompts enumerate. Four profiles ship today:
 **Selection order** (first match wins, mirroring how `--skill=<name>` is
 resolved):
 
-1. **Explicit flag** — `/startcycle-graph --profile=<name> <goal>` is the
+1. **Explicit flag** — `/fabric-graph --profile=<name> <goal>` is the
    strongest signal and skips keyword matching entirely. A `--profile` name
    that does not resolve to a file in `.agents/profiles/` escalates the same
    way as a missing `--skill` name: stop, surface the error to the user,
@@ -318,7 +319,7 @@ validated against this repo by `node scripts/validate-profile.mjs`
 profiles and asserts the default registry is untouched.
 
 **Status, stated honestly:** the explicit `--profile=<name>` flag is wired.
-`.claude/workflows/startcycle-dispatch.mjs` loads the profile after
+`.claude/workflows/fabric-dispatch.mjs` loads the profile after
 `.agents/nodes.json`, derives `BUILD_NODES`, the Reviewer prompt's artifact
 enumeration and the Shipping `GATE_KEYS` from it, and escalates on an
 unknown, malformed or invalid profile; `state.schema.json` accepts

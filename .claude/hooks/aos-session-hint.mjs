@@ -34,7 +34,7 @@ export async function buildHint() {
   const hints = [
     'plan-canvas is available for plan review — check the canvas with `aos-plan-canvas` and open a plan with `aos-plan-canvas open <file|plan-dir>`.',
     'agenttrail serves a live map of multi-agent builds when one is running.',
-    'The automatic tool-routing rules (when to use plan-canvas, agenttrail, subagents, startcycle) live in the "Tool routing (automatic)" block of AGENTS.md.',
+    'The automatic tool-routing rules (when to use plan-canvas, agenttrail, subagents, fabric) live in the "Tool routing (automatic)" block of AGENTS.md.',
   ];
   try {
     const tools = memoryTools();

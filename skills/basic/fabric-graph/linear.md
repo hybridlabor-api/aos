@@ -1,17 +1,6 @@
----
-name: startcycle
-description: >-
-  Linear multi-agent build pipeline with file hand-offs in production_artifacts/,
-  run after /bdbrainstorm or /grill-me. This is the linear variant — no
-  state.json, no repair loop, no dispatcher graph — distinct from
-  startcycle-graph, which adds durable state and automated escalation. Use when
-  an approved plan should be built, when the user types /startcycle or "run a
-  startcycle", or when you pick a startcycle variant from the situation
-  yourself (no user prompt needed).
-category: bdb-core
----
+# Linear run (no dispatcher)
 
-# `/startcycle` — Linear Build Pipeline
+Reference for `fabric-graph` when a task needs only a straight-line run with file hand-offs and no `state.json`, repair loop or dispatcher. This replaces the former standalone linear skill; there is no separate command for it.
 
 A straight-line run through the BDB agent roster. Whoever invokes this skill invokes each step in turn, in order, and every hand-off between steps is a file written under `production_artifacts/`. Nothing else is shared between steps — no memory, no live conversation state, no orchestrator process watching over the run.
 
@@ -103,12 +92,12 @@ Run only the streams the goal actually needs. A plain backend feature does not n
 
 3c is for TouchDesigner, show-control, DMX/grandMA3, 3D, or other media-pipeline goals — most goals are not this. Skip it unless the plan actually calls for it.
 
-> **Injecting a specific skill.** `/startcycle --skill=<name> <goal>`
+> **Injecting a specific skill.** `/fabric-graph --skill=<name> <goal>`
 > (repeatable, quote a name with spaces) forces that skill into this run as
 > a hard requirement — for a private skill of your own that isn't part of
 > any build agent's own `skills:` frontmatter. Since this variant has no
 > dispatcher script or `state.json` to carry it automatically, the invoker
-> does the work `startcycle-graph`'s script does for you: extract the
+> does the work `fabric-graph`'s script does for you: extract the
 > `--skill=` flag(s) from the invocation text before anything else runs,
 > confirm each name resolves to a real `SKILL.md` (under
 > any harness's global skills directory — `~/.claude/skills/<name>/`,
@@ -151,7 +140,7 @@ If the invoker isn't sure whether shipping applies, treat step 4 as the finish l
 
 ## Teams and roles
 
-By default, `/startcycle` runs the canonical 7-node team (`architect`, `techlead`, `ui_ux`, `engineering`, `media_eventtech`, `reviewer`, `shipping`) with effort `S`. Custom teams and roles resolve through the shared registry:
+By default, the linear run uses the canonical 7-node team (`architect`, `techlead`, `ui_ux`, `engineering`, `media_eventtech`, `reviewer`, `shipping`) with effort `S`. Custom teams and roles resolve through the shared registry:
 
 - **Registry & CLI**: Enumerate available teams with `aos-team list`, inspect a team with `aos-team show <id>`, and create templates with `aos-team new <id>`. Resolution precedence follows Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/teams/`, `~/.aos/roles/`) > Shipped defaults (`.agents/nodes.json` plus the role and team presets bundled with AOS).
 - **Derivation from playbooks**: Teams can be derived directly from a playbook's frontmatter `requires:` block (`skills`, `agents`, `mcps`) using `aos-team new <id> --from-playbook <name>`. Listed agents resolve to roles and attached skills equip the team.
@@ -163,26 +152,17 @@ By default, `/startcycle` runs the canonical 7-node team (`architect`, `techlead
 
 ## Explicit non-goals
 
-This skill deliberately does **not** have:
+A linear run deliberately does **not** have:
 - `production_artifacts/state.json` or `.agents/state.schema.json`
 - `.agents/graph.md` bootstrap
 - a dispatcher script or `Workflow` tool call
 - a repair loop, an iteration counter, a no-progress guard, or escalation machinery
 - agents invoking each other — whoever runs the skill invokes each step in turn; no agent hands off directly to the next
 
-If a run needs any of the above, it needs `startcycle-graph`, not this skill.
+If a run needs any of the above, run the full `fabric-graph` instead.
 
 ---
 
-## Which startcycle do I want?
-
-| Skill | Use when |
-|---|---|
-| `startcycle` (this one) | Linear, predictable, cheapest of the three. You want a straight run through the agents with file hand-offs and no state machine. |
-| `startcycle-graph` | You need the full dispatcher graph: durable `state.json`, a Reviewer repair loop with a no-progress guard, an automated quality gate, escalation to a human, and a resumable record. |
-| `startcycle-graph-user` | A small throwaway fan-out (2-4 nodes) in any project, nothing persistent left behind. |
-
----
 
 ## Available tools
 

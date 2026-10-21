@@ -26,11 +26,11 @@ AOS from [affaan-m/ECC](https://github.com/affaan-m/ECC).
 
 ## When to Use
 
-- You just wrote the `/startcycle` plan artifact,
+- You just wrote the `/fabric` plan artifact,
   `production_artifacts/00_execution_plan.md`, and need the CONFIRM/approve
   decision — the canvas verdict replaces a typed "yes/proceed".
 - **Mandatory, not optional**, at the end of `bdbrainstorm` (before writing
-  `state.goal` / handing off to `/startcycle-graph`) and `bdbmediastorm`
+  `state.goal` / handing off to `/fabric-graph`) and `bdbmediastorm`
   (before the show-control architecture is considered final) — both produce
   a plan/spec artifact a human must approve before anything downstream
   proceeds. See each skill's own "Plan Canvas Review" section.
@@ -207,10 +207,10 @@ aos-trail . --plan production_artifacts/00_execution_plan.md --no-open
 - The home page (`http://127.0.0.1:4519/`) lists all sessions; ended ones have a Resume button (plain form, no script).
 - A session the user ended refuses a plain `open` (HTTP 409); pass `--reopen` only when they ask.
 
-## Relationship to `/startcycle`
+## Relationship to `/fabric`
 
 An `approve` verdict on `production_artifacts/00_execution_plan.md` satisfies
-the **Architect → TechLead gate (step 1 → 2)** of `/startcycle`: it is a human
+the **Architect → TechLead gate (step 1 → 2)** of `/fabric`: it is a human
 confirmation that the plan is ready for the capability-map review. This is
 optional — the pipeline runs unchanged without it.
 
@@ -287,7 +287,7 @@ aos-plan-canvas open <file> --mode bdb-plan-builder
 
 For an Agent-Native-style **plan folder** (`plan.mdx` plus optional `canvas.mdx`, `prototype.mdx`, `.plan-state.json`), `open` renders the folder into ONE self-contained `plan.builder.html` in the BDB look next to the plan, then opens *that* file through the normal HTML artifact path — so annotation, chat and verdict work with no extra steps. Point it at the folder or at `plan.mdx` itself; a path with no `plan.mdx` exits 2 with the reason. Edit the MDX and re-run `open` to rebuild. Await `<plan-dir>/plan.builder.html`, not the folder.
 
-## Relationship to `/startcycle`
+## Relationship to `/fabric`
 
 **Plan approval flow** — Architect writes
 `production_artifacts/00_execution_plan.md` and must WAIT for confirmation:

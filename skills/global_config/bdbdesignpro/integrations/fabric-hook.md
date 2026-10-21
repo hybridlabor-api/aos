@@ -1,12 +1,12 @@
-# `/startcycle` Integration Hook for `/bdbdesignpro`
+# `/fabric` Integration Hook for `/bdbdesignpro`
 
-This document defines the architectural contract for integrating `/bdbdesignpro` into the **`/startcycle`** and **`/startcycle-graph`** autonomous build pipelines.
+This document defines the architectural contract for integrating `/bdbdesignpro` into the **`/fabric`** and **`/fabric-graph`** autonomous build pipelines.
 
 ---
 
 ## 📍 Node Attachment: `🎨 Godmode_UI_UX` (Stream 3a)
 
-In `/startcycle`, Step 3a (`Godmode_UI_UX`) reads `production_artifacts/00_execution_plan.md` and generates:
+In `/fabric`, Step 3a (`Godmode_UI_UX`) reads `production_artifacts/00_execution_plan.md` and generates:
 1. `production_artifacts/01_frontend_spec.md`
 2. `frontend/src/`
 

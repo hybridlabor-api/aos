@@ -1,4 +1,4 @@
-// Dispatcher for /startcycle-graph. Implements the node/edge table in
+// Dispatcher for /fabric-graph. Implements the node/edge table in
 // .agents/graph.md as an actual runnable loop, using Claude Code's Dynamic
 // Workflows runtime (this script IS the dispatcher F-17 requires: it holds
 // the loop and the branching decisions; the seven agents below are leaves
@@ -22,7 +22,7 @@
 // 2. No module loading (`import()` fails before the run starts) -- `agent`
 //    and `pipeline` are ambient globals the runtime injects, not imports.
 //    `args` is likewise an ambient global carrying whatever was passed to
-//    `/startcycle-graph`, not a function parameter.
+//    `/fabric-graph`, not a function parameter.
 //
 // 3. pipeline() fans out one agent() call per build node, genuinely
 //    concurrently, and every one of those was previously told to
@@ -73,7 +73,7 @@
 // before that platform ceiling would silently end a turn instead.
 
 export const meta = {
-  name: 'startcycle-dispatch',
+  name: 'fabric-dispatch',
   description:
     'Dispatcher-mediated build pipeline: Architect -> TechLead -> {UI_UX, Engineering, Media_EventTech} -> Reviewer -> Shipping, per .agents/graph.md. Agents never invoke each other -- this script decides every next step. Node identities come from .agents/nodes.json, loaded fresh each run.',
 };
@@ -308,7 +308,7 @@ if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && f
           } catch {}
         }
 
-        const match = (promptText || '').match(/^\/startcycle-graph(?:\s+(.*))?$/is);
+        const match = (promptText || '').match(/^\/fabric-graph(?:\s+(.*))?$/is);
         if (!match) {
           // Clean fast-exit when invoked on non-command prompts
           if (process.stdout && !hookEventName) {
@@ -328,11 +328,11 @@ if (inputGoal === null && typeof process !== 'undefined' && Array.isArray(proces
   const cliArgs = process.argv.slice(2);
   if (cliArgs.length > 0) {
     if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
-      console.log('Usage: node startcycle-dispatch.mjs [--skill=<name>] [--profile=<name>] <goal>');
+      console.log('Usage: node fabric-dispatch.mjs [--skill=<name>] [--profile=<name>] <goal>');
       process.exit(0);
     }
     const joined = cliArgs.join(' ').trim();
-    const match = joined.match(/^\/startcycle-graph(?:\s+(.*))?$/is);
+    const match = joined.match(/^\/fabric-graph(?:\s+(.*))?$/is);
     inputGoal = match ? (match[1] || '').trim() : joined;
   }
 }
@@ -820,7 +820,7 @@ function skillsNote(node) {
   // check rather than a use.
   if (mandatorySkills.length > 0 && (node?.role === 'build' || node?.id === 'architect')) {
     parts.push(
-      ` The user explicitly required this run to use the following skill(s), via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
+      ` The user explicitly required this run to use the following skill(s), via /fabric-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
       "This is a hard requirement, not a suggestion -- actually apply the skill's guidance in your work, and name in your returned summary how each one was applied."
     );
   }
@@ -874,7 +874,7 @@ async function ensureNodeSkills(node) {
     );
     const still = Array.isArray(res?.stillMissing) ? res.stillMissing : [];
     if (still.length > 0) {
-      console.error(`[startcycle-graph] node ${node.id}: skill(s) missing and not installable offline: ${still.join(', ')}`);
+      console.error(`[fabric-graph] node ${node.id}: skill(s) missing and not installable offline: ${still.join(', ')}`);
     }
     return res;
   } catch { return null; }
@@ -953,7 +953,7 @@ const nodeModelOpt = (n) => {
 // state.json directly like the other sequential nodes.
 async function escalate(reason, extra = {}) {
   await agent(
-    'You are recording a /startcycle-graph escalation. Update production_artifacts/state.json per ' +
+    'You are recording a /fabric-graph escalation. Update production_artifacts/state.json per ' +
       '.agents/state.schema.json: set phase to "escalated", needs_human to true, iteration to ' +
       `${iteration}, and append this reason to the record: ${JSON.stringify(reason)}. ` +
       'Create production_artifacts/ if missing.',
@@ -971,7 +971,7 @@ async function escalate(reason, extra = {}) {
 // any field.
 async function mergeStateD() {
   return await agent(
-    'You are the dedicated /startcycle-graph state-merge step -- a deterministic fold, not a reasoning task. ' +
+    'You are the dedicated /fabric-graph state-merge step -- a deterministic fold, not a reasoning task. ' +
       'Read every file matching production_artifacts/state.d/*.json (if that directory does not exist or is ' +
       'empty, there is nothing to merge -- just confirm production_artifacts/state.json still exists and is ' +
       'valid per .agents/state.schema.json, and return merged: 0, needsHuman: false). Read the current ' +
@@ -1012,7 +1012,7 @@ async function mergeStateD() {
 
 async function verifyArchifyArtifacts() {
   return await agent(
-    'You are the dedicated /startcycle-graph archify-verify step -- a deterministic check, not a reasoning task. ' +
+    'You are the dedicated /fabric-graph archify-verify step -- a deterministic check, not a reasoning task. ' +
       'Working directory is the repository root. Run exactly these two commands in this order, ' +
       'each as an argument array with no shell and no string interpolation: ' +
       'first ["validate", "architecture", "production_artifacts/00_architecture.json", "--quality", "showcase", "--json"], ' +
@@ -1106,7 +1106,7 @@ const missingNodeIds = REQUIRED_NODE_IDS.filter((id) => !registryNodes[id]);
 if (missingNodeIds.length > 0) {
   return await escalate(
     `.agents/nodes.json failed to load, or is missing required node id(s): ${missingNodeIds.join(', ')}. ` +
-      'Refusing to fall back to a hardcoded node list -- fix the registry and re-run /startcycle-graph.'
+      'Refusing to fall back to a hardcoded node list -- fix the registry and re-run /fabric-graph.'
   );
 }
 
@@ -1119,7 +1119,7 @@ const resolvedArgs = typeof args !== 'undefined' ? args : null;
 const rawGoal = inputGoal || (typeof resolvedArgs === 'string' ? resolvedArgs : resolvedArgs?.goal);
 if (!rawGoal) {
   return await escalate(
-    'startcycle-graph needs a goal, e.g. "Run /startcycle-graph on: add OAuth login with Google" -- nothing was invoked.'
+    'fabric-graph needs a goal, e.g. "Run /fabric-graph on: add OAuth login with Google" -- nothing was invoked.'
   );
 }
 
@@ -1304,7 +1304,7 @@ if (malformed > 0) {
 }
 if (!goal) {
   return await escalate(
-    'startcycle-graph needs actual goal text, not just --skill flag(s) -- e.g. "--skill=my-custom-skill add OAuth login with Google", not "--skill=my-custom-skill" alone.'
+    'fabric-graph needs actual goal text, not just --skill flag(s) -- e.g. "--skill=my-custom-skill add OAuth login with Google", not "--skill=my-custom-skill" alone.'
   );
 }
 // Object-form args may also carry a structured list directly, for a future
@@ -1354,7 +1354,7 @@ if (mandatorySkillNames.length > 0) {
     if (storeMatches.length > 0) {
       message += `Found in the AOS / ECC Store: ${storeMatches.join(', ')}. ` +
         `Run: aos store install ${storeMatches.join(' ')} --net ` +
-        'Then re-run your startcycle command. ';
+        'Then re-run your fabric command. ';
     } else if (near.length > 0) {
       message += `Did you mean: ${near.join(', ')}? `;
     } else {
@@ -1377,7 +1377,7 @@ if (mandatorySkillNames.length > 0) {
 // and proceeds without a human verdict. Never set it for an interactive run.
 // ---------------------------------------------------------------------
 
-// BEGIN canvas-verdict (extracted verbatim by tests/startcycle-human-gate.test.mjs)
+// BEGIN canvas-verdict (extracted verbatim by tests/fabric-human-gate.test.mjs)
 function lastJsonObject(raw) {
   const starts = [];
   const re = /(^|\n)\{/g;
@@ -1417,7 +1417,7 @@ const cliCall = (name, args) => (IS_WIN ? [[cliBin(name), ...args.map(cliArg)].j
 
 function humanCanvasGate(planFile) {
   if (process.env.AOS_PLAN_APPROVAL === 'auto') {
-    process.stderr.write('[startcycle-dispatch] WARNING: AOS_PLAN_APPROVAL=auto -- plan-canvas human verdict gate SKIPPED (CI-only escape, no human approved this plan)\n');
+    process.stderr.write('[fabric-dispatch] WARNING: AOS_PLAN_APPROVAL=auto -- plan-canvas human verdict gate SKIPPED (CI-only escape, no human approved this plan)\n');
     return { approved: true, auto: true };
   }
   if (!child_process) {
@@ -1446,7 +1446,7 @@ function humanCanvasGate(planFile) {
     const why = code === 'ETIMEDOUT' ? `no human verdict within ${timeoutMs} ms (AOS_PLAN_AWAIT_TIMEOUT_MS)`
       : code === 'ENOENT' ? 'aos-plan-canvas CLI not found on PATH; install AOS, or set AOS_PLAN_APPROVAL=auto in CI only'
       : `failed to run: ${run.error.message || run.error}`;
-    process.stderr.write(`[startcycle-dispatch] plan-canvas gate: ${why}\n`);
+    process.stderr.write(`[fabric-dispatch] plan-canvas gate: ${why}\n`);
     return { approved: false, escalate: true, feedback: `plan-canvas gate ${why}` };
   }
   const raw = typeof run.stdout === 'string' ? run.stdout : '';
@@ -1634,7 +1634,7 @@ while (!approved) {
   try {
     if (fs && fs.existsSync && fs.existsSync(architectureHtml) && child_process) {
       const canvas = child_process.spawn(...cliCall('aos-plan-canvas', ['open', architectureHtml, '--no-open']), { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: IS_WIN, detached: true });
-      if (canvas && typeof canvas.on === 'function') canvas.on('error', (e) => process.stderr.write(`[startcycle-dispatch] architecture canvas not opened: ${e?.message || e}\n`));
+      if (canvas && typeof canvas.on === 'function') canvas.on('error', (e) => process.stderr.write(`[fabric-dispatch] architecture canvas not opened: ${e?.message || e}\n`));
       if (canvas && typeof canvas.unref === 'function') canvas.unref();
     }
   } catch {}
@@ -1653,7 +1653,7 @@ while (!approved) {
           `and IDs match ^[a-z0-9_]+$. Reject back to Architect if anything is invalid.\n`
         : '') +
       (mandatorySkills.length > 0
-        ? `The user also required this run to use the following skill(s) via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
+        ? `The user also required this run to use the following skill(s) via /fabric-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
           `Reject the plan if it does not actually account for them — catching that here costs one planning round, ` +
           `whereas letting it through wastes a full build cycle before Reviewer flags it.\n`
         : '') +
@@ -1746,12 +1746,12 @@ if (/plan\.mdx$/i.test(planPath) && child_process) {
     const t = child_process.spawnSync(...cliCall('aos-plan-canvas', ['trail', planPath, '--force']), { cwd: process.cwd(), encoding: 'utf8', shell: IS_WIN });
     const out = t.status === 0 ? lastJsonObject(t.stdout)?.out : '';
     if (out) trailPlan = out;
-  } catch (e) { process.stderr.write(`[startcycle-dispatch] trail derivation skipped: ${e?.message || e}\n`); }
+  } catch (e) { process.stderr.write(`[fabric-dispatch] trail derivation skipped: ${e?.message || e}\n`); }
 }
 try {
   child_process?.spawn(...cliCall('aos-trail', [process.cwd(), '--plan', trailPlan, '--no-open']),
-    { detached: true, stdio: 'ignore', shell: IS_WIN }).on('error', (e) => process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`)).unref();
-} catch (e) { process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`); }
+    { detached: true, stdio: 'ignore', shell: IS_WIN }).on('error', (e) => process.stderr.write(`[fabric-dispatch] live map not started: ${e?.message || e}\n`)).unref();
+} catch (e) { process.stderr.write(`[fabric-dispatch] live map not started: ${e?.message || e}\n`); }
 
 let findings = [];
 let reviewedClean = false;
@@ -1818,7 +1818,7 @@ while (!reviewedClean) {
       `Do an adversarial review against the contract: find what is wrong, do not validate, do not summarize. ` +
       `Do not assume the implementation is correct just because it exists. ` +
       (mandatorySkills.length > 0
-        ? `The user explicitly required these skill(s) to be used this run, via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
+        ? `The user explicitly required these skill(s) to be used this run, via /fabric-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
           `If an artifact shows no sign of applying a mandated skill's guidance, that is a contract misread finding (blocking), owned by whichever build node should have applied it. ` +
           `A mandated skill being merely available is not enough -- check for it actually being used.\n`
         : '') +
@@ -2049,7 +2049,7 @@ const result = await runWorkflow();
 
 if (!isClaudeWorkflow && typeof process !== 'undefined' && process.exit) {
   if (isHookInvocation && process.stdout) {
-    const msg = `[startcycle-graph] Phase: ${result?.phase || 'done'}. ${result?.reason || ''}`;
+    const msg = `[fabric-graph] Phase: ${result?.phase || 'done'}. ${result?.reason || ''}`;
     // Codex and Claude send hook_event_name and accept only hookSpecificOutput; agy payloads lack it and keep injectSteps.
     process.stdout.write(JSON.stringify(hookEventName
       ? { systemMessage: msg, hookSpecificOutput: { hookEventName, additionalContext: msg } }

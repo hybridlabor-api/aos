@@ -296,7 +296,7 @@ export function checkPlaybook(byKey, known) {
 // every orchestrator start them. Side effects are guarded by go-gate, not by hiding the
 // skill from the model. Anything not listed here may still set the flag.
 export const MODEL_INVOCABLE = new Set([
-  'startcycle', 'startcycle-graph', 'startcycle-graph-user', 'teamwork-preview',
+  'fabric', 'fabric-graph', 'fabric-multigraph', 'fabric-teamwork', 'fabric-swarm', 'fabric-loop',
   'godmode-engineering', 'godmode-shipping', 'godmode-ui-ux', 'godmode-media-eventtech',
   'master-session', 'ao-orchestrator', 'bdbrainstorm', 'bdbmediastorm',
   'grill-me', 'grill-with-docs', 'ask-tim', 'memb-skill',
@@ -643,10 +643,10 @@ function selftest() {
   assert.equal(checkPlaybook(pb({ 'disable-model-invocation': 'true' }), known)[0].code, 'E-PB06');
   assert.deepEqual(checkPlaybook(pb({ 'disable-model-invocation': 'false' }), known), [], 'explicit false is fine');
   const dm = (v) => new Map([['disable-model-invocation', { key: 'disable-model-invocation', value: v, line: 3 }]]);
-  assert.equal(checkInvocation('startcycle-graph', dm('true'))[0].code, 'E-DMI01');
-  assert.deepEqual(checkInvocation('startcycle-graph', dm('false')), []);
+  assert.equal(checkInvocation('fabric-graph', dm('true'))[0].code, 'E-DMI01');
+  assert.deepEqual(checkInvocation('fabric-graph', dm('false')), []);
   assert.deepEqual(checkInvocation('bdb-updater', dm('true')), [], 'unlisted skills may keep the flag');
-  assert.deepEqual(checkInvocation('startcycle', new Map()), []);
+  assert.deepEqual(checkInvocation('fabric', new Map()), []);
   assert.deepEqual(checkPlaybook(pb({}, ['kind', 'trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time']), known).length, 0, 'no kind, no playbook rules');
   assert.deepEqual(
     checkPlaybook(pb({ requires: '\n  skills: ["gh (external)", github,]' }), known), [],

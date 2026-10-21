@@ -49,7 +49,7 @@ const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isG
 // ---------------------------------------------------------------------------
 // Graph gate (W-5, W-6)
 //
-// The loop-keeper for /startcycle-graph on a harness with no Stop hook. Claude
+// The loop-keeper for /fabric-graph on a harness with no Stop hook. Claude
 // Code blocks the exit in .claude/hooks/graph-gate.mjs; OpenCode has no Stop
 // event, so the same contract is kept by nudging the session awake on
 // session.idle while production_artifacts/state.json still has open work.
@@ -68,9 +68,9 @@ const GATE_FIELDS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
 const MAX_NUDGES = 3;
 
 const PIPELINE_COMMANDS = [
-    { name: 'startcycle-graph', skill: 'startcycle-graph', goal: '' },
-    { name: 'startcycle-graph-user', skill: 'startcycle-graph-user', goal: '' },
-    { name: 'startcycle', skill: 'startcycle', goal: '' },
+    { name: 'fabric-graph', skill: 'fabric-graph', goal: '' },
+    { name: 'fabric-multigraph', skill: 'fabric-multigraph', goal: '' },
+    { name: 'fabric', skill: 'fabric', goal: '' },
 ];
 
 // sessionID -> { signature, nudges }
@@ -122,7 +122,7 @@ function openGraphGate(state) {
 
 function buildGraphNudge(gate) {
     return [
-        '[AOS Graph Gate] The /startcycle-graph run is not finished: ' + gate.text + '.',
+        '[AOS Graph Gate] The /fabric-graph run is not finished: ' + gate.text + '.',
         'Read production_artifacts/state.json and .agents/graph.md, then dispatch the',
         'next node the edge table requires. If state.iteration >= state.max_iterations,',
         'or a repair round reports the same blocking finding id again, set phase to',
@@ -130,12 +130,12 @@ function buildGraphNudge(gate) {
     ].join(' ');
 }
 
-// The pipeline group. /startcycle-graph also resolves natively from
-// ~/.config/opencode/commands/startcycle-graph.md; this is the fallback for the
+// The pipeline group. /fabric-graph also resolves natively from
+// ~/.config/opencode/commands/fabric-graph.md; this is the fallback for the
 // names that have no command file, and it also covers a project that predates
 // the payload.
 function matchPipelineCommand(text) {
-    const m = text.match(/^\/(startcycle(?:-graph-user|-graph)?)(?:\s+(.*))?$/is);
+    const m = text.match(/^\/(fabric(?:-multigraph|-graph)?)(?:\s+(.*))?$/is);
     if (!m) return null;
     return PIPELINE_COMMANDS.find(c => c.name === m[1].toLowerCase()) || null;
 }

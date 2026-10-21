@@ -45,7 +45,7 @@ Delegate with a real timeout and verify results; model choice is the user's resp
 ## Tool routing (automatic)
 
 Use these tools by yourself, from the situation. The user never has to say
-"use plan-canvas", "use agenttrail", "use subagents" or "run a startcycle".
+"use plan-canvas", "use agenttrail", "use subagents" or "run a fabric".
 
 If the user says "plan", "Plan", "planen" or "roadmap" with nothing else: run `aos-plan-canvas templates`, offer the matching template, then `aos-plan-canvas new <id> <dir>` and `aos-plan-canvas open <dir>/plan.mdx --mode bdb-plan-builder --await`.
 **plan-canvas** — open the browser review canvas for any plan. Check
@@ -74,9 +74,9 @@ stored as markdown/artifact where task, project and plan type say it belongs
 
 **Multi-agent runs** — pick these from the situation: agenttrail for a live
 map of any multi-agent run (subagents, worktrees, a bdb pipeline such as
-`startcycle*`, or a workflow), subagents for independent slices of work, and the
-startcycle variant (`startcycle`, `startcycle-graph` or
-`startcycle-graph-user`) that fits the task. Monitor every such run on the
+`fabric*`, or a workflow), subagents for independent slices of work, and the
+fabric variant (`fabric`, `fabric-graph` or
+`fabric-multigraph`) that fits the task. Monitor every such run on the
 agenttrail map, and let GO approvals surface there: after
 `aos-plan-canvas open` of a plan in a pipeline context, also run
 `aos-plan-canvas trail <plan-dir>` (writes the execution plan file), then

@@ -802,7 +802,7 @@ async function renderPipelineBody($: EngineInterface, e: PaneInput) {
         })
       )}
       <Box flexDirection="row" marginTop={1}>
-        <Button key="resume" plain label="resume graph" hotkey="r" onPress={() => void fillPreset($, '/startcycle-graph')} />
+        <Button key="resume" plain label="resume graph" hotkey="r" onPress={() => void fillPreset($, '/fabric-graph')} />
       </Box>
     </Box>
   )

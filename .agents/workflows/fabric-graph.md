@@ -1,9 +1,8 @@
 ---
-name: startcycle
-description: Autonomous Multi-Agent Development Pipeline (/startcycle)
+description: "Autonomous multi-agent build pipeline (/fabric-graph), run after /bdbrainstorm or /grill-me."
 ---
 
-# Autonomous Development Cycle Workflow (/startcycle)
+# Autonomous Development Cycle Workflow (/fabric-graph)
 
 This workflow defines the zero-prompting, multi-agent execution pipeline triggered after a `/bdbrainstorm` or `/grill-me` session.
 
@@ -19,7 +18,7 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
                                          │
                                          ▼
                   ┌──────────────────────────────────────────────┐
-                  │ 2. AUTONOMOUS CYCLE (/startcycle)            │
+                  │ 2. AUTONOMOUS CYCLE (/fabric-graph)            │
                   │    • Task Decomposition & Architecture       │
                   │    • Parallel Frontend/Backend/Media Streams │
                   │    • Verification & Quality Gate             │
@@ -50,12 +49,12 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
 
 **This replaces the old 4-step pipeline description below.** The full
 contract — state schema, node table, edge predicates, the Stop-hook
-loop-keeper — lives in `.agents/graph.md` and `.agents/state.schema.json`;
-this file is a summary, kept in sync with
-`skills/basic/startcycle/SKILL.md`'s canonical version.
+loop-keeper — lives in [`.agents/graph.md`](../graph.md) and
+[`.agents/state.schema.json`](../state.schema.json); this file is a summary,
+kept in sync with `skills/basic/fabric-graph/SKILL.md`'s canonical version.
 
 **The one rule:** these seven agents never invoke each other. A dispatcher —
-the main session running `/startcycle`, or whatever plays that role in a
+the main session running `/fabric-graph`, or whatever plays that role in a
 given harness — reads `production_artifacts/state.json` after each agent
 returns and decides which one runs next. The version of this file below this
 notice previously described "streams" and "hand-offs" in a way that read as
@@ -63,8 +62,8 @@ agents calling agents; see `audit-agents.md` F-17 for why that's corrected.
 
 | Node | Role | Reads | Writes |
 |---|---|---|---|
-| **Architect** | Turns the goal into a system plan | `state.goal` | `state.artifacts.plan` |
-| **TechLead** | Approves/rejects the plan's capability map | `state.artifacts.plan` | plan approval, `state.phase` |
+| **Architect** | Turns the goal into a system plan | `state.goal` | `state.artifacts.plan`, `state.artifacts.architecture` (`production_artifacts/00_architecture.json` + `production_artifacts/00_architecture.html` via `aos-archify deliver`, linked with a `url:` line) |
+| **TechLead** | Approves/rejects the plan's capability map | `state.artifacts.plan` | plan approval, `state.phase` (rejects on a failed architecture gate: missing spec/HTML, missing `url:` link, or no passing showcase receipt) |
 | **Godmode_UI_UX** | Frontend implementation | plan, own findings | `state.artifacts.frontend` |
 | **Godmode_Engineering** | Backend implementation | plan, own findings | `state.artifacts.backend` |
 | **Godmode_Media_EventTech** | Media/show-control implementation (if the goal needs it) | plan, own findings | `state.artifacts.media` |
@@ -83,7 +82,7 @@ finding ID(s) Reviewer already flagged before the build node was re-invoked
 to fix them, the dispatcher escalates immediately instead of repeating an
 identical cycle (see `.agents/graph.md`'s Reviewer discipline).
 
-**`/ship` (after `state.phase: done`):**
+**The GO-gated push (after `state.phase: done`):**
 1. `openwiki-skill`: scans the git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and `README.md`.
 2. `memb-ingest`: ingests new documentation and schema files into local memB vector memory.
 3. Git commit, version tag, push to the private remote — gated by `go-gate.mjs` like any other push in this repo.

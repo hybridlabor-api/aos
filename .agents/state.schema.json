@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/.agents/state.schema.json",
   "title": "BDB Graph Run State",
-  "description": "Typed hand-off record for a /startcycle-graph run, replacing free-form production_artifacts/*.md prose as the transport edges evaluate. See .agents/graph.md for the dispatcher loop this state drives. Persisted at production_artifacts/state.json.",
+  "description": "Typed hand-off record for a /fabric-graph run, replacing free-form production_artifacts/*.md prose as the transport edges evaluate. See .agents/graph.md for the dispatcher loop this state drives. Persisted at production_artifacts/state.json.",
   "type": "object",
   "required": ["run_id", "goal", "phase", "iteration", "max_iterations", "gate", "findings", "approvals"],
   "properties": {
     "run_id": {
       "type": "string",
-      "description": "Unique id for this /startcycle-graph run, e.g. a timestamp or short hash. Lets a fresh dispatcher invocation resume the right run instead of guessing."
+      "description": "Unique id for this /fabric-graph run, e.g. a timestamp or short hash. Lets a fresh dispatcher invocation resume the right run instead of guessing."
     },
     "goal": {
       "type": "string",
@@ -74,7 +74,7 @@
       "type": "integer",
       "minimum": 1,
       "default": 3,
-      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/startcycle-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
+      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/fabric-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
     },
     "approvals": {
       "type": "array",
@@ -94,11 +94,11 @@
       "type": "array",
       "items": { "type": "string" },
       "default": [],
-      "description": "Skill names the user required via /startcycle-graph's --skill=<name> flag (repeatable), validated to exist before the run proceeds. Empty when the user didn't ask for one. Build nodes (and Architect) are told to actually apply these, not just have them available; Reviewer checks the resulting artifacts for evidence they were used and flags a contract-misread finding if not. See .agents/graph.md's 'Mandatory Skill Injection' section."
+      "description": "Skill names the user required via /fabric-graph's --skill=<name> flag (repeatable), validated to exist before the run proceeds. Empty when the user didn't ask for one. Build nodes (and Architect) are told to actually apply these, not just have them available; Reviewer checks the resulting artifacts for evidence they were used and flags a contract-misread finding if not. See .agents/graph.md's 'Mandatory Skill Injection' section."
     },
     "pipeline": {
       "type": "string",
-      "description": "AO scaffold metadata: which pipeline bootstrapped this run, e.g. startcycle-graph."
+      "description": "AO scaffold metadata: which pipeline bootstrapped this run, e.g. fabric-graph."
     },
     "planCanvasRequired": {
       "type": "boolean",

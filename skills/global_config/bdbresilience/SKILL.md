@@ -100,7 +100,7 @@ The `/bdbresilience` master skill suite provides deterministic runtime fault tol
 - 📘 **[Distributed Locking & Concurrency](references/distributed-locking.md)**: Atomic lockfile creation, lease TTLs, heartbeat renewal, atomic rename break eviction, and `state.json` protection.
 - 📘 **[CI/CD Self-Healing Triage](references/cicd-triage.md)**: Multi-runner log parsers, flaky vs. deterministic classifier, and structured JSON diagnostics.
 - 📘 **[Two-Phase Pre-Tool GO Gate](references/two-phase-go-gate.md)**: PreToolUse hook specifications, transcript token verification, and fail-closed gate mechanics.
-- 📘 **[Node Integration Contracts](contracts/nodes-integration.md)**: **PROPOSAL, not applied.** How Reviewer and Shipping *would* be equipped in `nodes.json`, plus hooks for `/startcycle-graph` and `/bdbrainstorm`. No AOS node carries `bdbresilience` today.
+- 📘 **[Node Integration Contracts](contracts/nodes-integration.md)**: **PROPOSAL, not applied.** How Reviewer and Shipping *would* be equipped in `nodes.json`, plus hooks for `/fabric-graph` and `/bdbrainstorm`. No AOS node carries `bdbresilience` today.
 
 ---
 

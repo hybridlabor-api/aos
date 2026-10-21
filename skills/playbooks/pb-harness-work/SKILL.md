@@ -2,13 +2,13 @@
 name: pb-harness-work
 description: >-
   Change the agent harness itself (hooks, gates, memory, permissions,
-  plugins) the safe way: pattern lookup, /startcycle build, PR after GO.
+  plugins) the safe way: pattern lookup, /fabric build, PR after GO.
 category: bdb-core
 kind: playbook
 trigger: ["harness work", "change a hook", "fix the go-gate", "plugin change"]
 inputs: [goal, repo, area]
 requires:
-  skills: [agentic-harness-patterns, startcycle, agenttrail, verification-before-completion, git-pr-review, github, "gh (external)"]
+  skills: [agentic-harness-patterns, fabric, agenttrail, verification-before-completion, git-pr-review, github, "gh (external)"]
   agents: [architect, techlead, reviewer]
   mcps: []
   store: []
@@ -39,9 +39,9 @@ What you get: a harness change that was designed against the known gotchas, buil
    - tools → `tool-registry-pattern.md`
    - bootstrap → `bootstrap-sequence-pattern.md`
    - check: the gotcha titles that apply are listed as a checklist (titles only, no copied content)
-3. startcycle (Architect) — goal and gotcha checklist → `production_artifacts/00_execution_plan.md` with agenttrail components, each with a `files:` line — every listed gotcha is marked addressed or n/a with a reason; a component without `files:` → back to Architect
-4. agenttrail — `aos-trail . --plan production_artifacts/00_execution_plan.md --no-open` → URL in the run log, before the build nodes start — URL printed; a no-op if startcycle already started the trail (it is safe to run twice)
-5. startcycle (TechLead → build → Reviewer) — the dispatcher is the main session; the agents never call each other → code and review file — no open `blocking` finding
+3. fabric (Architect) — goal and gotcha checklist → `production_artifacts/00_execution_plan.md` with agenttrail components, each with a `files:` line — every listed gotcha is marked addressed or n/a with a reason; a component without `files:` → back to Architect
+4. agenttrail — `aos-trail . --plan production_artifacts/00_execution_plan.md --no-open` → URL in the run log, before the build nodes start — URL printed; a no-op if fabric already started the trail (it is safe to run twice)
+5. fabric (TechLead → build → Reviewer) — the dispatcher is the main session; the agents never call each other → code and review file — no open `blocking` finding
 6. Cross-harness check → table in the run log, one row per harness (affected yes/no, file, evidence):
    - Claude: `.claude/hooks/*.mjs`, settings hooks
    - agy: `hooks.json` via installer `mergeAntigravityHooks`

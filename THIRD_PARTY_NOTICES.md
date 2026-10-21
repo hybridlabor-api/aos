@@ -227,7 +227,7 @@ and was not carried over.
 `GLOSSARY.md` references became `CONTEXT.md`; `/setup-matt-pocock-skills` and the upstream issue-tracker setup were
 replaced by AOS defaults (markdown files under `production_artifacts/`, GitHub issues via `gh` only on request);
 `codebase-design` became `software-architecture` and `research` became `deep-research`; short pointers to AOS's
-`test-driven-development`, `systematic-debugging`, `requesting-code-review` and the `/startcycle` Architect step were
+`test-driven-development`, `systematic-debugging`, `requesting-code-review` and the `/fabric` Architect step were
 added. Upstream's `agents/openai.yaml` files were not carried over.
 
 `skills/global_config/ask-tim/` is derived from upstream's `ask-matt` router. It

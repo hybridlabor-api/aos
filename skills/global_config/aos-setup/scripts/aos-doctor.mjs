@@ -142,7 +142,7 @@ function checkAos() {
   ];  // OpenCode gets an MCP config but no skill sync from installer.js — no row for it.
   // A non-empty skills directory proves nothing — it can hold one unrelated
   // skill, or a stale partial sync. Require a sentinel that only AOS ships.
-  const SENTINEL = 'startcycle';
+  const SENTINEL = 'fabric';
   const synced = harnesses.filter(([, p]) => dirCount(p) > 0);
   const withSentinel = synced.filter(([, p]) => existsSync(path.join(p, SENTINEL, 'SKILL.md')));
   add('aos', 'skills synced to harnesses', withSentinel.length > 0,
