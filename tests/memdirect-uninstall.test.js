@@ -60,7 +60,7 @@ test('item 6: every memory-direct and uninstall backup beside a harness file is 
     for (const t of [100, 200, 300]) fs.writeFileSync(`${file}.aos-memdirect-bak-${t}`, '{}');
     fs.writeFileSync(`${file}.20261021T110511Z.bak`, '{}');
     fs.writeFileSync(`${file}.20261021T110511Z.bak.1`, '{}');
-    const arch = path.join(home, 'archive');
+    const arch = path.join(tmp(), 'archive');
     const moved = pruneBackups(file, arch);
     assert.deepStrictEqual(fs.readdirSync(home), ['.claude.json']);
     assert.equal(fs.readdirSync(arch).length, 5);
