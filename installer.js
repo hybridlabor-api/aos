@@ -7981,6 +7981,13 @@ function refreshHarnessMcpEntries() {
             }
             if (!present.length) continue;
             const subset = Object.fromEntries(Object.entries(shipped).filter(([n]) => present.includes(n)));
+            if (memoryOn) {
+                for (const m of ['memb_mcp', 'deja']) {
+                    if (shipped[m] && (present.includes('aos') || present.includes(m))) {
+                        subset[m] = shipped[m];
+                    }
+                }
+            }
             if (kind === 'toml') {
                 // Regenerating the AOS block drops every AOS table it is not handed: pass the ones that are not
                 // regenerated (server code missing, AOS_DISABLED_MCPS) back as they stand. Retired ones go.
