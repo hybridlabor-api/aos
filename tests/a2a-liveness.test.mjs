@@ -5,7 +5,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  usableOwnerPid, ownerGone, ownerReused, sweepsSiblings, idleExpired, idleLimitMs, usesIdleReaper, touchSeen, seenAt, DEFAULT_IDLE_MIN,
+  usableOwnerPid, usesOwnerWatch, ownerGone, ownerReused, sweepsSiblings, idleExpired, idleLimitMs, usesIdleReaper, touchSeen, seenAt, DEFAULT_IDLE_MIN,
 } from "../lib/a2a-liveness.mjs";
 
 test("owner pid: pid 1 and garbage are not an owner", () => {
@@ -73,4 +73,13 @@ test("ownerReused: a pid whose process started after registration (plus slack) i
 test("sweepsSiblings: only claude", () => {
   assert.equal(sweepsSiblings("claude"), true);
   for (const h of ["codex", "agy", "opencode", "live"]) assert.equal(sweepsSiblings(h), false, h);
+});
+
+// Windows: the codex/agy owner pid can be a short-lived wrapper, so only per-session owners get the owner watch.
+test("usesOwnerWatch: claude and opencode yes; shared hosts codex and agy never; no owner never", () => {
+  assert.equal(usesOwnerWatch("claude", true), true);
+  assert.equal(usesOwnerWatch("opencode", true), true);
+  assert.equal(usesOwnerWatch("codex", true), false);
+  assert.equal(usesOwnerWatch("agy", true), false);
+  assert.equal(usesOwnerWatch("claude", false), false);
 });
