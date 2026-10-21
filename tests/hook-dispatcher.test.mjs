@@ -34,7 +34,7 @@ test('a gate block exits 2 with the gate message and no later module can undo or
   assert.equal(r.code, 2);
   assert.match(r.stderr, /Blocked by fake gate: no GO/);
   assert.equal(r.stdout, '', 'no context is delivered with a block');
-  assert.deepEqual(calls, ['gate', 'ctx'], 'gates run before the rest; the first PreToolUse block ends the gate run');
+  assert.deepEqual(calls, ['gate'], 'gates run before the rest; the first PreToolUse block ends the run');
 });
 
 test('the real go-gate blocks a guarded command through the dispatcher (exit 2, its message on stderr)', () => {
@@ -45,6 +45,29 @@ test('the real go-gate blocks a guarded command through the dispatcher (exit 2, 
   });
   assert.equal(r.status, 2, r.stdout + r.stderr);
   assert.match(r.stderr, /Blocked by go-gate hook/);
+});
+
+test('unreadable stdin on a gate event is denied by go-gate, not read as an empty payload', () => {
+  const home = tmp('home');
+  // stdin is a directory: readFileSync(0) throws EISDIR
+  const r = spawnSync(process.execPath, [DISPATCHER, 'PreToolUse', 'go-gate.mjs', 'trail-relay.mjs'], {
+    stdio: [fs.openSync(home, 'r'), 'pipe', 'pipe'],
+    env: { ...process.env, HOME: home, USERPROFILE: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8',
+  });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /Blocked by go-gate hook/);
+});
+
+test('the catch-all relay entry (--rest) skips the tools the other PreToolUse entries relayed', async () => {
+  const seen = [];
+  const registry = { relay: { run: async (c) => { seen.push(c.input.tool_name); return ok(); } } };
+  for (const tool of ['Bash', 'Write', 'MultiEdit', 'Agent', 'Task', 'Read', 'mcp__x__y']) {
+    await dispatch('PreToolUse', ['relay'], payload({ tool_name: tool }), registry, { rest: true });
+  }
+  assert.deepEqual(seen, ['Read', 'mcp__x__y']);
+  seen.length = 0;
+  await dispatch('PostToolUse', ['relay'], payload({ hook_event_name: 'PostToolUse', tool_name: 'Bash' }), registry, { rest: true });
+  assert.deepEqual(seen, ['Bash'], 'only PreToolUse is split by tool');
 });
 
 test('an allowed command and unparseable input behave like the single hooks', () => {
@@ -209,7 +232,7 @@ test('install and update leave only dispatcher entries: no per-module entries of
     }
   }
   for (const event of ['PreToolUse', 'PostToolUse', 'Stop', 'SessionStart', 'UserPromptSubmit', 'Notification', 'SubagentStop']) {
-    assert.equal(all.filter((x) => x.event === event && x.command.includes('aos-hooks.mjs')).length, 1, `${event}: one dispatcher entry`);
+    assert.equal(all.filter((x) => x.event === event && x.command.includes('aos-hooks.mjs')).length, event === 'PreToolUse' ? 4 : 1, `${event}: dispatcher entries`);
   }
   assert.ok(all.some((x) => x.event === 'PreToolUse' && x.command.endsWith('|| exit 2')));
 
@@ -223,12 +246,14 @@ test('dropping a module (gate off, memory off, no context hooks) edits the dispa
   const profile = require('../lib/v5/profile.js');
   const tpl = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'claude-hooks.json'), 'utf8')).hooks;
   const cmd = (event, drop) => profile.dropContextHooks(tpl[event], drop).flatMap((e) => e.hooks.map((x) => x.command));
+  assert.deepEqual(cmd('PreToolUse', profile.isContextCommand).length, 2, 'context off: only the Bash gate entry and the env-file entry stay');
   assert.deepEqual(cmd('PostToolUse', profile.isContextCommand), [], 'a relay-only event disappears');
   const pre = cmd('PreToolUse', profile.isContextCommand);
-  assert.equal(pre.length, 1);
+  assert.equal(pre.length, 2);
   assert.ok(pre[0].includes('go-gate.mjs') && !pre[0].includes('trail-relay.mjs') && pre[0].endsWith('|| exit 2'));
   const gateOff = cmd('PreToolUse', (c) => profile.GATE_HOOKS.some((n) => c.includes(n)));
   assert.ok(!gateOff[0].includes('go-gate.mjs') && !gateOff[0].includes('|| exit 2') && gateOff[0].includes('conventional-commits.mjs'));
+  assert.ok(gateOff.some((c) => c.endsWith('trail-relay.mjs --rest')));
   const noMemory = cmd('UserPromptSubmit', (c) => /memb-inject\.mjs/.test(c));
   assert.ok(!noMemory[0].includes('memb-inject.mjs') && noMemory[0].includes('rules-inject.mjs') && noMemory[0].includes('go-token.mjs'));
 });

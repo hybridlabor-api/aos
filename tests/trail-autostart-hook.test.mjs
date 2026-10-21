@@ -102,9 +102,10 @@ test('registration: settings.json entry, installer merge is idempotent and keeps
   const repo = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'claude-hooks.json'), 'utf8'));
   // trail-autostart is a module of the PreToolUse dispatcher entry; the dispatcher applies it to Agent|Task only.
   const entry = repo.hooks.PreToolUse.find((e) => e.hooks.some((h) => h.command.includes('trail-autostart.mjs')));
+  assert.equal(entry.matcher, 'Agent|Task');
   assert.ok(entry.hooks[0].command.includes('aos-hooks.mjs'));
   assert.ok(entry.hooks[0].timeout >= 3);
-  assert.ok(entry.hooks[0].command.includes('go-gate.mjs'));
+  assert.ok(repo.hooks.PreToolUse.some((e) => e.matcher === 'Bash' && e.hooks.some((h) => h.command.includes('go-gate.mjs'))));
 
   const installer = require(path.join(ROOT, 'installer.js'));
   for (const projectLocal of [false, true]) {

@@ -10,6 +10,8 @@
 //   - any block => exit 2 with the blocking modules' stderr. On PreToolUse the first block ends the gate run;
 //     on Stop every gate runs (a graph-gate block and an A2A hand-over are both delivered).
 // Output (exit 0): the additionalContext of every module is merged into ONE hookSpecificOutput object.
+// AGENTTRAIL_LEGACY=1 (trail-relay) adds the 15-port 5330-5344 range to every relay: up to 15 refused/hung
+// loopback POSTs per event, so it is a one-release escape hatch for maps that never announce themselves.
 // The script entry modules (node go-gate.mjs, node memb-inject.mjs, ...) keep working for the other harnesses.
 
 import { readFileSync, realpathSync } from 'node:fs';
@@ -34,9 +36,11 @@ export const REGISTRY = {
   'aos-session-hint.mjs': { budgetMs: 3000, run: async (c) => (await import('./aos-session-hint.mjs')).hook(c.input) },
   'a2a-session.mjs': { budgetMs: 4000, run: async (c) => (await import('./a2a-session.mjs')).hook(c.input, { harness: 'claude' }) },
   'trail-autostart.mjs': { tools: SUBAGENT, run: async (c) => (await import('./trail-autostart.mjs')).hook(c.input) },
-  'trail-relay.mjs': { budgetMs: 1500, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event }) },
+  // timeoutMs 150: the POST goes to loopback; a hung map must not slow the hot path by more than that.
+  'trail-relay.mjs': { budgetMs: 400, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event, timeoutMs: 150 }) },
 };
 
+const COVERED = new Set([...BASH, ...FILE_TOOLS, ...SUBAGENT]);
 const NONE = { code: 0, stdout: '', stderr: '' };
 const parse = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 
@@ -69,20 +73,21 @@ export function mergeOutputs(parts) {
 }
 
 // Runs the named modules for one event and answers { code, stdout, stderr }; never throws.
-export async function dispatch(event, names, raw, registry = REGISTRY) {
+// `rest`: the catch-all PreToolUse entry; it skips the tools the Bash/file/subagent entries already relayed.
+export async function dispatch(event, names, raw, registry = REGISTRY, { rest = false } = {}) {
   const input = parse(raw);
   const tool = typeof input?.tool_name === 'string' ? input.tool_name : '';
   const picked = names.map((n) => [n, registry[n]]).filter(([, m]) => m);
   // Unparseable input on PreToolUse: only the gates run, and they decide on the raw text (go-gate denies).
   const wanted = picked.filter(([, m]) => (input || !m || m.gate)
-    && !(event === 'PreToolUse' && tool && m.tools && !m.tools.has(tool)));
+    && !(event === 'PreToolUse' && tool && m.tools && !m.tools.has(tool))
+    && !(rest && event === 'PreToolUse' && COVERED.has(tool)));
   const ordered = [...wanted.filter(([, m]) => m.gate), ...wanted.filter(([, m]) => !m.gate)];
 
   const blocks = [];
   const outs = [];
   let err = '';
   for (const [name, m] of ordered) {
-    if (blocks.length && event === 'PreToolUse' && m.gate) continue;
     let r;
     try {
       const ctx = { event, raw, input: input ? { hook_event_name: event, ...input } : null };
@@ -93,6 +98,7 @@ export async function dispatch(event, names, raw, registry = REGISTRY) {
     if (r.stderr) err += r.stderr;
     if (r.code === 2 || (m.closed && r.code !== 0)) blocks.push(r);
     else if (r.stdout) outs.push(r.stdout);
+    if (blocks.length && event === 'PreToolUse') break; // the first PreToolUse block ends the run
   }
   if (blocks.length) return { code: 2, stdout: blocks.map((b) => b.stdout).join(''), stderr: err };
   return { code: 0, stdout: mergeOutputs(outs), stderr: err };
@@ -110,7 +116,17 @@ const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSy
 
 if (isMain()) {
   const [event = '', ...rest] = process.argv.slice(2);
-  let raw = '';
-  try { raw = readFileSync(0, 'utf8'); } catch { /* unreadable stdin: the gates see an empty payload */ }
-  flush(await dispatch(event, rest.filter((a) => a.endsWith('.mjs')), raw));
+  const names = rest.filter((a) => a.endsWith('.mjs'));
+  // Unreadable stdin is not an empty payload: the sentinel is not JSON, so go-gate denies like `node go-gate.mjs` does.
+  let raw = '\0unreadable hook input';
+  try { raw = readFileSync(0, 'utf8'); } catch { /* sentinel stays */ }
+  let result;
+  try {
+    result = await dispatch(event, names, raw, REGISTRY, { rest: rest.includes('--rest') });
+  } catch (e) {
+    // dispatch never throws by design; if it does, a run that holds the fail-closed gate blocks, any other passes.
+    const closed = names.some((n) => REGISTRY[n]?.closed);
+    result = closed ? { code: 2, stdout: '', stderr: `Blocked by aos-hooks: internal error, failing closed: ${String(e?.message || e).slice(0, 200)}\n` } : NONE;
+  }
+  flush(result);
 }
