@@ -27,7 +27,7 @@ The fabric family. `fabric` picks the mode; the modes differ in how much machine
 | `fabric-graph` | Dispatcher graph: durable `state.json`, Reviewer repair loop, automated quality gate, human escalation. |
 | `fabric-multigraph` | Throwaway 2–4 node fan-out, nothing persistent left behind. |
 | `fabric-teamwork` | 9-step prompt crafting and delegation to a team. |
-| `fabric-swarm` | Documented; arrives in 5.4.1 and routes to `fabric-multigraph` meanwhile. |
+| `fabric-swarm` | N similar workers take items from one shared pool. |
 | `fabric-loop` | Repeats a graph run until an exit check is green, bounded by round limits. |
 
 **Agents never invoke each other.** A dispatcher — the main session or the

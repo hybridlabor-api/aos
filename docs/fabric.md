@@ -3,7 +3,7 @@
 This document describes the Fabric Family v2 architecture implemented in AOS.
 Fabric v2 introduces custom role registries, team configurations, and dynamic workstream schemas while preserving 100% byte-identical backward compatibility for default runs.
 
-> **Naming note:** since 5.4 the family is called fabric: the master `fabric` plus the modes `fabric-graph`, `fabric-multigraph`, `fabric-teamwork`, `fabric-swarm` and `fabric-loop`. `fabric-loop` is available; `fabric-swarm` is documented and arrives in 5.4.1.
+> **Naming note:** since 5.4 the family is called fabric: the master `fabric` plus the modes `fabric-graph`, `fabric-multigraph`, `fabric-teamwork`, `fabric-swarm` and `fabric-loop`. `fabric-swarm` runs N similar workers on one shared pool; `fabric-loop` is available.
 
 ---
 
