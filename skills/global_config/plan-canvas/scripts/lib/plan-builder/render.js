@@ -1212,7 +1212,7 @@ function renderDocument(blocks, ctx) {
 }
 
 function themeCss() {
-  return fs.readFileSync(path.join(__dirname, 'theme.css'), 'utf8');
+  return fs.readFileSync(path.join(__dirname, 'aos-tokens.css'), 'utf8') + fs.readFileSync(path.join(__dirname, 'theme.css'), 'utf8');
 }
 
 function boardScript() {

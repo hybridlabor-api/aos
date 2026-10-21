@@ -1,7 +1,7 @@
 /* AOS Hub: A2 shell on the shared tokens (aos-tokens.css). Legacy names are aliased so inline styles in the tab modules keep working. */
 :root{--bg:var(--aos-bg);--card:var(--aos-surface);--card-2:var(--aos-surface-2);--line:var(--aos-border);--line-soft:var(--aos-border);
   --fg:var(--aos-text);--dim:var(--aos-muted);--dimmer:var(--aos-muted);--accent:var(--aos-accent);--pill:color-mix(in srgb,var(--aos-accent) 14%,var(--aos-surface));
-  --up:var(--aos-ok);--down:var(--aos-bad)}
+  --up:var(--aos-status-running-fg);--down:var(--aos-status-failed-fg)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:13.5px/1.5 var(--aos-font-ui);overflow-x:hidden}
 code,pre,.ver,.trail a,th,.s-tag,.btn,nav#tabs a,select,input{font-family:var(--aos-font-mono)}
@@ -45,7 +45,7 @@ footer{padding:12px 16px 24px;color:var(--dim);font-size:12px}
 .s-desc{color:var(--dim);font-size:13px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .s-tags{display:flex;flex-wrap:wrap;gap:6px}
 .s-tag{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line);border-radius:var(--aos-chip-r);padding:1px 8px;white-space:nowrap}
-.s-tag.warn{color:var(--aos-bad);border-color:color-mix(in srgb,var(--aos-bad) 50%,transparent)}
+.s-tag.warn{color:var(--aos-status-failed-fg);border-color:var(--aos-status-failed-border)}
 .s-foot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
 .s-foot input{min-width:0;flex:1 1 120px}
 .s-state{font-size:12px;color:var(--dim);margin-right:auto}

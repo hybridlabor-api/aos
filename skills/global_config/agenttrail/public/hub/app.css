@@ -33,10 +33,10 @@
 .sess .trunc { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--dim); }
-.tag.go { color: var(--accent); border-color: var(--accent); }
-.tag.wait { color: var(--accent); border-color: var(--accent); }
-.tag.blocked { color: var(--danger); border-color: var(--danger); }
-.tag.ok { color: var(--success); border-color: var(--success); }
+.tag.go { color: var(--aos-status-needs-you-fg); border-color: var(--aos-status-needs-you-border); }
+.tag.wait { color: var(--aos-status-needs-you-fg); border-color: var(--aos-status-needs-you-border); }
+.tag.blocked { color: var(--aos-status-failed-fg); border-color: var(--aos-status-failed-border); }
+.tag.ok { color: var(--aos-status-done-fg); border-color: var(--aos-status-done-border); }
 
 code, .cmd { font: 12px/1.45 var(--mono); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; overflow-wrap: anywhere; }
 .copy-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; }

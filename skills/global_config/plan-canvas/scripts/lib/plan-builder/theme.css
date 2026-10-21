@@ -56,7 +56,7 @@ code { font-family: var(--mono); font-size: 0.86em; background: var(--card); bor
 .topbar .title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 .topbar .status {
   font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--accent-2); border: 1px solid var(--accent); border-radius: 999px; padding: 5px 9px;
+  color: var(--aos-status-needs-you-fg); background: var(--aos-status-needs-you-bg); border: 1px solid var(--aos-status-needs-you-border); border-radius: var(--aos-radius-pill); padding: 5px 9px;
 }
 .topbar .meta { font: 11px/1 var(--mono); color: var(--ink-3); margin-left: auto; }
 .nav-toggle {
