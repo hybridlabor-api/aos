@@ -190,5 +190,6 @@ test('Claude project-local settings use ${CLAUDE_PROJECT_DIR} and replace old no
     assert.strictEqual(gateCmds.length, 1);
     assert.ok(gateCmds[0].includes('${CLAUDE_PROJECT_DIR}/.claude/hooks/'), gateCmds[0]);
     assert.ok(!cmds.some((c) => /\$CLAUDE_PROJECT_DIR/.test(c)), 'no no-brace form remains');
-    assert.ok(cmds.some((c) => c.includes('memb-inject.mjs') && c.includes('$HOME')), 'machine-global hooks stay $HOME-anchored');
+    assert.ok(cmds.some((c) => c.includes('memb-session-save.mjs') && c.includes('$HOME')), 'the single-module machine-global hook stays $HOME-anchored');
+    assert.ok(cmds.some((c) => c.includes('aos-hooks.mjs') && c.includes('memb-inject.mjs') && c.includes('${CLAUDE_PROJECT_DIR}/.claude/hooks/')), 'the dispatcher carries the context modules next to the gates');
 });

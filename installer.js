@@ -6691,12 +6691,11 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const bdbHookScripts = v5Profile.CLAUDE_MERGE_HOOKS;
     // The template wires a2a-session.mjs (SessionStart) too, so it is in CLAUDE_MERGE_HOOKS: replaced, not cloned, on every run;
     // installClaudeA2aSessionHook then only copies the script (it skips the settings write when already wired).
-    // memb-inject reads the machine-global memB store under $HOME and is
-    // installed once per machine, so it stays $HOME-anchored even inside a
-    // project harness -- unlike the two gate hooks, which are per-checkout by
-    // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
-    // prompt in any project the harness was never installed into. trail-relay
-    // talks to machine-global live-map daemons, so it is anchored the same way.
+    // The template wires one dispatcher entry per event (aos-hooks.mjs <Event> <module.mjs>...), so a module is
+    // dropped by dropping its name from that command (v5Profile.dropContextHooks) and the whole entry replaces the
+    // old per-module entries of earlier installs: every one of them names a CLAUDE_MERGE_HOOKS script.
+    // The dispatcher is per-checkout like the gates (a project harness copies every hook next to it); only the
+    // single-module SessionEnd entry (memb-session-save) stays $HOME-anchored.
     const machineGlobalHooks = v5Profile.CONTEXT_HOOKS;
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])

@@ -354,7 +354,7 @@ function checkHooks() {
     return m ? Number(m[1]) : null;
   };
 
-  for (const file of ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
+  for (const file of ['aos-hooks.mjs', 'go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
     const p = path.join(claudeHooksDir, file);
     if (!existsSync(p)) {
       add('hooks', file, false, 'missing from ~/.claude/hooks',

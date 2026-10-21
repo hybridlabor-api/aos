@@ -75,8 +75,11 @@ test("the hook template registers both hooks and settings.json holds the two all
   const s = JSON.parse(readFileSync(p, "utf8"));
   const tpl = JSON.parse(readFileSync(join(root, "config", "claude-hooks.json"), "utf8"));
   const cmds = (ev) => tpl.hooks[ev].flatMap((e) => e.hooks.map((h) => h.command));
-  assert.ok(cmds("UserPromptSubmit").includes('node "${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs" drain'));
-  assert.ok(cmds("Stop").includes('node "${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs" stop'));
+  // one dispatcher entry per event; it runs a2a-inbox as `drain` on UserPromptSubmit and as `stop` on Stop
+  const dispatcher = (ev) => cmds(ev).filter((c) => c.includes('${CLAUDE_PROJECT_DIR}/.claude/hooks/aos-hooks.mjs"') && c.includes(` ${ev} `) && c.includes(' a2a-inbox.mjs'));
+  assert.equal(dispatcher("UserPromptSubmit").length, 1);
+  assert.equal(dispatcher("Stop").length, 1);
+  assert.ok(cmds("SessionStart").some((c) => c.includes('aos-hooks.mjs') && c.includes(' a2a-session.mjs')));
   assert.ok(s.permissions.allow.includes("Bash(aos-a2a reply:*)"));
   assert.ok(s.permissions.allow.includes("Bash(aos-a2a send:*)"));
 });

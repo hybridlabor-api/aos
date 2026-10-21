@@ -13,10 +13,20 @@ test('repo .claude/settings.json has no hooks key (installed hooks are the only 
     assert.ok(Array.isArray(s.permissions && s.permissions.allow));
 });
 
-test('config/claude-hooks.json is the hook template: hooks only, repo-anchored gate paths', () => {
+test('config/claude-hooks.json is the hook template: hooks only, one repo-anchored dispatcher entry per event', () => {
     const t = readJson('config/claude-hooks.json');
     assert.deepStrictEqual(Object.keys(t), ['hooks']);
-    assert.ok(t.hooks.PreToolUse.some((e) => e.hooks.some((h) => h.command.includes('go-gate.mjs'))));
+    const byMatcher = Object.fromEntries(t.hooks.PreToolUse.map((e) => [e.matcher || '*', e.hooks.map((h) => h.command)]));
+    assert.deepStrictEqual(Object.keys(byMatcher), ['Bash', 'Write|Edit|MultiEdit|NotebookEdit', 'Agent|Task', '*']);
+    assert.ok(byMatcher.Bash[0].startsWith('node "${CLAUDE_PROJECT_DIR}/.claude/hooks/aos-hooks.mjs" PreToolUse go-gate.mjs'), byMatcher.Bash[0]);
+    assert.ok(byMatcher.Bash[0].endsWith('|| exit 2'), 'the gate stays fail-closed, for Bash only');
+    for (const k of ['Write|Edit|MultiEdit|NotebookEdit', 'Agent|Task', '*']) assert.ok(!byMatcher[k][0].includes('exit 2') && !byMatcher[k][0].includes('go-gate'), k);
+    assert.ok(byMatcher['*'][0].endsWith('trail-relay.mjs --rest'));
+    for (const [event, entries] of Object.entries(t.hooks)) {
+        const cmds = entries.flatMap((e) => e.hooks).map((h) => h.command);
+        assert.strictEqual(cmds.length, event === 'PreToolUse' ? 4 : 1, `${event}: one process per event and matcher`);
+        if (event !== 'SessionEnd') assert.ok(cmds[0].includes(`aos-hooks.mjs" ${event} `), cmds[0]);
+    }
 });
 
 test('the installer reads the template from config/claude-hooks.json', () => {

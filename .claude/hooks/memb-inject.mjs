@@ -475,17 +475,11 @@ export function stampAgyIdentity(conversationId, base = path.join(os.homedir(), 
   try { mkdirSync(dir, { recursive: true }); writeFileSync(stamp, ''); return true; } catch { return false; }
 }
 
-// Main logic runs only when the file is executed directly as a hook; importing
-// the module (e.g. from tests) must stay side-effect free.
-async function main() {
+// Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+// Fails open: any error answers an empty result. stderr carries the one human-visible status line.
+export async function hook(eventData) {
   try {
-    let inputRaw = '';
-    try { inputRaw = readFileSync(0, 'utf8'); } catch { failOpen(); }
-    if (!inputRaw || !inputRaw.trim()) failOpen();
-
-    let eventData = {};
-    try { eventData = JSON.parse(inputRaw); } catch { failOpen(); }
-
+    if (!eventData || typeof eventData !== 'object') return { code: 0, stdout: '', stderr: '' };
     // Discover candidate directory across harnesses:
     // Claude / Codex: eventData.cwd; Antigravity: eventData.workspacePaths[0] or eventData.cwd
     const isAgy = !eventData.hook_event_name && (Array.isArray(eventData.workspacePaths) || !!eventData.conversationId);
@@ -495,37 +489,51 @@ async function main() {
       : (eventData.hook_event_name || '');
 
     if (process.env.AOS_SESSION_START_CONTEXT === 'off' && (event === 'SessionStart' || eventData.hook_event_name === 'SessionStart' || (isAgy && event === ''))) {
-      failOpen();
+      return { code: 0, stdout: '', stderr: '' };
     }
 
+    let stderr = '';
     const memoryBlock = await buildMemoryBlock({
       event,
       prompt: eventData.prompt || eventData.userPrompt || '',
       cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
       userId: eventData.user_id || eventData.userId,
       isAgy,
-      onStatus: (line) => process.stderr.write(`${line}\n`),
+      onStatus: (line) => { stderr += `${line}\n`; },
     });
 
-    if (memoryBlock) {
-      if (isAgy && !agyAlreadySent) {
-        stampAgyIdentity(eventData.conversationId);
-      }
-      const { capText } = await import('./session-cap.mjs');
-      const capped = capText(memoryBlock);
-      process.stdout.write(JSON.stringify(isAgy
-        ? { injectSteps: [{ ephemeralMessage: capped }] }
-        : {
-          hookSpecificOutput: {
-            hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
-            additionalContext: capped,
-          },
-        }) + '\n');
+    if (!memoryBlock) return { code: 0, stdout: '', stderr };
+    if (isAgy && !agyAlreadySent) {
+      stampAgyIdentity(eventData.conversationId);
     }
-    process.exit(0);
+    const { capText } = await import('./session-cap.mjs');
+    const capped = capText(memoryBlock);
+    const stdout = JSON.stringify(isAgy
+      ? { injectSteps: [{ ephemeralMessage: capped }] }
+      : {
+        hookSpecificOutput: {
+          hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
+          additionalContext: capped,
+        },
+      }) + '\n';
+    return { code: 0, stdout, stderr };
   } catch {
-    failOpen();
+    return { code: 0, stdout: '', stderr: '' };
   }
+}
+
+// Main logic runs only when the file is executed directly as a hook; importing
+// the module (e.g. from tests) must stay side-effect free.
+async function main() {
+  let inputRaw = '';
+  try { inputRaw = readFileSync(0, 'utf8'); } catch { failOpen(); }
+  if (!inputRaw || !inputRaw.trim()) failOpen();
+  let eventData = {};
+  try { eventData = JSON.parse(inputRaw); } catch { failOpen(); }
+  const r = await hook(eventData);
+  if (r.stderr) process.stderr.write(r.stderr);
+  if (r.stdout) process.stdout.write(r.stdout);
+  process.exit(0);
 }
 
 // Compare resolved paths: a hook reached through a symlink must still run.

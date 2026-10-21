@@ -41,42 +41,32 @@
 //      again would just burn turns until the platform cap force-overrides us
 //      with a warning. In that case: allow the stop and let the human see it.
 
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-function allow() {
-  process.exit(0);
-}
+const ALLOW = { code: 0, stdout: "", stderr: "" };
 
-function block(reason) {
-  process.stderr.write(`Blocked by graph-gate hook: ${reason}\n`);
-  process.exit(2);
-}
-
-function main() {
+// Decision as { code, stdout, stderr }: shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+export function hook(rawInput, defaultCwd = process.cwd()) {
   let input;
   try {
-    input = JSON.parse(readFileSync(0, "utf8"));
+    input = JSON.parse(rawInput);
   } catch {
-    allow(); // can't read hook input -- fail open, this hook has no opinion without it
-    return;
+    return ALLOW; // can't read hook input -- fail open, this hook has no opinion without it
   }
 
-  const cwd = input?.cwd || process.cwd();
+  const cwd = input?.cwd || defaultCwd;
   const statePath = join(cwd, "production_artifacts", "state.json");
   const markerPath = join(cwd, "production_artifacts", ".graph-gate-last-block");
 
-  if (!existsSync(statePath)) {
-    allow(); // no active /fabric-graph run in this cwd -- most sessions, most of the time
-    return;
-  }
+  if (!existsSync(statePath)) return ALLOW; // no active /fabric-graph run in this cwd -- most sessions, most of the time
 
   let state;
   try {
     state = JSON.parse(readFileSync(statePath, "utf8"));
   } catch {
-    allow(); // malformed state -- fail open, see file header
-    return;
+    return ALLOW; // malformed state -- fail open, see file header
   }
 
   const iteration = Number.isInteger(state.iteration) ? state.iteration : 0;
@@ -87,8 +77,7 @@ function main() {
     // phase: "escalated" and needs_human: true per .agents/graph.md's edge
     // table. The hook does not loop past this -- it only enforces "don't
     // stop with a known-failing gate," never "keep going forever."
-    allow();
-    return;
+    return ALLOW;
   }
 
   const gate = state.gate && typeof state.gate === "object" ? state.gate : {};
@@ -96,10 +85,7 @@ function main() {
     .filter(([, v]) => v === "fail")
     .map(([k]) => k);
 
-  if (failing.length === 0) {
-    allow();
-    return;
-  }
+  if (failing.length === 0) return ALLOW;
 
   // Progress check (see file header). Only relevant once we've already
   // blocked at least once this run -- stop_hook_active tells us that.
@@ -118,13 +104,13 @@ function main() {
       // just burn turns until the platform's consecutive-block cap
       // force-overrides us with a warning the user has to decipher. Let the
       // stop through so the failing gate surfaces plainly instead.
-      process.stderr.write(
-        `graph-gate: gate still failing (${failing.join(", ")}) but iteration has not advanced ` +
+      return {
+        code: 0,
+        stdout: "",
+        stderr: `graph-gate: gate still failing (${failing.join(", ")}) but iteration has not advanced ` +
           `past ${iteration} since the last block -- the repair loop is not progressing. ` +
-          `Allowing this turn to end so it surfaces instead of looping.\n`
-      );
-      allow();
-      return;
+          `Allowing this turn to end so it surfaces instead of looping.\n`,
+      };
     }
   }
 
@@ -135,11 +121,21 @@ function main() {
     // write it, the platform's own consecutive-block cap still bounds us.
   }
 
-  block(
-    `production_artifacts/state.json shows failing gate check(s): ${failing.join(", ")} ` +
-    `(iteration ${iteration}/${maxIterations}). Per .agents/graph.md, the dispatcher should ` +
-    `invoke the owning build node for a repair pass before this run stops.`
-  );
+  return {
+    code: 2,
+    stdout: "",
+    stderr: `Blocked by graph-gate hook: production_artifacts/state.json shows failing gate check(s): ${failing.join(", ")} ` +
+      `(iteration ${iteration}/${maxIterations}). Per .agents/graph.md, the dispatcher should ` +
+      `invoke the owning build node for a repair pass before this run stops.\n`,
+  };
 }
 
-main();
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+
+if (isMain()) {
+  let raw = "";
+  try { raw = readFileSync(0, "utf8"); } catch { /* unreadable stdin: the hook fails open */ }
+  const r = hook(raw);
+  if (r.stderr) process.stderr.write(r.stderr);
+  process.exit(r.code);
+}
