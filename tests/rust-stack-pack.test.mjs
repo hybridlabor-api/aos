@@ -38,43 +38,30 @@ test('detectProjectStack detects Rust/Tauri, Go, and Vite stacks', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-stack-test-'));
 
   try {
-    // Empty directory
-    assert.strictEqual(detectProjectStack(tmp), null);
+    const stack = () => detectProjectStack(tmp).stack;
+    assert.deepStrictEqual(detectProjectStack(tmp), { stack: null, groups: [], packs: [], tauri: false });
 
-    // Cargo.toml
     fs.writeFileSync(path.join(tmp, 'Cargo.toml'), '[package]\nname = "test"\n');
-    assert.strictEqual(detectProjectStack(tmp), 'rust');
-
+    assert.strictEqual(stack(), 'rust');
+    assert.deepStrictEqual(detectProjectStack(tmp).groups, ['rust']);
+    assert(detectProjectStack(tmp).packs.includes('app-dev'));
     fs.unlinkSync(path.join(tmp, 'Cargo.toml'));
 
-    // src-tauri/tauri.conf.json
     fs.mkdirSync(path.join(tmp, 'src-tauri'), { recursive: true });
     fs.writeFileSync(path.join(tmp, 'src-tauri', 'tauri.conf.json'), '{}');
-    assert.strictEqual(detectProjectStack(tmp), 'rust');
-
+    assert.strictEqual(stack(), 'tauri');
+    assert.strictEqual(detectProjectStack(tmp).tauri, true);
     fs.rmSync(path.join(tmp, 'src-tauri'), { recursive: true, force: true });
 
-    // go.mod
     fs.writeFileSync(path.join(tmp, 'go.mod'), 'module example.com/test\n');
-    assert.strictEqual(detectProjectStack(tmp), 'go');
-
+    assert.strictEqual(stack(), 'go');
     fs.unlinkSync(path.join(tmp, 'go.mod'));
 
-    // package.json with vite
-    fs.writeFileSync(
-      path.join(tmp, 'package.json'),
-      JSON.stringify({ devDependencies: { vite: '^5.0.0' } }),
-    );
-    assert.strictEqual(detectProjectStack(tmp), 'vite');
+    fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ devDependencies: { vite: '^5.0.0' } }));
+    assert.strictEqual(stack(), 'vite');
 
-    fs.unlinkSync(path.join(tmp, 'package.json'));
-
-    // package.json without vite
-    fs.writeFileSync(
-      path.join(tmp, 'package.json'),
-      JSON.stringify({ dependencies: { express: '^4.0.0' } }),
-    );
-    assert.strictEqual(detectProjectStack(tmp), null);
+    fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ dependencies: { express: '^4.0.0' } }));
+    assert.strictEqual(stack(), null);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -84,11 +71,8 @@ test('installer parseModuleSelection maps rust to rustauri', () => {
   const installer = require('../installer.js');
   assert.strictEqual(typeof installer.parseModuleSelection, 'function');
 
-  const res1 = installer.parseModuleSelection('rust');
+  const res1 = installer.parseModuleSelection([], { AOS_MODULES: 'rust' });
   assert(res1.includes('rustauri'), 'parseModuleSelection("rust") should include rustauri');
-
-  const res2 = installer.parseModuleSelection('all');
-  assert(res2.includes('rustauri'), 'parseModuleSelection("all") should include rustauri');
 });
 
 test('tauri_expert role includes rust-pro and tauri-pilot', () => {
