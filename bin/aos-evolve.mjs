@@ -39,6 +39,10 @@ Options:
   --storage <path>    Custom failure.json destination file (must resolve inside ~/.aos/evolve/)
   --json              Format output as JSON
   -h, --help          Show this help message and exit
+
+Safety:
+  Hard Safety Boundary B2 (deny-list & path confinement) currently guards failure storage
+  paths in WP2; candidate diff and patch proposal verification will be activated in WP5.
 `;
 
 function readBoundedStdin(maxBytes) {
