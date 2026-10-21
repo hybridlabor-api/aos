@@ -174,3 +174,59 @@ test('B3: GET / serves the card UI with the inspector, /api/skill wiring and the
   assert.ok(section.includes("'api/preview'"), 'inspector dry run posts to /api/preview');
   assert.ok(!section.includes('/api/install'), 'inspector section never references /api/install');
 });
+
+test('preview-batch: auth (401 without token)', async () => {
+  assert.equal((await post('/api/preview-batch', { items: [{ name: 'django-patterns', kind: 'skill' }] })).status, 401);
+});
+
+test('preview-batch: validates names, kinds, empty items and non-existent items', async () => {
+  assert.equal((await call('/api/preview-batch', { items: [] })).status, 400);
+  assert.equal((await call('/api/preview-batch', { items: 'not-an-array' })).status, 400);
+  assert.equal((await call('/api/preview-batch', { items: [{ name: '../escape', kind: 'skill' }] })).status, 400);
+  assert.equal((await call('/api/preview-batch', { items: [{ name: '', kind: 'skill' }] })).status, 400);
+  assert.equal((await call('/api/preview-batch', { items: [{ name: 'django-patterns', kind: 'bad-kind' }] })).status, 400);
+  assert.equal((await call('/api/preview-batch', { items: [{ name: 'no-such-skill-xyz', kind: 'skill' }] })).status, 404);
+  assert.equal((await call('/api/preview-batch', { items: [{ name: 'no-such-pack-xyz', kind: 'pack' }] })).status, 404);
+  const core = (await (await fetch(base + '/api/catalog')).json()).items.find((i) => i.core && i.kind === 'skill');
+  assert.equal((await call('/api/preview-batch', { items: [{ name: core.name, kind: 'skill' }] })).status, 409);
+});
+
+test('preview-batch: rejects > 50 items', async () => {
+  const overLimit = Array.from({ length: 51 }, (_, i) => ({ name: `skill-${i}`, kind: 'skill' }));
+  const res = await call('/api/preview-batch', { items: overLimit });
+  assert.equal(res.status, 400);
+  const d = await res.json();
+  assert.match(d.error, /50/);
+});
+
+test('preview-batch: combined dry run for skills and packs returns targets and writes nothing', async () => {
+  const res = await call('/api/preview-batch', {
+    items: [
+      { name: 'django-patterns', kind: 'skill' },
+      { name: 'live-show', kind: 'pack' },
+    ],
+    scope: 'project',
+  });
+  assert.equal(res.status, 200);
+  const d = await res.json();
+  assert.equal(d.ok, true);
+  assert.equal(d.scope, 'project');
+  assert.ok(Array.isArray(d.targets));
+  assert.ok(d.targets.includes(join(cwd, 'skills', 'django-patterns', 'SKILL.md')));
+  for (const t of d.targets) {
+    assert.ok(!existsSync(t), `Target was written when it should only be previewed: ${t}`);
+  }
+});
+
+test('stack builder: UI serves checkboxes, sticky bottom bar, and pack tab', async () => {
+  const html = await (await fetch(base + '/')).text();
+  assert.match(html, /id="stack-bar"/);
+  assert.match(html, /data-a="check"/);
+  assert.match(html, /api\/preview-batch/);
+  assert.match(html, /data-a="copy-stack"/);
+  assert.match(html, /data-a="dry-stack"/);
+  assert.match(html, /chip\('tab','pack'/);
+  assert.match(html, /renderPacks/);
+  const inline = html.match(/<script>([\s\S]*)<\/script>/)[1];
+  assert.doesNotThrow(() => new Function(inline));
+});
