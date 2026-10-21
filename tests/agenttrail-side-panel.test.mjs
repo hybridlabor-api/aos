@@ -93,12 +93,13 @@ test('scope limits: a click never approves destructive, push-to-main or publish,
   }
 });
 
-test('grants are capped at 2 h at the gate', () => {
+test('click grants share the 24 h gate cap (no separate 2 h cap)', () => {
   const now = Date.now();
   writeReqs([reqRec('cap-1', 'gh pr merge 31', { ts: now })]);
   writeReceipt(`${KEY}.local-g-cap-1.json`, grantPayload('cap-1', 3 * HOUR, { issued: now }));
   const grants = gate.effectiveGate(KEY, { source: '', cmds: [] }, now).grants;
-  assert.ok(grants.every((g) => g.until <= now + 2 * HOUR), 'a 3 h grant must not be honoured');
+  assert.ok(grants.some((g) => g.until > now + 2 * HOUR), 'a 3 h grant is honoured');
+  assert.ok(grants.every((g) => g.until <= now + 24 * HOUR));
 });
 
 test('a receipt must match a recorded request by id and command hash', () => {

@@ -85,6 +85,14 @@
       "flags": "i"
     },
     {
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/|=)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:=|[^\\s;&|()'\"]{0,128}\\/)?(?:Start-Process|saps|start|Invoke-Item|ii)(?=[\\s;|)}'\"]|$)",
+      "flags": "i"
+    },
+    {
+      "source": "\\[(?:System\\.)?Diagnostics\\.Process\\]\\s*::\\s*Start",
+      "flags": "i"
+    },
+    {
       "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/|=)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:=|[^\\s;&|()'\"]{0,128}\\/)?(?:powershell|pwsh)(?:\\.exe)?['\"]?[^;&|\\n]*\\s-(?:e|en|enc|enco|encod|encode|encoded|encodedc|encodedco|encodedcom|encodedcomm|encodedcomma|encodedcomman|encodedcommand|ec|encodeda|encodedar|encodedarg|encodedargu|encodedargum|encodedargume|encodedargumen|encodedargument|encodedarguments)\\b",
       "flags": "i"
     },
