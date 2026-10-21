@@ -4,7 +4,7 @@
 
 **Language / Sprache / Idioma**: **English** · [Deutsch](README.de.md) · [Português](README.pt.md)
 
-# AOS — BDB Agent OS
+# AOS² — 5.4.0 “Ouroboros”
 
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![NPM Downloads](https://img.shields.io/npm/dw/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
@@ -71,6 +71,37 @@ npx -y @hybridlabor-api/aos@latest
 
 ---
 
+## What AOS² means
+
+AOS gives every coding agent one harness: rules, skills, guardrails, subagents and memory. AOS² adds a second loop. The harness learns from its own failures and proposes its own fixes.
+
+The name refers to the Ouroboros, a snake that bites its own tail. The loop never ends. It renews itself.
+
+The loop has six steps:
+
+1. **Work.** An agent runs a task. Something fails or runs slowly.
+2. **Capture.** AOS records the failure and removes secrets.
+3. **Propose.** A strong model writes a fix in a separate copy.
+4. **Probe.** A fixed test set checks the fix three times. The fix must improve the target and break nothing else.
+5. **Gate.** The go-gate blocks every release command until you type GO.
+6. **You merge.** You read the pull request and merge it. AOS never merges a change to itself without you.
+
+**In 5.4.0** only the capture, status, enable and disable commands exist. Steps 3 to 6 are the target of the next release. Evolve stays off until a person enables it. Kill switch: `AOS_EVOLVE=off`.
+
+## The five layers
+
+AOS writes five layers into each harness it finds. The layers work the same way in every harness that supports them.
+
+| Layer | What it holds | Examples |
+|---|---|---|
+| 1. Rules and memory | Instructions the agent reads at start | `AGENTS.md`, rules files, memB decisions |
+| 2. Skills | One type of task each. Only the short description stays in context until the task matches. | `/fabric`, `godmode-*` |
+| 3. Hooks and guardrails | Checks that run on each tool call and can block it | go-gate, Conventional Commits check |
+| 4. Subagents and delegation | Workers with their own context. They return only the result. | `architect`, `reviewer`, `aos-acp` |
+| 5. Plugins and distribution | Packages the four layers above for each harness | npm installer, plugin manifests |
+
+AOS knows 15 harness config targets. It is optimised for four: Claude Code, Codex, Antigravity and OpenCode. Claude is not required. Other harnesses receive rules and MCP entries. See [Supported harnesses](#supported-harnesses).
+
 ## Why AOS
 
 | | Harness default | With AOS |
@@ -128,6 +159,21 @@ See [Playbooks](#playbooks) for guided workflows across these domains.
 | Plan a feature, then build it | `/plan`, then `/fabric-graph` |
 
 ---
+
+## Daily commands
+
+| When | Command | Why |
+|---|---|---|
+| Start of day | `aos doctor` | Checks the install, hooks, gateway and memory before you work. |
+| New idea or task | `ask-tim` → `/bdbrainstorm` → `/fabric` | ask-tim picks the route. bdbrainstorm plans and grills the idea. fabric builds it. |
+| Missing know-how | `aos store search <topic>` | Installs one skill instead of loading all of them. |
+| Full job | `/playbooks` | Runs a known job in fixed steps, with GO points. |
+| Context is full | `/clear-context save` → `/clear` → `/clear-context` | Keeps the work and loses only the chat. |
+| Before a risky step | `gogate status` | Shows the gate mode and your active grants. |
+| End of day | `/playbooks` → `pb-ship` | Reviews and merges the day's work after your GO. |
+| New version | `aos update` | Updates skills, hooks and MCP entries in every harness. |
+
+**Why the clear cycle.** A long chat fills the context window. The agent then works slower and forgets details. `/clear` empties the window, but it also removes everything that exists only in the chat. So `save` first writes a handoff file and stores the decisions in memB. After `/clear`, `/clear-context` reads the handoff, asks deja what the last session did, checks git again and waits for you.
 
 ## See it in action
 
@@ -221,6 +267,17 @@ See [Playbooks](#playbooks) for guided workflows across these domains.
 Full catalogs (every skill, subagent, playbook and MCP server) are in the collapsible lists under What's included.
 
 ---
+
+## What's new in 5.4.0 “Ouroboros”
+
+| Area | What changed |
+|---|---|
+| **Self-improvement** | The AOS² loop (see “What AOS² means” above). 5.4.0 ships capture, status, enable and disable only. Evolve stays off until enabled. |
+| **Skill store** | A few router skills find the rest in the store. The session installs only what the task needs. See [Skill store](#skill-store). |
+| **MCP gateway** | Creator and show-control servers sit behind one entry with lazy loading. See [Creator and event tools](#creator-and-event-tools-behind-the-gateway). |
+| **go-gate** | Modes `hard`, `soft`, `off`, time-limited grants and `GO #<pr>`. See [Modes, grants and GO](#modes-grants-and-go). |
+| **Coordination** | Five patterns, each mapped to an AOS mode. See [Five ways to coordinate](#five-ways-to-coordinate). |
+| **Planned for 5.4.1** | `fabric-swarm` and `fabric-loop`; one hook process per event instead of one per hook; factory runs without the go-gate, with only hard blocks left. |
 
 ## What's new in v5
 
@@ -350,6 +407,8 @@ cd your-project && npx -y @hybridlabor-api/aos@latest --project-harness -y
 ---
 
 ## Supported harnesses
+
+AOS knows 15 harness config targets. It is optimised for four: Claude Code, Codex, Antigravity and OpenCode. The other targets get rules and MCP entries. Claude is not required: each harness works on its own with the same skills. Pick a harness below to see what the installer writes there.
 
 **What gets written.** The installer writes the following for each target. Paths are the defaults; the installer only writes to harnesses it actually detects.
 
@@ -539,6 +598,46 @@ flowchart TD
 **Depth.** A2A rejects a send when the caller's depth is at or above `AOS_A2A_MAX_DEPTH` (default 1) and `mcsc` is one level deep. Workers delete nothing; cleanup is the dispatcher's job after your GO.
 
 ---
+
+## Five ways to coordinate
+
+Each pattern maps to an AOS mode. Agents never call each other. A dispatcher, the main session or a script, decides each next step.
+
+| Pattern | AOS mode | Fits | Cost |
+|---|---|---|---|
+| **Sequential** | `/fabric-graph` | A known order of steps. Durable `state.json` and a repair loop. | Waiting. Each step runs after the last. |
+| **Concurrent** | `/fabric-multigraph` | Independent slices, 2-4 workers. Nothing persistent. | Peak load and merge work. |
+| **Group chat** | `/fabric-teamwork`, `/bdbrainstorm` | A vague goal that needs debate before a build. | A long thread and more turns. |
+| **Handoff** | `/clear-context`, `aos-acp` | The context or the limit is reached, or another model is stronger for the task. | Lost detail, or a wrong route. |
+| **Planning manager** | master session (`master-session`, `pb-master`) | Steps are unknown up front. One session supervises several others. | Planning calls and stalls. |
+
+## Modes, grants and GO
+
+The go-gate asks for a literal GO by default. Three settings change that. Type each one as a full message.
+
+**Modes:** `gogate hard`, `gogate soft`, `gogate off`, `gogate status`.
+
+- **hard:** a literal GO for every guarded command. It also cancels your grants.
+- **soft** (default): like hard, but your active grants also allow commands.
+- **off:** the gate only logs and blocks nothing. This session only, max 24 hours.
+
+**Grants:** `gogate grant <scope[,scope]> <15m | 2h | 1d | session>`, for example `gogate grant merge,push-feature 2h`.
+
+- **push-feature:** push to a named, non-protected branch.
+- **push-main:** all other pushes, force pushes and deletes.
+- **merge:** `gh pr merge`.
+- **publish:** npm publish, npm version, releases and tags.
+- **destructive:** reset --hard, clean -f, rm -r, branch -D, worktree remove.
+- **github-write:** PR and issue comments, edits and `gh api` writes.
+
+A grant lasts at most 24 hours. Only you can type a grant. An agent, a peer or a file cannot.
+
+**GO:** type `GO` as the full message. `GO #117` allows only merge, edit, close, review or comment on PR 117.
+
+- A GO is never passed to a worker.
+- After a block, the agent waits 10 minutes. It does not try another form of the command.
+
+The gate profiles below are a separate, machine-wide setting.
 
 ## The GO gate
 
@@ -798,6 +897,31 @@ An unknown provider, or one unavailable on this platform, fails with the reason 
 
 ---
 
+## Skill store
+
+The session starts with a small set of skills. Router skills know the rest. A router searches the store, which holds 287 skills and 53 subagents. The session installs only what the task needs, then uses it at once.
+
+- `aos store search <query>`
+- `aos store install <name> [--project]`
+- `aos store install --pack <name>`
+- `/fabric … --skill=<name>` makes one skill required. If it is missing, the run shows the install command.
+
+Each installed skill adds its description to every session. Fewer skills mean a smaller context and better skill choice.
+
+## Creator and event tools behind the gateway
+
+Creator tools (Blender, DaVinci Resolve, After Effects, Unreal) and show-control tools (grandMA3, Resolume, TouchDesigner) run behind the MCP gateway.
+
+- `aos install` and `aos update` start the gateway as a service and point every harness at it.
+- Run `aos-gateway status` first. Run `aos-gateway enable` only when the gateway was not running during the install.
+- `aos-gateway add <server>` adds one server. `aos-gateway inspect <server>` shows its tools.
+- `aos-gateway run <server>/<tool> --args '{…}'` calls one tool.
+- `aos-gateway adopt` moves your own local MCP servers behind the gateway. `aos-gateway direct` puts them back.
+- Lazy loading is on. The agent sees three tools: `tool_list`, `tool_schema` and `tool_invoke`. It loads a schema only when it needs the tool.
+- `aos context worker` removes the media servers for code workers.
+
+A light desk or a media server is live equipment. The live-media-operator agent asks before each show-critical action. memB and deja stay direct in every harness.
+
 ## MCP servers
 
 [`mcp_config.json`](mcp_config.json) defines <!-- count:mcps -->21<!-- /count --> local stdio servers, built or warmed by the installer from `mcps/`. They reach your harnesses in one of two ways:
@@ -926,6 +1050,8 @@ Install it through the AOS installer with the AOS CLI target: `npx -y @hybridlab
 ---
 
 ## Memory and knowledge
+
+Three memories, three jobs: **memB** keeps decisions, **deja** keeps what was done, and **OpenWiki** explains the code.
 
 Installed as optional modules by the installer; `aos doctor` verifies them and the AOS Hub Services tab shows them.
 
