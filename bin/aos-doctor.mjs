@@ -277,9 +277,11 @@ function checkHarnesses() {
     const plug = hr.name === 'Claude Code' && !hasSentinel ? pluginSkills(HOME, [SENTINEL]) : null;
     const viaPlugin = !!plug;
     const ok = viaPlugin || (exists && count > 0 && hasSentinel);
+    // Roo Code has "skills": null in lib/harnesses.json: AOS never writes ~/.roo/skills, so a folder without the sentinel is not a broken AOS install.
+    const unmanaged = hr.name === 'Roo Code' && exists && !ok;
     add('harnesses', `${hr.name} Skills`, ok,
-      viaPlugin ? `provided by the bdb-aos plugin (${plug.skills.size} skills)` : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
-      `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists && !viaPlugin);
+      viaPlugin ? `provided by the bdb-aos plugin (${plug.skills.size} skills)` : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : unmanaged ? `${tilde(hr.path)} (${count} skills, not managed by AOS (no sentinel))` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
+      `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, (!exists && !viaPlugin) || unmanaged);
   }
 
   // Codex reads ~/.codex/skills AND ~/.agents/skills; AOS writes only the latter, so same-named copies in the former double-list.
