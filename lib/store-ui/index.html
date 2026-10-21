@@ -75,6 +75,41 @@ dialog .acts{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
 .insp-body pre,#ins-dry pre{margin:0;padding:.7rem;border-radius:var(--aos-radius-s);background:var(--aos-code-bg);border:1px solid var(--line);color:var(--ink);font-size:.72rem;max-height:22rem;overflow:auto;white-space:pre-wrap;word-break:break-word}
 .insp-dry{display:grid;gap:.5rem;border-top:1px solid var(--line);padding-top:1rem}
 #ins-dry{display:grid;gap:.5rem}
+/* Lanes layer (docs/ui-lanes.md): tone depth instead of borders, pills, KPI strip, lane edge only on agent cards. */
+.kicker{color:var(--aos-faint);font:500 .78rem var(--sans);letter-spacing:0;text-transform:none}
+.rail{padding:12px 10px;border-radius:var(--aos-radius-l);background:var(--aos-surface)}
+.rail h1{font:600 1.25rem var(--sans);letter-spacing:-.02em}
+.rail .chip{border:0;border-left:0;border-radius:7px;position:relative;padding:.4rem .6rem .4rem .9rem;transition:background var(--aos-motion-fast) var(--aos-ease-out),color var(--aos-motion-fast) var(--aos-ease-out)}
+.rail .chip:hover{background:var(--aos-surface-3)}
+.rail .chip[aria-pressed=true]{background:var(--aos-surface-2);box-shadow:var(--aos-shadow-card)}
+.rail .chip[aria-pressed=true]::before{content:"";position:absolute;left:3px;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--green)}
+.chip{border-radius:var(--aos-radius-pill);border-color:var(--aos-line)}
+.chip b{font-variant-numeric:tabular-nums;color:var(--aos-faint)}
+.search{border-radius:7px;background:var(--aos-bg);border-color:var(--aos-border)}
+.button{border-radius:7px;transition:background var(--aos-motion-fast) var(--aos-ease-out),border-color var(--aos-motion-fast) var(--aos-ease-out),transform var(--aos-motion-instant) var(--aos-ease-out)}
+.button:active{transform:scale(.97)}
+.button.secondary{background:var(--aos-surface-3);border-color:var(--aos-line)}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(7rem,1fr));gap:1px;border:0;border-radius:var(--aos-radius-l);overflow:hidden;background:var(--aos-line)}
+.strip>div{border:0;background:var(--aos-surface);padding:14px 16px}
+.strip strong{font:500 26px/1.15 var(--aos-font-mono);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.strip small{font:400 .75rem var(--sans);letter-spacing:0;text-transform:none;color:var(--aos-faint)}
+.grid{gap:14px}
+.card{position:relative;border:0;border-radius:var(--aos-radius-l);background:var(--aos-surface-2);box-shadow:var(--aos-shadow-card);transition:box-shadow var(--aos-motion-settle) var(--aos-ease-out)}
+.card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--lane,transparent);opacity:.55;pointer-events:none}
+.card:focus-within{box-shadow:var(--aos-shadow-focus)}.card:focus-within::before{opacity:1}
+button.card-body:hover{background:var(--aos-surface-3)}
+.card-name{font:600 14px/1.25 var(--sans);letter-spacing:-.01em}
+.card-foot{border-color:var(--aos-line)}
+.tag,.badge{border-radius:var(--aos-radius-pill);font:500 .68rem var(--aos-font-mono);letter-spacing:0;text-transform:none;border-color:var(--aos-line)}
+.tag{background:var(--aos-surface-3)}
+.state{font:500 .72rem var(--aos-font-mono);letter-spacing:0;text-transform:none}
+.empty{border-color:var(--aos-border);border-radius:var(--aos-radius-l)}
+dialog{border:0;border-radius:var(--aos-radius-l);background:var(--aos-surface-2);box-shadow:var(--aos-shadow-focus)}
+dialog h2,#ins-name{font-family:var(--sans);font-weight:600;letter-spacing:-.02em}
+dialog pre,.insp-body pre,#ins-dry pre{border:0;border-radius:8px;box-shadow:inset 0 1px 2px #0000004d}
+.warnbox{border:0;border-radius:8px;background:color-mix(in srgb,var(--bad) 8%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--bad) 35%,transparent)}
+#inspector{background:var(--aos-surface);border-left:1px solid var(--aos-line);box-shadow:-28px 0 70px -28px #000;transition:transform var(--aos-motion-settle) var(--aos-ease-camera)}
+.insp-dry{border-color:var(--aos-line)}
 </style></head><body>
 <div class="container"><main id="app"></main></div>
 <aside id="inspector" role="dialog" aria-modal="true" aria-label="Item inspector" inert>
@@ -105,6 +140,8 @@ function act(i){
   if(S.busy===key(i)) return '<button class="button" disabled>Working...</button>';
   return `<button class="button secondary" data-a="add" data-v="${esc(key(i))}">+ Add</button>`;
 }
+// Lane = agent identity: FNV-1a of the agent name mod 6, the same hash AgentTrail uses.
+const laneOf=n=>{const k=n.toLowerCase();let h=0x811c9dc5;for(let i=0;i<k.length;i++)h=Math.imul(h^k.charCodeAt(i),0x01000193)>>>0;return h%6};
 function card(i){
   const k=key(i);
   const badges=(i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'')
@@ -114,7 +151,7 @@ function card(i){
     +(i.license?`<span class="badge">${esc(i.license)}</span>`:'')
     +(i.thirdParty?'<span class="badge">third-party</span>':'');
   const dry=i.core?'':`<button class="button secondary" data-a="dry" data-v="${esc(k)}">Dry run</button>`;
-  return `<article class="card"><button class="card-body" data-a="open" data-v="${esc(k)}"><span class="card-name">${esc(i.name)}</span><span class="card-meta"><span class="tag">${esc(i.kind)}</span><span class="tag">${esc(i.category)}</span><span class="src">${esc(i.source)}</span></span><span class="card-desc">${esc(i.description)}</span><span class="card-meta">${badges}</span></button><div class="card-foot">${act(i)}${dry}</div></article>`;
+  return `<article class="card"${i.kind==='agent'?` data-lane="${laneOf(i.name)}"`:''}><button class="card-body" data-a="open" data-v="${esc(k)}"><span class="card-name">${esc(i.name)}</span><span class="card-meta"><span class="tag">${esc(i.kind)}</span><span class="tag">${esc(i.category)}</span><span class="src">${esc(i.source)}</span></span><span class="card-desc">${esc(i.description)}</span><span class="card-meta">${badges}</span></button><div class="card-foot">${act(i)}${dry}</div></article>`;
 }
 const reqLabel=r=>[...r.skills,...r.agents.map(a=>'agent:'+a),...r.mcps.map(m=>'mcp:'+m),...r.store.map(x=>'store:'+x)].join(', ');
 function pbCard(p){return `<article class="card"><div class="card-body"><span class="card-name">${esc(p.name)}</span><span class="card-meta"><span class="tag">${esc(p.difficulty)}</span><span class="src">${esc(p.est_time)}</span></span><span class="card-desc">${esc(p.description)}</span><span class="card-note">Requires: ${esc(reqLabel(p.requires)||'nothing')}</span></div><div class="card-foot"><span class="state">AOS Core</span></div></article>`}
@@ -128,7 +165,10 @@ function render(){
   const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,l=visible();
   document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><p class="kicker" style="margin:0">Active scope: ${S.scope==='global'?'Global (harness roots in ~)':'Project ('+esc(S.data.cwd)+')'}</p>${scopeToggle()}<input class="search" id="q" type="search" placeholder="Search ${S.tab}s" value="${esc(S.q)}" aria-label="Search">${tabs()}<div><p class="kicker">Category</p><div class="chips">${chip('cat','','all',base().length)}${uniq(i=>i.category).map(c=>chip('cat',c,c,count(i=>i.category,c))).join('')}</div></div><div><p class="kicker">Source</p><div class="chips">${chip('src','','all',base().length)}${uniq(i=>i.source).map(s=>chip('src',s,s,count(i=>i.source,s))).join('')}</div></div></aside><section><p class="kicker">${l.length} of ${base().length} ${S.tab}s</p>${strip()}${l.length?`<div class="grid">${l.map(card).join('')}</div>`:`<div class="empty">${S.sub==='installed'?'Nothing installed yet.':'No matches.'}</div>`}</section></div>`;
   if(fq){const q=document.getElementById('q');q.focus();q.setSelectionRange(pos,pos)}
+  arrive()
 }
+// Lanes M1: the catalog cards arrive once, when the catalog data first lands; filtering re-renders stay still.
+function arrive(){if(S.arrived)return;S.arrived=true;document.querySelectorAll('#app .card').forEach((c,i)=>{c.style.setProperty('--i',String(Math.min(i,8)));c.classList.add('aos-enter')})}
 async function load(){
   const r=await fetch('api/catalog?scope='+S.scope);
   if(!r.ok) throw new Error('catalog '+r.status);
