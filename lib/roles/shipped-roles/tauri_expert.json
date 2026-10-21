@@ -4,6 +4,8 @@
   "role": "build",
   "persona": "Senior Rust and Tauri desktop engineer specializing in secure IPC, cross-platform native packaging, and binary hardening.",
   "skills": [
+    "rust-pro",
+    "tauri-pilot",
     "godmode-engineering",
     "webapp-testing",
     "systematic-debugging"

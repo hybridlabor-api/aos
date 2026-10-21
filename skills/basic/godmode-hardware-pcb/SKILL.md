@@ -183,4 +183,4 @@ This skill acts as the architectural authority for electrical and PCB design, en
 - **schematic-reverse-engineering** — schematic-reverse-engineering
 
 **Install:** `aos store install --pack hardware`
-<!-- aos:pack-index:end --><!-- aos:pack-index:end -->
+<!-- aos:pack-index:end -->

@@ -146,8 +146,8 @@ BDB MediaStorm is the master ideation and brainstorming engine for live show-con
 - **bdb-unreal-mcp** — Utilizes the Unreal Engine MCP server to control UE5 via a native C++ Automation Bridge plugin.
 - **bdb-vectorworks-mcp** — Utilizes the Vectorworks RAG + MCP server to search and retrieve Python and VectorScript API documentation.
 - **bdb-rhino-mcp** — Utilizes the Rhino MCP servers (RhinoMCP and golem-rhino-mcp) to create and manipulate 3D models and run Grasshopper graphs.
-- **mcp-manage** — "Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner."
+- **mcp-manage** — Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner.
 - **bdb-computer-use-mcp** — Utilizes native Rust/Node and Python-based computer-use-mcp servers to control macOS, Windows, and Linux desktops.
 
 **Install:** `aos store install --pack live-show`
-<!-- aos:pack-index:end --><!-- aos:pack-index:end -->
+<!-- aos:pack-index:end -->

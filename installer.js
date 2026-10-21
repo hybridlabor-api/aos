@@ -7529,7 +7529,8 @@ async function promptMcpSelection(tier) {
 function parseModuleSelection(argv = process.argv, env = process.env) {
     const flag = argv.find((a) => a.startsWith('--modules='));
     return [env.AOS_MODULES, flag && flag.slice('--modules='.length)].filter(Boolean).join(',')
-        .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+        .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)
+        .map((x) => (x === 'rust' ? 'rustauri' : x));
 }
 
 // Pack checkboxes of the setup module picker: every pack that is not brought by a tier or a
@@ -7587,9 +7588,17 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
     }
     if (uninstalled.length === 0) return [];
 
+    const detected = skillPacks.detectProjectStack(process.cwd());
+    const preselect = [];
+    if (detected.groups.includes('rust')) {
+        if (uninstalled.some((m) => m.id === 'rustauri')) preselect.push('rustauri');
+        if (uninstalled.some((m) => m.id === 'app-dev')) preselect.push('app-dev');
+    }
+
     const chosen = pick(await multiselect({
         message: 'New / optional BDB OS modules and skill packs - select what to install:',
         options: uninstalled.map(m => ({ value: m.id, label: m.name, hint: m.hint })),
+        initialValues: preselect.length ? preselect : undefined,
         required: false
     }));
 
@@ -8104,6 +8113,9 @@ function quickUpdateKernel(installState) {
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
     applyPackSelection(_sessionManifest);
+    if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
+        installRustauri();
+    }
     s.stop('Skills refreshed');
     // Every AOS bin gets its ~/.local/bin launcher, on update too: skills above refreshed the files the
     // launchers point at (plan-canvas, archify, trail), and an install that predates a new bin never
@@ -8900,6 +8912,9 @@ async function main() {
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
     applyPackSelection(_sessionManifest);
+    if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
+        installRustauri();
+    }
     s.stop('Skills installed.');
     runAgyPluginStep();
 

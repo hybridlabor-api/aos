@@ -31,67 +31,61 @@ function loadPacksData() {
   return JSON.parse(fs.readFileSync(packIndexPath, 'utf-8'));
 }
 
-function getAllSkills() {
-  const skills = {};
+let _skillsCache = null;
+function getSkillMap() {
+  if (_skillsCache) return _skillsCache;
+  const map = {};
 
-  // Scan basic skills
-  const basicDir = path.join(skillsDir, 'basic');
-  if (fs.existsSync(basicDir)) {
-    fs.readdirSync(basicDir).forEach(skill => {
-      const skillDir = path.join(basicDir, skill);
-      if (fs.statSync(skillDir).isDirectory()) {
-        skills[skill] = true;
-      }
-    });
-  }
-
-  // Scan global_config skills
-  const globalDir = path.join(skillsDir, 'global_config');
-  if (fs.existsSync(globalDir)) {
-    fs.readdirSync(globalDir).forEach(skill => {
-      const skillDir = path.join(globalDir, skill);
-      if (fs.statSync(skillDir).isDirectory()) {
-        skills[skill] = true;
-      }
-    });
-  }
-
-  // Scan other top-level skill categories
-  fs.readdirSync(skillsDir).forEach(item => {
-    const fullPath = path.join(skillsDir, item);
-    if (fs.statSync(fullPath).isDirectory() && item !== 'basic' && item !== 'global_config') {
-      const itemDir = path.join(skillsDir, item);
-      fs.readdirSync(itemDir).forEach(skill => {
-        const skillDir = path.join(itemDir, skill);
-        if (fs.statSync(skillDir).isDirectory()) {
-          skills[skill] = true;
+  function walkDir(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        const skillMd = path.join(p, 'SKILL.md');
+        if (fs.existsSync(skillMd)) {
+          map[e.name] = skillMd;
         }
-      });
+        walkDir(p);
+      }
     }
-  });
+  }
 
+  walkDir(skillsDir);
+
+  const vendorDir = path.join(__dirname, '..', 'vendor');
+  if (fs.existsSync(vendorDir)) {
+    for (const v of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+      if (!v.isDirectory()) continue;
+      const vSkills = path.join(vendorDir, v.name, 'skills');
+      walkDir(vSkills);
+    }
+  }
+
+  _skillsCache = map;
+  return map;
+}
+
+function getAllSkills() {
+  const map = getSkillMap();
+  const skills = {};
+  for (const name of Object.keys(map)) {
+    skills[name] = true;
+  }
   return skills;
 }
 
 function readSkillDescription(skillName) {
-  // Try to find SKILL.md in various locations
-  const locations = [
-    path.join(skillsDir, 'basic', skillName, 'SKILL.md'),
-    path.join(skillsDir, 'global_config', skillName, 'SKILL.md'),
-    path.join(skillsDir, 'playbooks', skillName, 'SKILL.md'),
-    path.join(skillsDir, 'bdb-aos', skillName, 'SKILL.md'),
-  ];
-
-  for (const loc of locations) {
-    if (fs.existsSync(loc)) {
-      const content = fs.readFileSync(loc, 'utf-8');
-      const match = content.match(/^---\n([\s\S]*?)\n---/);
-      if (match) {
-        const frontmatter = match[1];
-        const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
-        if (descMatch) {
-          return descMatch[1].trim();
-        }
+  const map = getSkillMap();
+  const loc = map[skillName];
+  if (loc && fs.existsSync(loc)) {
+    const content = fs.readFileSync(loc, 'utf-8');
+    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    if (match) {
+      const frontmatter = match[1];
+      const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+      if (descMatch) {
+        return descMatch[1].trim().replace(/^["']|["']$/g, '');
       }
     }
   }
@@ -183,7 +177,7 @@ function updateSkillMd(skillPath, packName, packIndex, checkMode = false) {
   const beforeStart = content.substring(0, startIdx + PACK_INDEX_START.length);
   // Find the LAST occurrence of end marker to handle duplicates
   const lastEndIdx = content.lastIndexOf(PACK_INDEX_END);
-  const afterEnd = content.substring(lastEndIdx);
+  const afterEnd = content.substring(lastEndIdx + PACK_INDEX_END.length);
 
   const newContent = beforeStart + '\n' + packIndex + PACK_INDEX_END + afterEnd;
 
@@ -269,18 +263,25 @@ function main(argv) {
       }
     } else {
       const packs_array = Array.isArray(packNames) ? packNames : [packNames];
+      let combinedIndex = '';
       for (const packName of packs_array) {
         const packIndex = generatePackIndex(packName, packs);
         if (packIndex) {
-          if (checkMode) {
-            if (updateSkillMd(skillPath, packName, packIndex, true)) {
-              needsUpdate.push(`${skillName} (${packName})`);
-            }
+          if (packs_array.length > 1) {
+            combinedIndex += `### ${packName.charAt(0).toUpperCase() + packName.slice(1).replace(/-/g, ' ')} Pack Skills\n\n${packIndex}\n\n`;
           } else {
-            if (updateSkillMd(skillPath, packName, packIndex)) {
-              updated.push(`${skillName} (${packName})`);
-            }
+            combinedIndex += packIndex;
           }
+        }
+      }
+      const label = Array.isArray(packNames) ? packNames.join(', ') : packNames;
+      if (checkMode) {
+        if (updateSkillMd(skillPath, label, combinedIndex.trimEnd() + '\n', true)) {
+          needsUpdate.push(skillName);
+        }
+      } else {
+        if (updateSkillMd(skillPath, label, combinedIndex.trimEnd() + '\n')) {
+          updated.push(skillName);
         }
       }
     }
