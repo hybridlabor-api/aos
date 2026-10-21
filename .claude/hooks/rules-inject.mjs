@@ -162,24 +162,32 @@ async function readStdinBounded(maxMs = 100, maxBytes = 64 * 1024) {
   });
 }
 
-const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
-if (isMain()) {
-  const safety = setTimeout(() => process.exit(0), 1000);
-  if (safety.unref) safety.unref();
-
+// Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs). Fails open.
+export function hook(eventData) {
   try {
-    let eventData = {};
-    try {
-      const raw = await readStdinBounded(100);
-      eventData = raw ? (JSON.parse(raw) || {}) : {};
-    } catch { /* no or bad stdin: still inject */ }
+    eventData = eventData && typeof eventData === 'object' ? eventData : {};
     const id = sessionKey(eventData);
     if (eventData.hook_event_name === 'SessionStart') {
       if (eventData.source === 'clear' || eventData.source === 'compact') forgetRules(id);
     } else if (!rulesSeen(id)) {
       const out = hookOutput(eventData, rulesText());
-      if (out) { process.stdout.write(JSON.stringify(out) + '\n'); markRulesSeen(id); }
+      if (out) { markRulesSeen(id); return { code: 0, stdout: JSON.stringify(out) + '\n', stderr: '' }; }
     }
   } catch { /* fail open */ }
+  return { code: 0, stdout: '', stderr: '' };
+}
+
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+if (isMain()) {
+  const safety = setTimeout(() => process.exit(0), 1000);
+  if (safety.unref) safety.unref();
+
+  let eventData = {};
+  try {
+    const raw = await readStdinBounded(100);
+    eventData = raw ? (JSON.parse(raw) || {}) : {};
+  } catch { /* no or bad stdin: still inject */ }
+  const r = hook(eventData);
+  if (r.stdout) process.stdout.write(r.stdout);
   process.exit(0);
 }

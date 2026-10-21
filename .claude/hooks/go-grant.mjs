@@ -67,6 +67,15 @@ export function status(key) {
   return statusText(key, eff);
 }
 
+// In-process entry for aos-hooks.mjs: { code, stdout, stderr }; stdout is the UserPromptSubmit JSON for a gogate prompt, else empty.
+export function hook(input) {
+  try {
+    const text = applyGogate(input.prompt, { key: sessionKey(input.session_id), source: input.transcript_path });
+    if (text) return { code: 0, stdout: `${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } })}\n`, stderr: "" };
+  } catch { /* a failing hook must never block the prompt */ }
+  return { code: 0, stdout: "", stderr: "" };
+}
+
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
 if (isMain()) {
@@ -79,9 +88,8 @@ if (isMain()) {
     process.exit(0);
   }
   try {
-    const input = JSON.parse(readFileSync(0, "utf8"));
-    const text = applyGogate(input.prompt, { key: sessionKey(input.session_id), source: input.transcript_path });
-    if (text) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } }));
+    const r = hook(JSON.parse(readFileSync(0, "utf8")));
+    if (r.stdout) process.stdout.write(r.stdout);
   } catch { /* a failing hook must never block the prompt */ }
   process.exit(0);
 }

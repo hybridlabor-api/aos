@@ -68,10 +68,15 @@ export function issueGoToken(prompt, { transcript_path, session_id, message_id }
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
+// In-process entry for aos-hooks.mjs; output-free and never throws.
+export function hook(input) {
+  try { issueGoToken(input?.prompt, input); } catch { /* a failing hook must never block the prompt */ }
+  return { code: 0, stdout: "", stderr: "" };
+}
+
 if (isMain()) {
   try {
-    const input = JSON.parse(readFileSync(0, "utf8"));
-    issueGoToken(input.prompt, input);
+    hook(JSON.parse(readFileSync(0, "utf8")));
   } catch { /* a failing hook must never block the prompt */ }
   process.exit(0);
 }

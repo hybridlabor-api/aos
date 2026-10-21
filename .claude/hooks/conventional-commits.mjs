@@ -38,22 +38,10 @@ function readStdin() {
   }
 }
 
-function respond(isAgy, allowed, reason = "") {
-  if (isAgy) {
-    if (allowed) {
-      console.log(JSON.stringify({ decision: "allow" }));
-    } else {
-      console.log(JSON.stringify({ decision: "deny", reason }));
-    }
-    process.exit(0);
-  } else {
-    if (allowed) {
-      process.exit(0);
-    } else {
-      process.stderr.write(`${reason}\n`);
-      process.exit(2);
-    }
-  }
+// Decision as { code, stdout, stderr }: shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+function decision(isAgy, allowed, reason = "") {
+  if (isAgy) return { code: 0, stdout: `${JSON.stringify(allowed ? { decision: "allow" } : { decision: "deny", reason })}\n`, stderr: "" };
+  return allowed ? { code: 0, stdout: "", stderr: "" } : { code: 2, stdout: "", stderr: `${reason}\n` };
 }
 
 // Returns the commit message, or null when it cannot be read. Null means
@@ -104,15 +92,14 @@ export function checkConventionalCommit(command) {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
-function main() {
-  const rawInput = readStdin();
+export function hook(rawInput) {
   let input = {};
-  if (rawInput.trim()) {
+  if (String(rawInput ?? "").trim()) {
     try {
       input = JSON.parse(rawInput);
     } catch {
       // Unparseable input: fail open, no stdout (isAgy unknown).
-      process.exit(0);
+      return { code: 0, stdout: "", stderr: "" };
     }
   }
 
@@ -127,7 +114,14 @@ function main() {
     "";
 
   const reason = checkConventionalCommit(command);
-  respond(isAgy, !reason, reason || "");
+  return decision(isAgy, !reason, reason || "");
+}
+
+function main() {
+  const r = hook(readStdin());
+  if (r.stdout) process.stdout.write(r.stdout);
+  if (r.stderr) process.stderr.write(r.stderr);
+  process.exit(r.code);
 }
 
 if (isMain()) main();

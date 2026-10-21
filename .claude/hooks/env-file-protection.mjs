@@ -36,18 +36,10 @@ function readStdin() {
   }
 }
 
-function respond(isAgy, allowed, reason = "") {
-  if (isAgy) {
-    console.log(JSON.stringify(allowed ? { decision: "allow" } : { decision: "deny", reason }));
-    process.exit(0);
-  } else {
-    if (allowed) {
-      process.exit(0);
-    } else {
-      process.stderr.write(`${reason}\n`);
-      process.exit(2);
-    }
-  }
+// Decision as { code, stdout, stderr }: shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+function decision(isAgy, allowed, reason = "") {
+  if (isAgy) return { code: 0, stdout: `${JSON.stringify(allowed ? { decision: "allow" } : { decision: "deny", reason })}\n`, stderr: "" };
+  return allowed ? { code: 0, stdout: "", stderr: "" } : { code: 2, stdout: "", stderr: `${reason}\n` };
 }
 
 function reasonFor(filePath) {
@@ -124,8 +116,8 @@ export function envFileReason(filePath, cwd = "") {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
-function main() {
-  const rawInput = readStdin();
+export function hook(rawInput) {
+  rawInput = String(rawInput ?? "");
   let input = {};
   if (rawInput.trim()) {
     try {
@@ -135,11 +127,9 @@ function main() {
       // `\\` included) is denied; any other unparseable input still passes so the hook cannot wedge every write.
       if (GATE_STORE.test(rawInput.replace(/\\+\//g, "/").replace(/\\{2,}/g, "\\"))) {
         const reason = "Blocked by env-file-protection hook: unreadable hook input that names the AOS go-gate store.";
-        console.log(JSON.stringify({ decision: "deny", reason }));
-        process.stderr.write(`${reason}\n`);
-        process.exit(2);
+        return { code: 2, stdout: `${JSON.stringify({ decision: "deny", reason })}\n`, stderr: `${reason}\n` };
       }
-      process.exit(0);
+      return { code: 0, stdout: "", stderr: "" };
     }
   }
   if (!input || typeof input !== "object") input = {};
@@ -149,9 +139,16 @@ function main() {
 
   for (const filePath of targetsOf(input)) {
     const reason = envFileReason(filePath, cwd);
-    if (reason) return respond(isAgy, false, reason);
+    if (reason) return decision(isAgy, false, reason);
   }
-  respond(isAgy, true);
+  return decision(isAgy, true);
+}
+
+function main() {
+  const r = hook(readStdin());
+  if (r.stdout) process.stdout.write(r.stdout);
+  if (r.stderr) process.stderr.write(r.stderr);
+  process.exit(r.code);
 }
 
 // Every path-like argument a file tool may carry, across harnesses: Claude Code (file_path, notebook_path), OpenCode

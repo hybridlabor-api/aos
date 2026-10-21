@@ -2374,20 +2374,28 @@ export function isCodexPayload(input) {
 let codexMode = false;
 let toolNameSeen = "";
 
+// In-process run (aos-hooks.mjs): output is captured and leave() throws instead of exiting.
+let embedded = null;
+class HookExit extends Error { constructor(code) { super("hook exit"); this.code = code; } }
+const emitOut = (text) => { if (embedded) embedded.out += text; else process.stdout.write(text); };
+const emitErr = (text) => { if (embedded) embedded.err += text; else process.stderr.write(text); };
+
 // Single exit: opt-in decision log (AOS_GATE_DEBUG, absolute path) at the moment of exit.
 function leave(code, decision, reason = "") {
   const dbg = process.env.AOS_GATE_DEBUG;
   if (dbg && isAbsolute(dbg)) {
     try { appendFileSync(dbg, `${JSON.stringify({ ts: new Date().toISOString(), tool_name: toolNameSeen, decision, exit: code, ...(reason ? { reason: maskSecrets(reason).slice(0, 500) } : {}) })}\n`); } catch { /* debug only */ }
   }
+  if (embedded) throw new HookExit(code);
   process.exit(code);
 }
 
 // Codex honours exactly this deny shape (plus exit 2 + stderr); any other stdout field marks the hook failed and the tool call runs.
 function codexDeny(reason) {
   const out = `${JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } })}\n`;
-  try { writeFileSync(1, out); } catch { process.stdout.write(out); }
-  process.stderr.write(`${reason}\n`);
+  if (embedded) emitOut(out);
+  else { try { writeFileSync(1, out); } catch { process.stdout.write(out); } }
+  emitErr(`${reason}\n`);
   leave(2, "deny", reason);
 }
 
@@ -2407,18 +2415,18 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
     codexDeny(hard ? `[MECHANICAL GO-GATE BLOCKED] ${reason}` : claudeText);
   }
   if (hard) {
-    console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
-    process.stderr.write(`${reason}\n`);
+    emitOut(`${JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` })}\n`);
+    emitErr(`${reason}\n`);
     leave(isAgy ? 0 : 2, "deny", reason);
   }
   if (isAgy) {
     if (allowed) {
-      console.log(JSON.stringify({ decision: "allow" }));
+      emitOut(`${JSON.stringify({ decision: "allow" })}\n`);
     } else {
-      console.log(JSON.stringify({
+      emitOut(`${JSON.stringify({
         decision: "deny",
         reason: `[MECHANICAL GO-GATE BLOCKED] Der Befehl "${command.slice(0, 100)}" wurde blockiert. Er erfordert ein frisches, isoliertes "GO" als letzte Benutzereingabe. ${reason}`
-      }));
+      })}\n`);
     }
     leave(0, allowed ? "allow" : "deny", reason);
   } else {
@@ -2426,7 +2434,7 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
     if (allowed) {
       leave(0, "allow");
     } else {
-      process.stderr.write(`${claudeText}\n`);
+      emitErr(`${claudeText}\n`);
       leave(2, "deny", reason);
     }
   }
@@ -3637,9 +3645,8 @@ export function profileAllows(command) {
   return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !(indirectReleaseRisk(command) || contentReleaseRisk(command));
 }
 
-function main() {
+function main(rawInput = readStdin()) {
   hookDeadline = Date.now() + SCAN_MS;
-  const rawInput = readStdin();
   // Opt-in payload capture for harness debugging; never on by default, never fatal.
   const dbg = process.env.AOS_GATE_DEBUG;
   if (dbg && isAbsolute(dbg)) {
@@ -3652,8 +3659,8 @@ function main() {
     } catch (e) {
       // Harness unknown: deny JSON on stdout (Antigravity) plus stderr + exit 2 (Claude Code/Codex) closes every path.
       const reason = `could not parse hook input: ${e.message}`;
-      console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
-      process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
+      emitOut(`${JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` })}\n`);
+      emitErr(`Blocked by go-gate hook: ${reason}\n`);
       leave(2, "deny", reason);
     }
   }
@@ -3793,15 +3800,31 @@ function main() {
 }
 
 // Never fail open: any exception (bad input shape, unreadable state, a bug) denies.
-function safeMain() {
+function safeMain(rawInput) {
   try {
-    main();
+    main(rawInput);
   } catch (e) {
+    if (e instanceof HookExit) throw e;
     const reason = `go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}`;
     if (codexMode) codexDeny(`[MECHANICAL GO-GATE BLOCKED] ${reason}`);
-    console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
-    process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
+    emitOut(`${JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` })}\n`);
+    emitErr(`Blocked by go-gate hook: ${reason}\n`);
     leave(2, "deny", reason);
+  }
+}
+
+// In-process entry for aos-hooks.mjs: same decision as `node go-gate.mjs` with `rawInput` on stdin.
+// Always answers { code, stdout, stderr }; an exit (code 0 included) and any internal error come back as a result, never a throw.
+export function hook(rawInput) {
+  embedded = { out: "", err: "" };
+  try {
+    safeMain(String(rawInput ?? ""));
+    return { code: 0, stdout: embedded.out, stderr: embedded.err };
+  } catch (e) {
+    if (e instanceof HookExit) return { code: e.code, stdout: embedded.out, stderr: embedded.err };
+    return { code: 2, stdout: embedded.out, stderr: `${embedded.err}Blocked by go-gate hook: go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}\n` };
+  } finally {
+    embedded = null;
   }
 }
 
