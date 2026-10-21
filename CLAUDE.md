@@ -10,7 +10,7 @@ This file covers only what is specific to Claude Code.
 
 ## The release gate is a real hook here
 
-`.claude/hooks/go-gate.mjs` (registered in `.claude/settings.json`) mechanically
+`.claude/hooks/go-gate.mjs` (wired into `~/.claude/settings.json` by the installer from the template `config/claude-hooks.json`; the repo `.claude/settings.json` deliberately carries no hooks, so they never run twice) mechanically
 blocks `git push`, `npm publish`, `npm version`, and recursive `rm` unless your
 immediately preceding message is the literal word **GO**. On this harness the
 gate is enforced, not merely honoured — you cannot argue around it, and it works

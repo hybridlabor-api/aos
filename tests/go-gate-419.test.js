@@ -60,7 +60,7 @@ const SH = (() => {
     return null;
 })();
 describe('S5-3: the gate hook fails closed', () => {
-    const settings = JSON.parse(fs.readFileSync(path.join(path.dirname(GATE), '..', 'settings.json'), 'utf8'));
+    const settings = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'config', 'claude-hooks.json'), 'utf8'));
     const gateCmd = settings.hooks.PreToolUse.flatMap((e) => e.hooks).map((h) => h.command).find((c) => c.includes('go-gate.mjs'));
 
     test('the wired command turns any node failure into exit 2', { skip: !SH && 'no sh found (Git for Windows: add Git/usr/bin to PATH)' }, () => {

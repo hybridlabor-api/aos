@@ -69,11 +69,12 @@ test("stop blocks once when pending, allows otherwise", () => {
   assert.equal(run("stop", env, { stop_hook_active: true }).status, 0);
 });
 
-test("settings.json registers both hooks and the two allow rules", () => {
+test("the hook template registers both hooks and settings.json holds the two allow rules", () => {
   const p = join(root, ".claude", "settings.json");
   assert.ok(existsSync(p));
   const s = JSON.parse(readFileSync(p, "utf8"));
-  const cmds = (ev) => s.hooks[ev].flatMap((e) => e.hooks.map((h) => h.command));
+  const tpl = JSON.parse(readFileSync(join(root, "config", "claude-hooks.json"), "utf8"));
+  const cmds = (ev) => tpl.hooks[ev].flatMap((e) => e.hooks.map((h) => h.command));
   assert.ok(cmds("UserPromptSubmit").includes('node "${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs" drain'));
   assert.ok(cmds("Stop").includes('node "${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs" stop'));
   assert.ok(s.permissions.allow.includes("Bash(aos-a2a reply:*)"));

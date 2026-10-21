@@ -6716,7 +6716,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const buildMerged = (existing) => {
         const merged = existing && typeof existing === 'object' ? existing : {};
         merged.hooks = merged.hooks && typeof merged.hooks === 'object' ? merged.hooks : {};
-        const repoSettings = readJsonFile(path.join(srcDir, '.claude', 'settings.json')) || {};
+        const repoSettings = readJsonFile(path.join(srcDir, 'config', 'claude-hooks.json')) || {};
         for (const [event, entries] of Object.entries(repoSettings.hooks || {})) {
             if (!Array.isArray(entries)) continue;
             const foreignEntries = (Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [])

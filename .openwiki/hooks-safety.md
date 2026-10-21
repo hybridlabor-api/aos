@@ -20,7 +20,7 @@ generated: { by: "codex", at: "2026-09-30T02:05:01.845Z" }
 
 # Hooks & Safety
 
-AOS registers several hooks in `.claude/settings.json` that run transparently on every tool call. They enforce the release policy, pipeline contract, memory injection, and audit trail.
+AOS registers several hooks in `~/.claude/settings.json` (installed from the template `config/claude-hooks.json`) that run transparently on every tool call. They enforce the release policy, pipeline contract, memory injection, and audit trail.
 
 ## go-gate — outward-facing command guard
 

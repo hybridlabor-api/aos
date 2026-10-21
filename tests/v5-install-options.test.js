@@ -277,7 +277,7 @@ test('R1: one hook list; the shipped Claude template is covered exactly once', (
     assert.strictEqual(new Set(p.HOOK_SCRIPTS).size, p.HOOK_SCRIPTS.length, 'no script in two lists');
     assert.ok(p.CLAUDE_MERGE_HOOKS.every((n) => p.HOOK_SCRIPTS.includes(n)));
 
-    const template = fs.readFileSync(path.join(__dirname, '..', '.claude', 'settings.json'), 'utf8');
+    const template = fs.readFileSync(path.join(__dirname, '..', 'config', 'claude-hooks.json'), 'utf8');
     const named = [...new Set([...template.matchAll(/\.claude\/hooks\/([\w-]+\.mjs)/g)].map((m) => m[1]))];
     assert.ok(named.length >= 10, 'the template names the hooks');
     for (const n of named) {
