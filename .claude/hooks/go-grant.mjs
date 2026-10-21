@@ -35,7 +35,6 @@ export function applyGogate(prompt, { key, source, uuid = null, now = Date.now()
   if (!key || !source) return "gogate: no session id in hook input, nothing recorded.";
   if (process.env.AOS_ACP_CLIENT) return "gogate: an aos-acp worker session cannot set modes or grants.";
   if (p.cmd === "status") return status(key);
-  if (opencode && p.cmd === "off") return "gogate: `off` is not available on OpenCode (no human-origin signal there). Nothing changed.";
   let st = readState(key);
   if (!st || typeof st !== "object" || st.transcript !== source) st = emptyState(source);
   const src = { transcript: source, uuid, issued_at: new Date(now).toISOString(), text_hash: textHash(prompt) };

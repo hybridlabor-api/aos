@@ -122,6 +122,10 @@ export const GUARDED_PATTERNS = [
 // The two OpenCode HTTP-API patterns also apply to interpreter code (fetch() inside node).
 export const HTTP_PATTERNS = GUARDED_PATTERNS.slice(-2);
 
+// Routes by which an agent can post a prompt that looks human; `gogate off` never lifts these (OpenCode plugin).
+const OC_ROUTE_PATTERNS = GUARDED_PATTERNS.slice(-5);
+export const opencodeRoute = (command) => typeof command === "string" && [command, unIFS(command), unIFS(commandView(command).text)].some((t) => OC_ROUTE_PATTERNS.some((r) => r.test(t)));
+
 // ---------------------------------------------------------------------------
 // Scopes: each guarded command segment maps to the grant scope(s) it needs.
 // ---------------------------------------------------------------------------
@@ -2612,7 +2616,7 @@ export function claudeGogateCommands(transcriptPath) {
 }
 
 const WEAK_HINT = "it came from a slash command, which Claude Code stores without human-origin data; type the plain form as the whole message instead, e.g. `gogate grant merge 2h` or `gogate off`";
-const OC_HINT = "OpenCode accepts only the plain form (`gogate grant merge 2h`) typed as the whole message";
+const OC_HINT = "OpenCode accepts only the plain form (`gogate off`, `gogate grant merge 2h`) typed as the whole message";
 export const OPENCODE_MAX_GRANT_MS = 2 * 3600e3;
 
 // Resolves mode and active grants for a session, verified against `cmds` (gogate commands
@@ -2623,16 +2627,17 @@ export const OPENCODE_MAX_GRANT_MS = 2 * 3600e3;
 //   needs no proof), or a strict `soft`/`off`. A non-strict soft/off is ignored and leaves
 //   the previous mode. soft/off also need their own store entry (written by go-grant), else hard.
 // - OpenCode has no human-origin signal at all (a prompt posted through the HTTP API is a
-//   plain text part), so there `off` is never honoured and grants last at most 2h.
+//   plain text part), so there only the plain form counts (and the known agent routes that
+//   post a prompt are blocked); `off` is honoured like on Claude, grants last at most 2h.
 // - Grants need a strict entry after the last hard; `until` is clamped to the typed duration.
 export function effectiveGate(key, { source, cmds, opencode = false }, now = Date.now()) {
   const st = readState(key);
   const state = st && typeof st === "object" ? st : {};
   const rejected = [];
-  const usable = (c) => c.parsed.cmd === "hard" || (c.strict && !(opencode && c.parsed.cmd === "off"));
+  const usable = (c) => c.parsed.cmd === "hard" || c.strict;
   for (const c of cmds) {
     if (["soft", "off"].includes(c.parsed.cmd) && !usable(c)) {
-      rejected.push(opencode && c.strict ? "mode off is never honoured on OpenCode" : `mode ${c.parsed.cmd} ignored: ${opencode ? OC_HINT : WEAK_HINT}`);
+      rejected.push(`mode ${c.parsed.cmd} ignored: ${opencode ? OC_HINT : WEAK_HINT}`);
     }
   }
   const lastMode = [...cmds].reverse().find((c) => ["hard", "soft", "off"].includes(c.parsed.cmd) && usable(c));

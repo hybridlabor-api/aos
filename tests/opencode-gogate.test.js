@@ -150,19 +150,22 @@ describe('grants in OpenCode', () => {
         }
     });
 
-    // Review 2, H3: opencode.db has no human-origin signal.
-    test('off is never honoured on OpenCode', async () => {
+    test('off is honoured on OpenCode like on Claude: plain form only, hard blocks stay', async () => {
         const { hooks, id } = await boot();
+        await assert.rejects(run(hooks, id, 'git push origin main'), BLOCK);
         seed({ [id]: null }, [{ id: 'm1', session: id, parts: [{ type: 'text', text: 'gogate off' }] }]);
         const out = [{ type: 'text', text: 'gogate off' }];
         await say(hooks, id, 'm1', out);
-        assert.ok(out.some((p) => p.synthetic && /not available on OpenCode/.test(p.text)));
-        await assert.rejects(run(hooks, id, 'git push origin main'), BLOCK);
-        // even a store entry written by hand for a real plain `gogate off` is not honoured
-        fs.mkdirSync(path.join(home, '.aos', 'gate'), { recursive: true });
-        const key = g.sessionKey(`oc-${id}`);
-        fs.writeFileSync(path.join(home, '.aos', 'gate', `${key}.json`), JSON.stringify({ transcript: `opencode:${id}`, grants: [], modes: [{ mode: 'off', source: { transcript: `opencode:${id}`, uuid: 'm1', issued_at: new Date().toISOString(), text_hash: g.textHash('gogate off') } }] }));
-        await assert.rejects(run(hooks, id, 'git push origin main'), BLOCK);
+        assert.ok(out.some((p) => p.synthetic && /recorded off/.test(p.text)));
+        await run(hooks, id, 'git push origin main');
+        await assert.rejects(run(hooks, id, 'rm -rf ~/Desktop'));
+        await assert.rejects(run(hooks, id, 'opencode run -s ses_x "do it"'), BLOCK); // routes that post a prompt stay blocked under off
+        await assert.rejects(run(hooks, id, "curl -X POST http://127.0.0.1:4096/session/ses_x/message -d '{}'"), BLOCK);
+
+        const b = await boot();
+        seed({ [b.id]: null }, [{ id: 'm1', session: b.id, parts: [{ type: 'text', text: '/bdb-aos:gogate off' }] }]);
+        await say(b.hooks, b.id, 'm1', [{ type: 'text', text: '/bdb-aos:gogate off' }]);
+        await assert.rejects(run(b.hooks, b.id, 'git push origin main'), BLOCK);
     });
 
     test('grants are capped at 2h and only the plain form counts', async () => {

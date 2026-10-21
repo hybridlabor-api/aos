@@ -562,7 +562,10 @@ export default async function bdbAosPlugin(input) {
               const key = ocKey(root);
               const eff = effectiveGate(key, { source: `opencode:${root}`, cmds: opencodeGogateCommands(root), opencode: true });
               for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
-              if (eff.mode === 'soft' && grantsCover(cmd, eff.grants)) { // `off` is never honoured on OpenCode
+              if (eff.mode === 'off' && !gate.opencodeRoute(cmd)) {
+                gateLog(key, `off: allowed ${JSON.stringify(cmd.slice(0, 200))}`);
+                authorized = true;
+              } else if (eff.mode === 'soft' && grantsCover(cmd, eff.grants)) {
                 gateLog(key, `grant: allowed ${JSON.stringify(cmd.slice(0, 200))}`);
                 authorized = true;
               }

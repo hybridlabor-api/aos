@@ -62,7 +62,7 @@ previous mode as it was; a `hard` always tightens.
 |---|---|
 | `hard` | A literal `GO` as your last message, every time. Also revokes the grants you gave before it. |
 | `soft` | Like `hard`, plus your active grants allow matching commands without a fresh `GO`. With no grant, exactly like `hard`. |
-| `off` | The gate only logs to `~/.aos/gate/<session>.log` and blocks nothing. This session only, 24 hours at most. Not available on OpenCode. |
+| `off` | The gate only logs to `~/.aos/gate/<session>.log` and blocks nothing. This session only, 24 hours at most. On OpenCode the plain form only. |
 
 ### Scopes
 
@@ -119,5 +119,6 @@ merge`) is not a GO.
   `tmux send-keys` or `osascript`) look exactly like you typing.
 - On OpenCode there is no human-origin signal at all: a prompt posted to the
   local OpenCode server looks like a typed message. The gate blocks the known
-  ways an agent could post one (see above), never honours `off` there and caps
-  grants at 2 hours, but a prompt injected by other means would count.
+  ways an agent could post one (see above), honours `off` and `soft` as on Claude
+  (plain form only, `off` expires after 24h) and caps grants at 2 hours, but a
+  prompt injected by other means would count.
