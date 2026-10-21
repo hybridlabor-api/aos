@@ -950,9 +950,11 @@ watchCodeStamp({
 })
 const CORS_EXTRA = loadCorsOrigins()
 const server = http.createServer((req, res) => {
+  // DNS-rebinding guard for every route; the click routes keep their stricter check further down.
+  if (!strictHostOk(req.headers.host, port)) { res.writeHead(403).end(); return }
   lastSeen = Date.now()
   const u = new URL(req.url, 'http://x')
-  if ((u.pathname === '/model' || u.pathname === '/events') && (req.method === 'OPTIONS' || req.method === 'GET') && corsRead(req, res, CORS_EXTRA, port)) return
+  if ((u.pathname === '/model' || u.pathname === '/events') && (req.method === 'OPTIONS' || req.method === 'GET') && corsRead(req, res, CORS_EXTRA)) return
   if (u.pathname === '/') {
     // The page builds markup with style attributes and data: icons; scripts stay 'self' only.
     securityHeaders(res, process.env, ["style-src 'self' 'unsafe-inline'", "img-src 'self' data:"])
@@ -1092,9 +1094,9 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(summaryModel()))
   } else if (u.pathname === '/fleet') {
     fleetModel().then(d => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(d)))
-  } else if (u.pathname === '/model') {
+  } else if (u.pathname === '/model' && req.method === 'GET') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(model()))
-  } else if (u.pathname === '/events') {
+  } else if (u.pathname === '/events' && req.method === 'GET') {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
     res.write(`data: ${JSON.stringify(model())}\n\n`)
     clients.add(res)
