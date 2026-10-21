@@ -1,0 +1,6 @@
+{
+  "function_name": "calculateDiscount",
+  "max_lines": 20,
+  "has_input_validation": true,
+  "named_constants": ["DISCOUNT_RATE_VIP", "DISCOUNT_RATE_MEMBER"]
+}

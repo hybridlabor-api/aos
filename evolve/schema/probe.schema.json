@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/aos/evolve/schema/probe.schema.json",
+  "title": "AOS Evolve Probe Definition",
+  "description": "Deterministic test probe definition for validating skill improvements.",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "skill",
+    "task",
+    "checker",
+    "seed",
+    "repeats",
+    "timeout_s",
+    "max_tokens"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema format version, currently 1."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Unique probe identifier."
+    },
+    "skill": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target skill directory name under skills/."
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Description of the task to execute with the skill."
+    },
+    "harness": {
+      "type": "string",
+      "description": "Target execution harness (claude, opencode-go, agy, codex)."
+    },
+    "role": {
+      "type": "string",
+      "description": "Target role (e.g. builder, specialist)."
+    },
+    "seed": {
+      "type": "integer",
+      "description": "Evaluation seed."
+    },
+    "repeats": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of evaluation repetitions."
+    },
+    "timeout_s": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Timeout in seconds."
+    },
+    "max_tokens": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum token budget for this probe."
+    },
+    "checker": {
+      "type": "string",
+      "description": "Relative filename of test checker executable (e.g. check.mjs)."
+    },
+    "checker_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Pinned SHA-256 checksum of the checker script."
+    },
+    "expected": {
+      "type": "string",
+      "description": "Relative filename of expected output golden file (e.g. expected.json)."
+    },
+    "expected_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Pinned SHA-256 checksum of the expected output file."
+    },
+    "checksums": {
+      "type": "object",
+      "description": "Map of relative file paths to pinned SHA-256 checksums.",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "origin": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["failure", "handwritten"]
+        },
+        "failure_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Evaluation tags (e.g. target, heldout)."
+    }
+  },
+  "additionalProperties": false
+}
