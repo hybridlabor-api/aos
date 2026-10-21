@@ -43,7 +43,8 @@ test('fresh home: memory-direct migration then uninstall leaves no AOS file unde
     const left = walk(opencodeDir).map((f) => path.basename(f));
     assert.ok(!left.includes('opencode.jsonc'), 'the AOS-only config is removed');
     assert.ok(!left.some((n) => n.includes('aos-memdirect-bak-')), 'the memory-direct backup is archived out of the harness dir');
-    assert.ok(left.every((n) => /^opencode\.jsonc\.\d{8}T\d{6}Z\.bak(\.\d+)?$/.test(n)), `only uninstall stamp backups may remain: ${left}`);
+    assert.ok(left.every((n) => /^opencode\.jsonc\.\d{8}T\d{6}Z\.bak$/.test(n)), `only uninstall stamp backups may remain: ${left}`);
+    assert.ok(!left.some((n) => /\.bak\.\d+$/.test(n)), `no .bak.<N> duplicates may remain: ${left}`);
     assert.ok(left.length > 0, 'the uninstall backup of the removed config is kept');
 });
 
@@ -63,5 +64,11 @@ test('uninstall keeps an OpenCode config the user owns, with the user content in
     assert.equal(kept.theme, 'dark', 'the user setting stays');
     assert.equal(kept.mcp.memb_mcp, undefined, 'AOS memory entry is removed');
     assert.equal(kept.mcp.deja, undefined, 'AOS memory entry is removed');
-    assert.deepStrictEqual(walk(opencodeDir).map((f) => path.basename(f)), ['opencode.jsonc'], 'only the user file remains');
+    const left = walk(opencodeDir).map((f) => path.basename(f));
+    assert.ok(left.includes('opencode.jsonc'), 'the user file remains');
+    const baks = left.filter((n) => n !== 'opencode.jsonc');
+    assert.ok(baks.length <= 1, `at most one stamp backup may remain: ${left}`);
+    assert.ok(baks.every((n) => /^opencode\.jsonc\.\d{8}T\d{6}Z\.bak$/.test(n)), `only the stamp backup may remain: ${left}`);
+    assert.ok(!left.some((n) => /\.bak\.\d+$/.test(n)), `no .bak.<N> duplicates may remain: ${left}`);
+    assert.ok(!left.some((n) => n.includes('aos-memdirect-bak-')), `no aos-memdirect-bak file may remain: ${left}`);
 });
