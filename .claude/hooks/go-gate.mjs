@@ -72,6 +72,10 @@ const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:=|[^\s;&|()'"]{0,128}/
 const G = String.raw`git(?:\s+(?:-[cC]\s*(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=(?:"[^"]*"|'[^']*'|\S+))?))+\s+`;
 const GH = String.raw`gh(?:\s+(?:-R|--repo)(?:\s+|=)\S+)+\s+`;
 const S = String.raw`[^;&|\n]*`;
+const prefixes = (w, min) => Array.from({ length: w.length - min + 1 }, (_, i) => w.slice(0, min + i));
+// PowerShell accepts any unique prefix of a parameter name: -e/-en/.../-encodedcommand, -ec, -encodeda.../-encodedarguments.
+const PS_ENC = [...prefixes("encodedcommand", 1), "ec", ...prefixes("encodedarguments", 8)].join("|");
+const PS_CMD = prefixes("command", 1).join("|");
 const re = (s, f = "i") => new RegExp(A + s, f);
 
 // The aos-gate token anywhere in the command (node/npx/env/bash -c wrappers, any path); grant, work and every profile but strict widen the gate. strict and revoke only narrow it.
@@ -105,7 +109,7 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b`),
   ...PS_GUARDED,
   // A base64 PowerShell command cannot be read at all. No scope: a plain GO.
-  re(String.raw`(?:powershell|pwsh)(?:\.exe)?['"]?${S}\s-(?:e|ec|en|enc|enco|encodedcommand)\b`),
+  re(String.raw`(?:powershell|pwsh)(?:\.exe)?['"]?${S}\s-(?:${PS_ENC})\b`),
   // The AOS uninstaller deletes through Node's rmSync, which the rm analysis never sees. No scope: a plain GO.
   re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-uninstall(?:\.mjs)?\b(?!${S}\s--dry-run(?=\s|$))`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
@@ -666,9 +670,31 @@ const gluedHead = (w) => {
 
 // Precise classification of one segment: array of scopes, [] = not guarded,
 // null = guarded but not classifiable (never grantable).
+// PowerShell web cmdlets: a request is free only when the method is provably GET/HEAD and nothing implies a body or a file.
+// A splat (`@p`), a variable method or an unknown method cannot be judged: plain GO. A known write method is github-write.
+const PS_WEB = /^(?:invoke-webrequest|invoke-restmethod|iwr|irm)$/i;
+function psWebScopes(args) {
+  let method = null, unknown = false, write = false;
+  for (let i = 0; i < args.length; i++) {
+    const raw = unq(args[i]);
+    if (raw.startsWith("@")) { unknown = true; continue; }
+    const m = /^-([a-z]+)(?::(.*))?$/i.exec(raw);
+    if (!m) continue;
+    const name = m[1].toLowerCase();
+    if (name[0] === "m" && !name.startsWith("max") && "method".startsWith(name)) method = (m[2] ?? unq(args[++i] ?? "")).toLowerCase();
+    else if (/^[bfio]/.test(name) && !name.startsWith("information")) write = true; // Body, Form, InFile, OutFile
+  }
+  if (method !== null) {
+    if (/^(?:post|put|delete|patch)$/.test(method)) write = true;
+    else if (!/^(?:get|head)$/.test(method)) unknown = true;
+  }
+  return write ? ["github-write"] : unknown ? null : [];
+}
+
 export function classify(seg, protectedFor = staticResolver) {
   const { rest: tok, opaque, gitEnv, xargs, xargsReplace } = stripPrefix(tokens(seg));
   const cmd = base(tok[0] ?? "");
+  if (PS_WEB.test(cmd)) return psWebScopes(tok.slice(1));
   // xargs takes its command words from stdin (`echo push origin HEAD:main | xargs git`,
   // `echo -rf build | xargs rm`): when NO argument of its own is visible after the guarded
   // program the whole guarded word is stdin-fed and the segment is unscoped. An rm row that
@@ -1942,7 +1968,7 @@ export function winNorm(command) {
   // Codex on Windows wraps every command as `powershell.exe -NoProfile -Command "<cmd>"`; cmd /c does
   // the same. Read both like `bash -c`, whose quoted body the classifier already opens (Lenovo P15).
   // Only when the word is there: the path prefix would otherwise cost time on pathological input.
-  if (/powershell|pwsh/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:c|command)\b)[\w:]+(?:\s+(?!-)\w+)?){0,16})\s+-(?:c|command)(?=\s)/gi, "bash -c");
+  if (/powershell|pwsh/i.test(s)) s = s.replace(new RegExp(String.raw`(?:"?[^\s"]{0,256}\/)?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:${PS_CMD})\b)[\w:]+(?:\s+(?!-)\w+)?){0,16})\s+-(?:${PS_CMD})(?=\s)`, "gi"), "bash -c");
   if (/\bcmd\b/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?\bcmd(?:\.exe)?"?\s+\/[ck](?=\s)/gi, "bash -c");
   return s;
 }
@@ -1959,7 +1985,7 @@ const PS_PLAIN = /^(?:-\S*|\$[\w:.\[\]]*|\u0001|\d+|in|\[\w.\[\]]*\])$/;
 
 export function psReadOnly(command) {
   let t = String(command);
-  const w = /^\s*(?:"?[^\s"]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:c|command)\b)[\w:]+(?:\s+(?!-)\w+)?)*)\s+-(?:c|command)\s+(["'])([\s\S]*)\2\s*$/i.exec(t);
+  const w = new RegExp(String.raw`^\s*(?:"?[^\s"]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:${PS_CMD})\b)[\w:]+(?:\s+(?!-)\w+)?)*)\s+-(?:${PS_CMD})\s+(["'])([\s\S]*)\2\s*$`, "i").exec(t);
   if (w) t = w[2] === '"' ? w[3].replace(/\\"/g, '"') : w[3].replace(/''/g, "'");
   if (t.length > 4096) return false;
   let live = false;
@@ -1967,7 +1993,7 @@ export function psReadOnly(command) {
   t = t.replace(/\b[1-6*]?>&[12]\b/g, " ").replace(/\b[1-6*]?>\s*\$null\b/gi, " ");
   if (live || /['"`&<>]|::|\$[({]|@/.test(t)) return false;
   for (const m of t.matchAll(/\.(\w+)\s*\(/g)) if (!PS_METHOD.test(m[1])) return false;
-  t = t.replace(/(\$[\w:.\[\]]+)\s*[-+*/%]?=(?!=)/g, "$1 ;");
+  t = t.replace(/(\$\w+)\s*[-+*/%]?=(?!=)/g, "$1 ;"); // only a plain local variable; `$x.Prop =` and `$env:X =` stay unreadable
   const queue = t.split(/[;|{}()\n\r]+/);
   let seen = 0;
   while (queue.length) {
@@ -1995,8 +2021,12 @@ export function psReadOnly(command) {
   return seen > 0;
 }
 
+// PowerShell takes en/em dash and horizontal bar as a parameter dash.
+const normDash = (c) => (typeof c === "string" ? c.replace(/[\u2013\u2014\u2015]/g, "-") : c);
+
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
+  command = normDash(command);
   nest++;
   try {
     return withBudget(() => {
@@ -2136,7 +2166,7 @@ function scopesOf(orig, protectedFor) {
 }
 
 export const isGuardedCommand = (command) =>
-  typeof command === "string" && (commandTooLong(command) || neverGrantable(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
+  typeof (command = normDash(command)) === "string" && (commandTooLong(command) || neverGrantable(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
 
 // ---------------------------------------------------------------------------
 // Grant store protection (Bash side; Write/Edit side is env-file-protection).

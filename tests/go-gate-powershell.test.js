@@ -62,3 +62,21 @@ test('psReadOnly refuses what it cannot read', () => {
         assert.equal(g.psReadOnly(c), false, c);
     }
 });
+
+test('web cmdlets are free only when GET/HEAD is provable; splats, variables, bodies and files are guarded', () => {
+    for (const c of ['Invoke-RestMethod https://x -Method Get', 'iwr https://x -Method:Head', 'Invoke-WebRequest -Uri https://x']) assert.deepEqual(g.commandScopes(c), [], c);
+    for (const c of ["$p=@{Uri='https://x';Method='PUT'}; Invoke-RestMethod @p", 'Invoke-RestMethod -Uri https://x -Method $m', 'irm https://x -Method Options',
+        "irm https://x -Body 'a'", 'iwr https://x -Form $f', 'iwr https://x -InFile a.bin', 'iwr https://x -OutFile y']) assert.ok(g.isGuardedCommand(c), c);
+    assert.deepEqual(g.commandScopes('irm https://x -Method Delete'), ['github-write']);
+});
+
+test('en/em dash parameters and parameter prefixes do not hide a write, encoded body or command', () => {
+    for (const c of ['Invoke-WebRequest https://x –Method POST', 'iwr https://x —Method:Put', 'powershell -encodedc AAAA', 'powershell -ec AAAA', 'pwsh -EncodedArguments AAA',
+        'powershell -com "git push origin main"', 'pwsh -comm "iex $x"']) assert.ok(g.isGuardedCommand(c), c);
+    assert.equal(g.isGuardedCommand('powershell -NoProfile -com "Get-ChildItem"'), false);
+});
+
+test('only a plain local assignment counts as read-only', () => {
+    assert.equal(g.psReadOnly('$x = Get-ChildItem; $x'), true);
+    for (const c of ['$x.Prop = 1', '$env:X = "a"']) assert.equal(g.psReadOnly(c), false, c);
+});
