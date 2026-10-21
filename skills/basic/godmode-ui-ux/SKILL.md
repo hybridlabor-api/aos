@@ -183,26 +183,26 @@ Master orchestration skill for UI/UX design, enforcing high-agency design taste 
 ## Web design Pack Skills
 
 <!-- aos:pack-index:start -->
-- **bdbdesignpro** — "Use when choosing an animation engine, defining motion tokens, adding scroll effects or micro-interactions, or auditing motion for accessibility and performance. Covers engine selection (GSAP, Motion.dev, Anime.js, React-Spring, Three.js, CSS Native), DTCG motion tokens, and the anti-slop/a11y quality gate."
-- **bdb-ui-library** — Use when building UI, components, motion icons, loaders, or visual design. In BDB projects, routes to the BDB component and motion-icon library (npm @hybridlabor-api/ui-motion-library, shadcn namespace @bdb) as the first source before third-party registries or building from scratch. Outside BDB projects, the same lookup order applies with the original sources listed in the bdb-ui-library repository docs.
-- **editable-design** — Create and render fixed-canvas editable visual designs, including posters, marketing graphics, covers, menus, banners, and social cards. Default outputs include fixed and editable HTML, PNG, a mouse editor with scan and exploded layer views, and an evidence-backed Design Replay. Do not use for websites, slide decks, videos, or standalone logo systems. Always use this skill when the project contains `poster.json`.
-- **bdb-visual-edit** — Use when `aos-plan-canvas await` returns an item with route "visual-edit", or the human points at an element in a running local dev app and wants the source edited. Finds the source with a deterministic search, posts a diff plan in the canvas, and edits one file only after a yes given in the canvas. Not for remote or production sites.
-- **senior-frontend** — "Use when building React components, optimizing Next.js performance, implementing accessibility, or reviewing frontend code quality for modern web applications."
-- **shadcn** — "Use when adding, customizing, or troubleshooting shadcn/ui components to build modern, accessible design systems."
-- **tailwind-patterns** — "Use when styling components with Tailwind CSS v4, managing CSS-first configurations, writing container queries, or implementing design token architecture."
-- **react-best-practices** — "Comprehensive performance optimization guide for React and Next.js applications, maintained by Vercel. Use when writing new React components or Next.js pages, implementing data fetching (client or server-side), or reviewing code for performance issues."
-- **nextjs-best-practices** — "Next.js App Router principles. Server Components, data fetching, routing patterns."
-- **landing-page-generator** — "Generates high-converting Next.js/React landing pages with Tailwind CSS. Uses PAS, AIDA, and BAB frameworks for optimized copy/components (Heroes, Features, Pricing). Focuses on Core Web Vitals/SEO."
-- **web-artifacts-builder** — "To build powerful frontend claude.ai artifacts, follow these steps:"
-- **web-performance-optimization** — "Optimize website and web application performance including loading speed, Core Web Vitals, bundle size, caching strategies, and runtime performance"
-- **wcag-audit-patterns** — "Comprehensive guide to auditing web content against WCAG 2.2 guidelines with actionable remediation strategies."
-- **ux-persuasion-engineer** — "Behavioral UX specialist applying choice architecture, friction audits, and commitment design to guide users toward intended actions without coercion. Use when optimizing conversion flows, onboarding, or checkout UX."
-- **seo** — "Run a broad SEO audit across technical SEO, on-page SEO, schema, sitemaps, content quality, AI search readiness, and GEO. Use as the umbrella skill when the user asks for a full SEO analysis or strategy."
+- **bdbdesignpro** — >-
+- **bdb-ui-library** — >-
+- **editable-design** — >-
+- **bdb-visual-edit** — >-
+- **senior-frontend** — Use when building React components, optimizing Next.js performance, implementing accessibility, or reviewing frontend code quality for modern web applications.
+- **shadcn** — Use when adding, customizing, or troubleshooting shadcn/ui components to build modern, accessible design systems.
+- **tailwind-patterns** — Use when styling components with Tailwind CSS v4, managing CSS-first configurations, writing container queries, or implementing design token architecture.
+- **react-best-practices** — Vercel's React performance guide. Use when writing or optimizing React components, Next.js pages, data fetching, or reviewing code for performance issues.
+- **nextjs-best-practices** — Next.js App Router principles. Server Components, data fetching, routing patterns.
+- **landing-page-generator** — Next.js/React landing pages with Tailwind CSS. PAS/AIDA/BAB frameworks, Core Web Vitals, SEO optimization.
+- **web-artifacts-builder** — To build powerful frontend claude.ai artifacts, follow these steps:
+- **web-performance-optimization** — Optimize website and web application performance including loading speed, Core Web Vitals, bundle size, caching strategies, and runtime performance
+- **wcag-audit-patterns** — Comprehensive guide to auditing web content against WCAG 2.2 guidelines with actionable remediation strategies.
+- **ux-persuasion-engineer** — Behavioral UX choice architecture, friction audits and commitment design to guide users without coercion. Use for conversion flows, onboarding or checkout.
+- **seo** — Broad SEO audit across technical SEO, on-page, schema, sitemaps, content quality, AI readiness and GEO. Use as umbrella for a full SEO analysis or strategy.
 - **seo-audit** — Diagnose and audit SEO issues affecting crawlability, indexation, rankings, and organic performance.
 - **schema-markup** — Design, validate, and optimize schema.org structured data for eligibility, correctness, and measurable SEO impact.
-- **geo-fundamentals** — "Generative Engine Optimization for AI search engines (ChatGPT, Claude, Perplexity)."
+- **geo-fundamentals** — Generative Engine Optimization for AI search engines (ChatGPT, Claude, Perplexity).
 - **programmatic-seo** — Design and evaluate programmatic SEO strategies for creating SEO-driven pages at scale using templates and structured data.
 - **copywriting** — Write rigorous, conversion-focused marketing copy for landing pages and emails. Enforces brief confirmation and strict no-fabrication rules.
 
 **Install:** `aos store install --pack web-design`
-<!-- aos:pack-index:end --><!-- aos:pack-index:end -->
+<!-- aos:pack-index:end -->

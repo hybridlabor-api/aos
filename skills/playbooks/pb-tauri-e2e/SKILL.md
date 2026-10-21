@@ -9,7 +9,7 @@ kind: playbook
 trigger: ["test tauri app", "e2e tauri", "audit ao 2.0", "desktop app test", "tauri audit", "live test tauri"]
 inputs: [app_dir, "test_suite?"]
 requires:
-  skills: [godmode-engineering, godmode-shipping, webapp-testing, playwright-skill, live-preview-canvas, plan-canvas, systematic-debugging, clean-code, quick-recap]
+  skills: [rust-pro, tauri-pilot, godmode-engineering, godmode-shipping, webapp-testing, playwright-skill, live-preview-canvas, plan-canvas, systematic-debugging, clean-code, quick-recap]
   agents: [reviewer, silent-failure-hunter, security-reviewer]
   mcps: [chrome-devtools, bdb-computer-use-mcp, open_design_mcp]
   tools: [cargo, tauri-driver, npx, curl, lsof]

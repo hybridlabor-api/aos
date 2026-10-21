@@ -104,39 +104,39 @@ The release report is not a deployment. If the user wants the product live on th
 ## App dev Pack Skills
 
 <!-- aos:pack-index:start -->
-- **software-architecture** — "Guide for quality focused software architecture. This skill should be used when users want to write code, design architecture, analyze code, in any case that relates to software development."
-- **api-design-principles** — "Master REST and GraphQL API design principles to build intuitive, scalable, and maintainable APIs that delight developers and stand the test of time."
-- **test-driven-development** — "Use when implementing any feature or bugfix, before writing implementation code"
-- **systematic-debugging** — "Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes"
-- **clean-code** — "This skill embodies the principles of \"Clean Code\" by Robert C. Martin (Uncle Bob). Use it to transform \"code that works\" into \"code that is clean.\""
-- **concise-planning** — "Use when a user asks for a plan for a coding task, to generate a clear, actionable, and atomic checklist."
-- **planning-with-files** — "Work like Manus: Use persistent markdown files as your \"working memory on disk.\""
-- **subagent-driven-development** — "Use when executing implementation plans with independent tasks in the current session — trigger phrases \"execute the plan\", \"independent tasks\", \"parallel tasks\", \"subagents for the plan\",\"split the plan into subagents\". Dispatches a fresh subagent per task with two-stage review after each: spec compliance first, then code quality."
+- **software-architecture** — Quality-focused architecture guidance (Clean Architecture, DDD). Use when designing architecture, writing or analyzing code in projects.
+- **api-design-principles** — Master REST and GraphQL API design principles to build intuitive, scalable, and maintainable APIs that delight developers and stand the test of time.
+- **test-driven-development** — Use when implementing any feature or bugfix, before writing implementation code
+- **systematic-debugging** — Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+- **clean-code** — This skill embodies the principles of \"Clean Code\" by Robert C. Martin (Uncle Bob). Use it to transform \"code that works\" into \"code that is clean.\"
+- **concise-planning** — Use when a user asks for a plan for a coding task, to generate a clear, actionable, and atomic checklist.
+- **planning-with-files** — Work like Manus: Use persistent markdown files as your \"working memory on disk.\"
+- **subagent-driven-development** — >-
 - **dispatching-parallel-agents** — >-
-- **using-git-worktrees** — Use when starting feature work that needs isolation from current workspace or before executing implementation plans - ensures an isolated workspace exists via native tools or git worktree fallback
+- **using-git-worktrees** — >-
 - **finishing-a-development-branch** — Use when implementation is complete, all tests pass, and you need to decide how to integrate the work
-- **architect-review** — "Master software architect specializing in modern architecture"
+- **architect-review** — Master software architect specializing in modern architecture
 - **bdb-security-audit** — Comprehensive security auditing, diff analysis, defensive checklists, and vulnerability testing.
-- **bdbresilience** — Autonomous CI/CD error recovery, distributed file-based locking, diagnostic triage, and two-phase GO gate resilience engine for BDB Agent OS multi-agent pipelines.
-- **bdb-shipping-skill** — "Use before starting any significant build or before shipping: problem-framing pre-flight, one-way/two-way door classification, ADR-lite decision logging, and post-ship outcome loop. Complements godmode-shipping (technical gate) and bdbresilience (error recovery)."
-- **webapp-testing** — "To test local web applications, write native Python Playwright scripts."
-- **playwright-skill** — General-purpose browser automation skill. Use when a task needs custom Playwright code — end-to-end testing, scraping a JS-rendered page, or driving a browser interactively — executed via this skill's universal executor rather than a one-off script.
-- **github** — "Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries."
-- **github-repo** — github-repo
+- **bdbresilience** — >-
+- **bdb-shipping-skill** — Pre-flight shipping decisions: problem-framing, one/two-way door classification, ADR logging, outcome loop. Complements godmode-shipping and bdbresilience.
+- **webapp-testing** — To test local web applications, write native Python Playwright scripts.
+- **playwright-skill** — Use when a task needs custom Playwright code: end-to-end testing, scraping a JS-rendered page, or driving a browser interactively via a universal executor.
+- **github** — Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries.
+- **github-repo** — Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill.
 - **ci-pipeline** — >-
 - **github-actions-generator** — Create, generate, or scaffold GitHub Actions workflows, action.yml, or .github/workflows CI/CD pipelines.
 - **github-actions-validator** — Validate, lint, audit, fix GitHub Actions workflows (.github/workflows).
 - **requesting-code-review** — Use when completing tasks, implementing major features, or before merging to verify work meets requirements
-- **two-axis-code-review** — "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\"."
-- **simplify-code** — "Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes."
-- **pr-recap** — Use when a PR or git range needs a visual recap page for a reviewer, with a changed-files tree, per-file notes, a Verified vs Not verified table, risks, and optional before/after images. Local and informational; never posts to GitHub.
+- **two-axis-code-review** — Two-axis review since a fixed point: Standards (repo standards) and Spec (matches the issue) in parallel sub-agents. Use to review a branch, PR or WIP changes.
+- **simplify-code** — Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes.
+- **pr-recap** — Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts.
 - **typescript-pro** — Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns.
-- **modern-javascript-patterns** — "Comprehensive guide for mastering modern JavaScript (ES6+) features, functional programming patterns, and best practices for writing clean, maintainable, and performant code."
-- **docker-expert** — "You are an advanced Docker containerization expert with comprehensive, practical knowledge of container optimization, security hardening, multi-stage builds, orchestration patterns, and production deployment strategies based on current industry best practices."
-- **bdb-deploy** — Use when the user wants to build and deploy a project to a real server via rsync over SSH — "deploy this", "push the build live", "sync to production". Not for git push/PR workflows, and not a replacement for a real CI pipeline; this is the direct-deploy path.
-- **golive** — Take an agent-written app from repo to live production on the user's OWN accounts, with providers they choose (hosting, database, auth, payments, email, domain/DNS). The human connects accounts and approves changes; supported wiring operations run through a local CLI and produce verification evidence with explicit limits. Use when the user wants to ship, deploy, go live, launch, publish, or put their app online, or asks to wire up env vars, webhooks, auth settings (signup, email confirmation, password policy), a real signup → confirmation email → login journey, password recovery, account isolation between two users, auth redirects, email DNS or a custom domain.
+- **modern-javascript-patterns** — Modern JavaScript: ES6+, functional patterns, best practices. Clean, maintainable, performant code.
+- **docker-expert** — >-
+- **bdb-deploy** — >-
+- **golive** — Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
 - **vercel-deployment** — Expert knowledge for deploying to Vercel with Next.js
-- **cloudflare-workers-expert** — "Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage."
+- **cloudflare-workers-expert** — Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage.
 
 **Install:** `aos store install --pack app-dev`
-<!-- aos:pack-index:end --><!-- aos:pack-index:end -->
+<!-- aos:pack-index:end -->

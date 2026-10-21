@@ -363,6 +363,20 @@ export function checkBrandTokens(text, rel) {
 function validate() {
   const { skills, strays } = collect();
   const known = new Set(skills.map((f) => basename(dirname(f))));
+  const vendorDir = join(REPO, 'vendor');
+  if (existsSync(vendorDir)) {
+    for (const v of readdirSync(vendorDir, { withFileTypes: true })) {
+      if (!v.isDirectory()) continue;
+      const vSkills = join(vendorDir, v.name, 'skills');
+      if (existsSync(vSkills)) {
+        for (const s of readdirSync(vSkills, { withFileTypes: true })) {
+          if (s.isDirectory() && existsSync(join(vSkills, s.name, 'SKILL.md'))) {
+            known.add(s.name);
+          }
+        }
+      }
+    }
+  }
   const findings = [];
 
   for (const file of skills) {

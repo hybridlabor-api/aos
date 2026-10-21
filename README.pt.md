@@ -961,7 +961,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 - **bdb-core**: infraestrutura central do AOS, pipelines, ferramentas e utilitários: `fabric`, `fabric-graph`, `fabric-multigraph`, `fabric-teamwork`, `fabric-swarm`, `fabric-loop`, `agenttrail`, `plan-canvas`, `aos-a2a`, `aos-gateway`, `aos-store`, `master-session`, `codebase-memory` e mais.
 - **design-ui-ux**: frontend, design de UI, acessibilidade, tokens, motion, anti-slop: `senior-frontend`, `ui-ux-pro-max`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` e mais.
 - **engineering-method**: arquitetura, testes, debugging, CI/CD, qualidade de código: `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `docker-expert`, `makefile-pro` e mais.
-- **library**: especificidades de linguagens e frameworks: TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go e mais.
+- **library**: especificidades de linguagens e frameworks: TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go, Rust, Tauri e mais.
 - **media-eventtech**: 3D, vídeo, show control, design espacial: `godmode-eventtech`, `threejs-skills`, as skills MCP de software criativo e mais.
 - **engineering-hardware**: design de PCB e eletricidade: `godmode-hardware-pcb`.
 - **saas-ops**: correr um SaaS de ponta a ponta: `golive`, `pb-deploy-saas`, `pb-health-weekly`.

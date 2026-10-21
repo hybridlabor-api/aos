@@ -291,6 +291,7 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 ## 🦀 rust-reviewer
 - **Role**: Independent read-only Rust code reviewer: ownership, lifetimes, unsafe usage, error handling, and idiomatic patterns for `.rs` changes. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
 - **Primary Skills**:
+  - `rust-pro`
   - `systematic-debugging`
   - `clean-code`
 - **MCP Servers**:

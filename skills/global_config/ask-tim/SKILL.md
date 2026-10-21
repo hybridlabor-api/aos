@@ -391,7 +391,7 @@ Backend, Architecture & Deployment: testing, debugging, CI/CD, security, shippin
 
 ### stacks
 
-Language & Framework Stack Specifics (choose: db, python, go, react, repo, shell)
+Language & Framework Stack Specifics (choose: db, python, go, rust, react, repo, shell)
 
 **Install:** `aos store install --pack stacks`
 
@@ -427,4 +427,4 @@ Agentur & Business: project management, research, automation, APIs, automation
 - **Web- und App-Entwicklung**: web-design, app-dev, stacks
 - **Agents und Automationen**: agents-automation, app-dev
 - **Harness-Engineering**: all packs
-<!-- aos:pack-index:end --><!-- aos:pack-index:end -->
+<!-- aos:pack-index:end -->

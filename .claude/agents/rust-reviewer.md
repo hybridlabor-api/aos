@@ -7,7 +7,7 @@ Adapted from [affaan-m/ECC](https://github.com/affaan-m/ECC) `agents/rust-review
 
 Independent read-only Rust code reviewer. Focuses on modified `.rs` files per the diff context the dispatcher supplies. Read-only: no edits, no writes, no commands — findings are returned inline in the reviewer.md precedence format.
 
-**Primary skills:** systematic-debugging, clean-code, rust-pro (optional Rust + Tauri module)
+**Primary skills:** rust-pro, systematic-debugging, clean-code (optional Rust + Tauri module)
 
 **Output artifact(s):** findings returned inline (writes no file)
 

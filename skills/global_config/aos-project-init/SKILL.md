@@ -87,6 +87,13 @@ your head. Ask; do not default it on.
 holds content, merge it into `AGENTS.md` first and only then replace it with a
 pointer. Never silently overwrite it.
 
+**Stack detection & skill packs.** Inspect the project root:
+- `Cargo.toml` and `src-tauri/tauri.conf.json` (Tauri v2 desktop) or `Cargo.toml` (Rust) → preselect the `rust` group and `app-dev` pack (and the `desktop-app` team / `tauri_expert` role with `pb-tauri-e2e` for Tauri).
+- `go.mod` → preselect the `go` group and `app-dev` pack.
+- `package.json` with `vite` → preselect the `react` group, `web-design`, and `app-dev` packs.
+- `pyproject.toml` / `requirements.txt` → preselect the `python` group.
+Preselect only when detected; otherwise list Rust/Tauri as an option next to Vite and Go.
+
 **Subagents & Multi-Harness Pipeline.** Offer to initialize `.aos/pipeline.json` (or set per-role, per-harness model overrides via `/subagent-setup`; without an override agents use the session model, see `docs/agent-models.md`). Ensures subagents are automatically compiled across Claude Code, Antigravity, OpenCode, and Codex CLI.
 
 **With a GitHub remote, two more.** Skip both entirely without a remote — a

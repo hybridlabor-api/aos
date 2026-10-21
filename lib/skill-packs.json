@@ -179,7 +179,7 @@
       ]
     },
     "stacks": {
-      "description": "Language & Framework Stack Specifics (choose: db, python, go, react, repo, shell)",
+      "description": "Language & Framework Stack Specifics (choose: db, python, go, rust, react, repo, shell)",
       "groups": {
         "db": [
           "prisma-expert",
@@ -195,6 +195,10 @@
         "go": [
           "golang-pro",
           "go-concurrency-patterns"
+        ],
+        "rust": [
+          "rust-pro",
+          "tauri-pilot"
         ],
         "react": [
           "tanstack-query-expert",

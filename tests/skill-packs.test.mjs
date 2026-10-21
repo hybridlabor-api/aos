@@ -39,6 +39,14 @@ function getAllSkills() {
     }
   });
 
+  // Scan vendor skills
+  const vendorDir = path.join(__dirname, '..', 'vendor');
+  if (fs.existsSync(vendorDir)) {
+    fs.readdirSync(vendorDir).forEach(v => {
+      scanDir(path.join(vendorDir, v, 'skills'));
+    });
+  }
+
   return skills;
 }
 
