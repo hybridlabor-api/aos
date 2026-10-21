@@ -41,8 +41,8 @@ with the configured checks and a representative reproduction.
 
 | Action | Gate |
 | --- | --- |
-| Reply | Draft only. When missing information blocks triage or verification, write the one targeted question into the report. Posting it needs the action policy to allow it while the go-gate is off, otherwise the user's GO. `never` means no reply at all. |
-| Close or mark fixed | Report the proof point and the proposed wording. Closing needs the action policy to allow it while the go-gate is off, otherwise the user's GO. Do not imply an unverified release. |
+| Reply | Draft only. When missing information blocks triage or verification, write the one targeted question into the report. Posting it needs the action policy to allow it while the go-gate is off, otherwise the user's literal GO for this exact action. `never` means no reply at all. |
+| Close or mark fixed | Report the proof point and the proposed wording. Closing needs the action policy to allow it while the go-gate is off, otherwise the user's literal GO for this exact action. Do not imply an unverified release. |
 | Publish, approve, merge, or deploy | Requires its own workflow authorization; collection does not grant it. |
 
 When an item needs more information, keep it unresolved and retain the source
@@ -69,5 +69,6 @@ checks, any external action, and the exact human decision still needed.
   go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
+- The agent never types `gogate`, never changes the gate mode and never grants itself a GO.
 - Connectors are whatever the host already exposes. Do not install or register
   integrations or MCP servers.

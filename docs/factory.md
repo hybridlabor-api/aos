@@ -66,7 +66,9 @@ logs; it lasts for that session, for at most 24 hours.
   means: stop and ask the human.
 - **Hard blocks always stay:** deleting or moving the home directory, the
   filesystem root, or a top-level home directory; and the never-grantable
-  gate-config writes (`aos-gate grant|work|profile`). No mode lifts them.
+  gate-config writes (`aos-gate grant|work|profile`). No mode lifts these hard blocks.
+- **`never` always wins:** a `never` policy blocks the action. No GO and no
+  gate mode overrides it.
 - **Gate on (hard or soft):** the skills fall back to the old behaviour: every
   external write waits for the user's literal GO.
 - **Releases stay manual:** `npm publish`, `npm version`, and releases use the

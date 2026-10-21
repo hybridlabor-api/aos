@@ -52,7 +52,7 @@ disprove each proposed explanation.
 
 ## Change and verify
 
-Recommend only by default. Prepare a fix locally only when `workflows.lookback.implement` allows it and the user asked for it in this conversation; publishing needs the action policy to allow it while the go-gate is off, otherwise the user's GO. A recurring pattern is evidence for
+Recommend only by default. Prepare a fix locally only when `workflows.lookback.implement` allows it and the user asked for it in this conversation; publishing needs the action policy to allow it while the go-gate is off, otherwise the user's literal GO for this exact action. A recurring pattern is evidence for
 investigation, not automatic permission to edit code or take an external
 action. Keep reply, issue closure, PR approval, merge, deployment, and
 notification under their own configured policies.
@@ -90,5 +90,6 @@ pattern does not exist.
   go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
+- The agent never types `gogate`, never changes the gate mode and never grants itself a GO.
 - Connectors are whatever the host already exposes. Do not install or register
   integrations or MCP servers.

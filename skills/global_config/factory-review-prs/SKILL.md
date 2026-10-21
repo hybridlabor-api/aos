@@ -36,9 +36,9 @@ Unavailable or partial state is unknown, never a clean result.
 | Action | Proceed only when |
 | --- | --- |
 | Review | The PR matches configured filters and has not already had the required current review. |
-| Reply or other PR write | Draft only. Put the exact text in the report; posting needs the action policy to allow it while the go-gate is off, otherwise the user's GO. |
-| Approve | Report whether approval conditions hold on the exact head. Approving needs the action policy to allow it while the go-gate is off, otherwise the user's GO for that PR. |
-| Merge | Report merge readiness only. `gh pr merge` is blocked by the GO gate while the gate is on, unless the user sends a literal GO. |
+| Reply or other PR write | Draft only. Put the exact text in the report; posting needs the action policy to allow it while the go-gate is off, otherwise the user's literal GO for this exact action. |
+| Approve | Report whether approval conditions hold on the exact head. Approving needs the action policy to allow it while the go-gate is off, otherwise the user's literal GO for this exact action. |
+| Merge | Report merge readiness only. Merging needs the action policy to allow it while the go-gate is off, otherwise the user's literal GO for this exact action. A `never` policy always wins: no GO and no gate mode overrides it. |
 
 Host-level mergeability, one green check, or a bot approval does not prove all
 gates passed. Re-read the exact head and live state immediately before an
@@ -60,5 +60,6 @@ and merge decisions.
   go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
+- The agent never types `gogate`, never changes the gate mode and never grants itself a GO.
 - Connectors are whatever the host already exposes. Do not install or register
   integrations or MCP servers.

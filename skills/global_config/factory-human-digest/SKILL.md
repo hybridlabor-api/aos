@@ -87,5 +87,6 @@ an empty queue.
   go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
+- The agent never types `gogate`, never changes the gate mode and never grants itself a GO.
 - Connectors are whatever the host already exposes. Do not install or register
   integrations or MCP servers.
