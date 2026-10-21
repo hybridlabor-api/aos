@@ -107,7 +107,7 @@ test('status.json is written and parses back', async () => {
   const parsed = JSON.parse(readFileSync(statusFile, 'utf8'));
   assert.equal(typeof parsed.at, 'number');
   assert.deepEqual(parsed.services.memb, {
-    up: false, misses: 0, restarts: [1_000_000], failed: false, lastError: null,
+    up: false, misses: 0, restarts: [1_000_000], failed: false, lastError: null, foreign: false,
   });
 });
 
