@@ -258,6 +258,15 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — see
 
 ---
 
+## 🔭 advisor
+- **Role**: Read-only advisor, second opinion at the three fixed call points of the advisor contract: before a plan or schema is locked, on the second identical test or build error, and before "done". Returns a verdict (proceed, change or stop) and at most 10 findings as file:line. Never writes, never a GO.
+- **Primary Skills**:
+  - `advisor`
+- **Output Artifact**: verdict and findings returned inline (writes no file)
+- Follow the advisor contract: the dispatcher names the call point and gives only that point's input plus the paths it may read. Its verdict is advice only; the dispatcher decides what happens next.
+
+---
+
 Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the language-specific reviewer set, kept strictly read-only; see `docs/ecc-reviewers.md` and `THIRD_PARTY_NOTICES.md`.
 
 ---

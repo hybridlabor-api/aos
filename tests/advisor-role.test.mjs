@@ -37,5 +37,27 @@ test('graph contract keeps auxiliary agents out of the node set', () => {
   const dispatch = read('.claude', 'workflows', 'fabric-dispatch.mjs');
   const ids = dispatch.match(/const REQUIRED_NODE_IDS = \[([^\]]*)\]/)[1];
   assert.ok(!ids.includes('advisor'));
-  assert.ok(!('advisor' in JSON.parse(read('.agents', 'nodes.json')).nodes ?? {}));
+  assert.ok(!('advisor' in (JSON.parse(read('.agents', 'nodes.json')).nodes ?? {})));
+});
+
+test('advisor agent is read-only: exactly Read, Grep, Glob, identical across shipped copies', () => {
+  const persona = read('agents', 'advisor.md');
+  assert.match(persona, /^tools: Read, Grep, Glob$/m);
+  assert.doesNotMatch(persona, /^tools:.*(Write|Edit|Bash)/m);
+  assert.strictEqual(read('.claude', 'agents', 'advisor.md'), persona);
+  assert.strictEqual(read('plugins', 'bdb-aos', 'agents', 'advisor.md'), persona);
+  assert.match(persona, /Never write/);
+  assert.match(persona, /never a GO/);
+});
+
+test('docs/agent-models.md advisor example uses placeholders only', () => {
+  const docs = read('docs', 'agent-models.md');
+  const section = docs.split('## advisor role')[1];
+  assert.ok(section, 'docs has an advisor role section');
+  const example = section.match(/```json\n([\s\S]*?)```/)[1];
+  assert.doesNotMatch(example, /\b(pro|opus|sonnet|haiku|gpt|gemini)\b/i);
+  assert.match(example, /"advisor"/);
+  assert.match(example, /"claude": "<strongest-claude-model>"/);
+  assert.match(example, /"codex": "<strongest-codex-model>"/);
+  assert.match(section, /without an entry the advisor inherits the session model/i);
 });

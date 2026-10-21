@@ -172,7 +172,7 @@ from the card. Review the HTML in plan-canvas alongside the plan:
 
 ## Advisor checkpoints (optional, auxiliary)
 
-The dispatcher may call the read-only `/advisor` (router role `advisor`) at exactly three points: before a plan or schema is locked, when the same test or build error occurs a second time, and before "done" (pre-flight diff review). It is not a node, adds no edge, and changes neither the required node set nor the `state.json` schema. Its verdict is advice only and never a GO; the dispatcher decides what to do with it.
+The dispatcher may call the read-only `advisor` agent (subagent; the `/advisor` skill's contract) at exactly three points: before a plan or schema is locked, when the same test or build error occurs a second time, and before "done" (pre-flight diff review). This is an optional, auxiliary step, not a graph node: it adds no edge and changes neither the required node set nor the `state.json` schema. Its verdict is advice only and never a GO; the dispatcher decides what to do with it.
 
 ## Available tools
 

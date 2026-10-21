@@ -80,18 +80,17 @@ Recommendation: set the strongest model available per harness for `advisor`. Shi
 
 ```json
 {
-  "version": 1,
-  "pipeline": {
-    "advisor": {
-      "models": {
-        "claude": "<strongest-claude-model>",
-        "opencode": "<provider>/<strongest-model>",
-        "codex": "<strongest-codex-model>",
-        "antigravity": "pro"
-      }
+  "advisor": {
+    "models": {
+      "claude": "<strongest-claude-model>",
+      "antigravity": "<strongest-antigravity-model>",
+      "codex": "<strongest-codex-model>",
+      "opencode": "<strongest-opencode-model>"
     }
   }
 }
 ```
+
+This block is the role entry; in `pipeline.json` it sits under the top-level `"pipeline"` key. The keys are the harness names `resolveAgentConfig` receives from the installer. No entry means the advisor inherits the session model.
 
 The advisor is not a graph node and its output is never a GO.

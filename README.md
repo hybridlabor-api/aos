@@ -19,7 +19,7 @@
 [![SkillSpector](https://github.com/hybridlabor-api/aos/actions/workflows/skillspector.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions/workflows/skillspector.yml)
 [![skills.sh](https://img.shields.io/badge/skills.sh-listed-black.svg)](https://skills.sh/hybridlabor-api/aos)
 
-[![agents](https://img.shields.io/badge/subagents-45-orange.svg)](#the-subagents-45)
+[![agents](https://img.shields.io/badge/subagents-46-orange.svg)](#the-subagents-46)
 [![commands](https://img.shields.io/badge/commands-15-blue.svg)](#browse-everything)
 [![playbooks](https://img.shields.io/badge/playbooks-36-informational.svg)](#playbooks)
 [![A2A](https://img.shields.io/badge/A2A-Claude%20%C2%B7%20OpenCode%20%C2%B7%20agy%20%C2%B7%20Codex-0b7285.svg)](#a2a-sessions-that-talk-to-each-other)
@@ -64,7 +64,7 @@ npx -y @hybridlabor-api/aos@latest
 <sub>Skills use the open <a href="https://agentskills.io">Agent Skills</a> format (<code>SKILL.md</code>). AOS installs them for <b>Claude Code, Google Antigravity, Codex CLI, OpenCode, Cursor, Windsurf, Roo Code / Cline, Aider and the AOS CLI</b>, so all of them behave the same way.</sub>
 
 <p align="center">
-  <img src="docs/assets/readme/architecture-hero.svg" alt="How AOS fits together: nine harnesses feed one kernel of 270 skills, 45 subagents, gate hooks and 21 MCP servers, which drives three pipelines, session-to-session messaging and local tools, with the GO gate in front of every release command" width="100%">
+  <img src="docs/assets/readme/architecture-hero.svg" alt="How AOS fits together: nine harnesses feed one kernel of 270 skills, 46 subagents, gate hooks and 21 MCP servers, which drives three pipelines, session-to-session messaging and local tools, with the GO gate in front of every release command" width="100%">
 </p>
 
 </div>
@@ -76,7 +76,7 @@ npx -y @hybridlabor-api/aos@latest
 | | Harness default | With AOS |
 |---|---|---|
 | **Skills** | Each harness has its own skill folder and its own copies. | <!-- count:skills -->270<!-- /count --> skills in eight categories, written as `<name>/SKILL.md` into every harness you have. One source tree. |
-| **Subagents** | Agent files written by hand, per harness, in that harness's format. | <!-- count:agents -->45<!-- /count --> subagents compiled into each harness's native agent format (Claude Code, Antigravity, Codex, OpenCode only; others use rules in AGENTS.md). |
+| **Subagents** | Agent files written by hand, per harness, in that harness's format. | <!-- count:agents -->46<!-- /count --> subagents compiled into each harness's native agent format (Claude Code, Antigravity, Codex, OpenCode only; others use rules in AGENTS.md). |
 | **Release safety** | A rule in a prompt that the agent is asked to respect. | A `PreToolUse` hook (Claude Code, Antigravity, Codex, OpenCode) or rules in AGENTS.md (others) that blocks `git push`, `npm publish`, `npm version` and recursive `rm` until your own message is the literal word **GO**. |
 | **Multi-agent builds** | Agents that call agents, with the routing inside their prompts. | A dispatcher graph: nodes never invoke each other, state is durable, a repair loop has a no-progress guard, escalation goes to you. |
 | **Plans** | Scroll back through the chat to find what was agreed. | Plan Canvas: annotate the plan in a browser, then approve it before any agent builds. |
@@ -89,7 +89,7 @@ npx -y @hybridlabor-api/aos@latest
 <table>
 <tr>
 <td width="33%" valign="top">🎯 <b>Skills</b><br/>270 curated skills in eight categories, discoverable by every harness as <code>&lt;name&gt;/SKILL.md</code>.<br/>→ <a href="#skills-at-a-glance">Skills at a glance</a></td>
-<td width="33%" valign="top">👥 <b>Subagents</b><br/>45 subagents: Architect, TechLead, Reviewer, Godmodes and specialist reviewers.<br/>→ <a href="#the-dispatcher-graph">The dispatcher graph</a></td>
+<td width="33%" valign="top">👥 <b>Subagents</b><br/>46 subagents: Architect, TechLead, Reviewer, Godmodes and specialist reviewers.<br/>→ <a href="#the-dispatcher-graph">The dispatcher graph</a></td>
 <td width="33%" valign="top">🔌 <b>MCP servers</b><br/>21 servers for creative software, OS control, memory and cross-harness delegation.<br/>→ <a href="#mcp-servers">MCP servers</a></td>
 </tr>
 <tr>
@@ -105,7 +105,7 @@ npx -y @hybridlabor-api/aos@latest
 <td width="20%" valign="top"><b>Design</b><br/>• UI/UX design system and brand discovery<br/>• Landing pages, app redesigns, Plan Canvas</td>
 <td width="20%" valign="top"><b>Management</b><br/>• Offers, invoices, budget tracking<br/>• Crew sheets, event planning, meeting actions</td>
 <td width="20%" valign="top"><b>Custom builds</b><br/>• PCB design and OpenSCAD enclosures<br/>• 3D assets, Rhino, Blender modeling</td>
-<td width="20%" valign="top"><b>General dev</b><br/>• Backend, frontend, testing, and shipping<br/>• 45 subagents, three pipelines, library skills</td>
+<td width="20%" valign="top"><b>General dev</b><br/>• Backend, frontend, testing, and shipping<br/>• 46 subagents, three pipelines, library skills</td>
 </tr>
 </table>
 
@@ -939,14 +939,14 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 
 ## What's included
 
-### The subagents (45)
+### The subagents (46)
 
-**Roster.** <!-- count:agents -->45<!-- /count --> agents are compiled into the native agent format of Claude Code, Antigravity, Codex and OpenCode; Cursor, Windsurf, Roo and Aider get none and use the rules in `AGENTS.md` instead. Sources are in [`agents/`](agents/). AOS pins no model: agents inherit the session model unless `.aos/pipeline.json` overrides a role per harness ([docs/agent-models.md](docs/agent-models.md)).
+**Roster.** <!-- count:agents -->46<!-- /count --> agents are compiled into the native agent format of Claude Code, Antigravity, Codex and OpenCode; Cursor, Windsurf, Roo and Aider get none and use the rules in `AGENTS.md` instead. Sources are in [`agents/`](agents/). AOS pins no model: agents inherit the session model unless `.aos/pipeline.json` overrides a role per harness ([docs/agent-models.md](docs/agent-models.md)).
 
 | Group | Agents |
 |---|---|
 | Pipeline nodes (7) | `architect`, `techlead`, `godmode-ui-ux`, `godmode-engineering`, `godmode-media-eventtech`, `reviewer`, `godmode-shipping` |
-| Review and safety (6) | `security-reviewer`, `silent-failure-hunter`, `database-reviewer`, `reviewer-1`, `reviewer-2`, `devils-advocate` |
+| Review and safety (7) | `security-reviewer`, `silent-failure-hunter`, `database-reviewer`, `reviewer-1`, `reviewer-2`, `devils-advocate`, `advisor` |
 | Language reviewers (8) | `typescript-reviewer`, `python-reviewer`, `go-reviewer`, `rust-reviewer`, `java-reviewer`, `kotlin-reviewer`, `cpp-reviewer`, `csharp-reviewer` — read-only, compiled with edit and bash denied |
 | Build helpers (3) | `go-build-resolver`, `opensource-forker`, `opensource-sanitizer` |
 | Domain assistants (5) | `spec-prd-creator`, `pcb-design-assistant`, `event-manager-assistant`, `live-media-operator`, `video-motion-assistant` |
@@ -1363,10 +1363,11 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 </details>
 
 <details>
-<summary><b>Subagents (45)</b></summary>
+<summary><b>Subagents (46)</b></summary>
 
 | Agent | What it does |
 |---|---|
+| `advisor` | Read-only second opinion at the three advisor call points: verdict and at most 10 findings, never writes. |
 | `architect` | Turns the user's goal into a system plan. |
 | `code-reviewer` | Independent read-only general code reviewer: code health, architecture boundaries, edge cases, error handling, and maintainability. |
 | `comment-analyzer` | Independent read-only code comment analyzer: documentation drift, comment accuracy, security disclosures, and comment hygiene. |

@@ -20,7 +20,7 @@ Nothing else triggers it. No advisor call per step, per file or per commit.
 
 ## How to call it
 
-Use the router role `advisor` (`aos-router test advisor`). The router picks the harness; the model per harness comes from `.aos/pipeline.json` `models.<harness>` and defaults to the session model. Run it as a read-only subagent or harness session. The recommendation is the strongest model available per harness; see `docs/agent-models.md`, section "advisor role". Never hard-code a model name here or in a prompt.
+The dispatcher calls the read-only `advisor` agent (subagent, `agents/advisor.md`) at the three points above. It is an optional, auxiliary step, not a graph node. The router role `advisor` (`aos-router test advisor`) picks the harness; the model per harness comes from `.aos/pipeline.json` `models.<harness>` and defaults to the session model. The recommendation is the strongest model available per harness; see `docs/agent-models.md`, section "advisor role". Never hard-code a model name here or in a prompt.
 
 Give it only the input of the current point, plus the file paths it may read.
 

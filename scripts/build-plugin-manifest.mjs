@@ -151,7 +151,7 @@ const manifest = {
   name: 'bdb-aos',
   version: pkg.version,
   description:
-    'Full BDB Agent OS suite: commands, 45 subagents and the fabric pipelines for Claude Code. ' +
+    'Full BDB Agent OS suite: commands, 46 subagents and the fabric pipelines for Claude Code. ' +
     'Skills are installed separately by the AOS installer; gate hooks and MCP servers stay in the installer.',
   author: { name: 'Tim Rennings / Hybridlabor Global LLC' },
   homepage: repoUrl,

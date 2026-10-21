@@ -268,11 +268,12 @@ the Reviewer node.
 
 ## Advisor checkpoints (optional, auxiliary)
 
-The read-only `/advisor` skill (router role `advisor`) is such an auxiliary
-agent. The dispatcher may call it at exactly three points: before a plan or
-schema is locked, when the same test or build error occurs a second time, and
-before "done" (pre-flight diff review). It is not a node, has no edges, and
-changes neither `REQUIRED_NODE_IDS` nor the `state.json` schema. Its verdict is
+The read-only `advisor` agent (subagent, the `/advisor` skill's contract) is such
+an auxiliary agent. The dispatcher may call it at exactly three points: before a
+plan or schema is locked, when the same test or build error occurs a second time,
+and before "done" (pre-flight diff review). This is an optional, auxiliary step,
+not a graph node: it has no edges and changes neither `REQUIRED_NODE_IDS` nor the
+`state.json` schema. Its verdict is
 advice, never a GO.
 
 ## What this does not change

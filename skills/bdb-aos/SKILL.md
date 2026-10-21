@@ -6,7 +6,7 @@ description: Entry point for BDB Agent OS suite. Routes 200+ skills, fabric suba
 
 # BDB Agent OS
 
-The full AOS suite: 200+ skills, 45 subagents, and the fabric pipelines.
+The full AOS suite: 200+ skills, 46 subagents, and the fabric pipelines.
 
 ## Where things live
 

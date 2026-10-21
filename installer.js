@@ -5674,6 +5674,7 @@ const READ_ONLY_AGENT_SLUGS = new Set([
     'reviewer',
     'reviewer-1',
     'reviewer-2',
+    'advisor',
     'security-reviewer',
     'database-reviewer',
     'silent-failure-hunter',
