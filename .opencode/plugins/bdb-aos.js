@@ -44,7 +44,7 @@ try { const flag = JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json
 const noContext = { buildMemoryBlock: async () => '', rulesText: () => '', buildHint: async () => '' };
 const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }, { buildHint }] =
   await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs', 'aos-session-hint.mjs'].map((f) => ((!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs' || f === 'aos-session-hint.mjs')) || (!memory && f === 'memb-inject.mjs') ? noContext : hook(f))));
-const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
+const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, setOpencodeServer, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
 // Graph gate (W-5, W-6)
@@ -252,6 +252,9 @@ async function trailAutostart(toolInput, directory, client) {
 
 export default async function bdbAosPlugin(input) {
   const directory = input.directory || process.cwd();
+  setOpencodeServer(input.serverUrl);
+  const argvPort = process.argv.findIndex((a) => a === '--port'); // opencode serve/web/tui --port N
+  if (argvPort > 0) setOpencodeServer(`http://127.0.0.1:${process.argv[argvPort + 1]}`);
 
   // ponytail: entries live for the process lifetime (a few bytes per session); add cleanup if sessions ever pile up.
   const sessions = new Map();

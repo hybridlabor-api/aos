@@ -126,6 +126,7 @@ export const GUARDED_PATTERNS = [
   re(String.raw`opencode\s+run\b${S}\s(?:-[a-zA-Z]*[sc]\S*|--session|--continue)(?=[\s=]|$)`, ""),
   re(String.raw`claude\b${S}\s(?:-[a-zA-Z]*[cr]\S*|--resume|--continue)(?=[\s=]|$)`, ""),
   re(String.raw`opencode\s+attach\b`),
+  re(String.raw`opencode\s+run\b[^;|\n]*\s--attach\b`),
   /\/session\/[^\s/'"]+\/(?:message|prompt_async|command|shell)\b/i,
   /\/\/[^\s'"]*\/tui\/|\/tui\/(?:append|submit|clear|execute|open|show|publish|control)/i,
 ];
@@ -134,8 +135,40 @@ export const GUARDED_PATTERNS = [
 export const HTTP_PATTERNS = GUARDED_PATTERNS.slice(-2);
 
 // Routes by which an agent can post a prompt that looks human; `gogate off` never lifts these (OpenCode plugin).
-const OC_ROUTE_PATTERNS = GUARDED_PATTERNS.slice(-5);
-export const opencodeRoute = (command) => typeof command === "string" && [command, unIFS(command), unIFS(commandView(command).text)].some((t) => OC_ROUTE_PATTERNS.some((r) => r.test(t)));
+const OC_ROUTE_PATTERNS = GUARDED_PATTERNS.slice(-6);
+
+// Content-independent cover for the same self-unlock: any network client talking to the OpenCode server's own port on
+// loopback is guarded whatever the path (globs, braces, variables, quote splits and concatenation defeat a path regex).
+// Only a provable plain GET stays free. Ports: 4096 (default), the plugin's serverUrl and a --port of this process.
+const ocPorts = new Set(["4096"]);
+export function setOpencodeServer(url) {
+  try { const p = new URL(String(url)).port; if (/^\d{1,5}$/.test(p)) ocPorts.add(p); } catch { /* no usable url */ }
+}
+const NET_CLIENT = /(?:^|[\s;&|(`'"{])(?:curl|wget|http|https|xh|nc|ncat|netcat|socat|telnet|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)(?:\.exe)?(?=[\s'"])/i;
+const NET_CODE = /\b(?:fetch\s*\(|XMLHttpRequest|http\.request|https?\.(?:get|request)|urllib|requests\.|httpx|aiohttp|socket|net\.(?:connect|Socket|createConnection)|Net::HTTP|open-uri|URI\.open|WebClient|curl_)/;
+const LOOPBACK = /127(?:\.\d{1,3}){0,3}|localhost|::1|0\.0\.0\.0|0x7f[0-9a-f]*|2130706433|::ffff:/i;
+export function opencodeSelfPost(command) {
+  if (typeof command !== "string") return false;
+  const t = normDash(command);
+  const flat = t.replace(/["'\\]/g, ""), joined = flat.replace(/[+\s]+/g, "");
+  const client = NET_CLIENT.test(t) || NET_CODE.test(t);
+  if (!client) return false;
+  const ports = [...ocPorts].join("|");
+  const portHit = (x) => new RegExp(`(?<!\\d)(?:${ports})(?!\\d)`).test(x);
+  const loop = [t, flat, joined].some((x) => LOOPBACK.test(x));
+  const foreign = /https?:\/\/(?!(?:127|localhost|\[?::1|0\.0\.0\.0))[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/i.test(flat);
+  // a computed port or host next to a loopback host, or a computed URL: cannot be resolved here
+  const computed = /(?:127(?:\.\d+){0,3}|localhost|::1|0\.0\.0\.0)[^\s/]*:(?:\d*[$`{\[(]|[^\s/]*[$`{\[(])|https?:\/\/[^\s/]*[$`{\[(]/i.test(flat);
+  if (!([t, flat, joined].some(portHit) && (loop || !foreign)) && !computed) return false;
+  // provably plain GET: curl/wget without a body or method, a PowerShell GET; code, nc, socat, telnet never
+  if (!NET_CODE.test(t) && /(?:^|[\s;&|(`'"{])(?:curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod|http)(?:\.exe)?\s/i.test(t) && !/(?:^|[\s;&|(`'"{])(?:nc|ncat|netcat|socat|telnet)\s/i.test(t)) {
+    const body = /(?:^|\s)(?:-[a-zA-Z]*[dFTX]|--(?:data[\w-]*|form[\w-]*|upload-file|json|request|post-\w+|body-\w+|method)|-Method|-Body|-Form|-InFile)(?=[\s=:]|$)/i.test(flat);
+    const method = /(?:-X\s*|--request[\s=]+|--method[\s=]+|-Method[\s:=]+)(?!(?:GET|HEAD)\b)\S/i.test(flat);
+    if (!body && !method && !computed && !/@\w/.test(flat)) return false;
+  }
+  return true;
+}
+export const opencodeRoute = (command) => typeof command === "string" && (opencodeSelfPost(command) || [command, unIFS(command), unIFS(commandView(command).text)].some((t) => OC_ROUTE_PATTERNS.some((r) => r.test(t))));
 
 // ---------------------------------------------------------------------------
 // Scopes: each guarded command segment maps to the grant scope(s) it needs.
@@ -2031,6 +2064,7 @@ export function commandScopes(command, protectedFor = staticResolver) {
   try {
     return withBudget(() => {
       tick();
+      if (opencodeSelfPost(command)) return null;
       if (typeof command === "string" && PS_GUARDED.some((r) => r.test(command))) return null; // raw text: a powershell -Command body is quoted
       if (psReadOnly(command) && !neverGrantable(command) && !GUARDED_PATTERNS.some((r) => r.test(command))) return [];
       return scopesOf(winNorm(command), protectedFor);

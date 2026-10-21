@@ -119,6 +119,6 @@ merge`) is not a GO.
   `tmux send-keys` or `osascript`) look exactly like you typing.
 - On OpenCode there is no human-origin signal at all: a prompt posted to the
   local OpenCode server looks like a typed message. The gate blocks the known
-  ways an agent could post one (see above), honours `off` and `soft` as on Claude
+  ways an agent could post one (see above; any non-GET network call to the OpenCode server's own loopback port counts, whatever the path), honours `off` and `soft` as on Claude
   (plain form only, `off` expires after 24h) and caps grants at 2 hours, but a
   prompt injected by other means would count.

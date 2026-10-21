@@ -117,6 +117,10 @@
       "flags": "i"
     },
     {
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/|=)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:=|[^\\s;&|()'\"]{0,128}\\/)?opencode\\s+run\\b[^;|\\n]*\\s--attach\\b",
+      "flags": "i"
+    },
+    {
       "source": "\\/session\\/[^\\s/'\"]+\\/(?:message|prompt_async|command|shell)\\b",
       "flags": "i"
     },
