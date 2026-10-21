@@ -30,7 +30,7 @@ function install(home, shippedNames) {
 describe('aos-gateway add/remove', () => {
     test('--dry-run changes nothing and names the missing name', () => {
         const home = tmp();
-        install(home, ['github', 'deja']);
+        install(home, ['github', 'chrome-devtools']);
         const before = fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8');
         const r = run(home, ['add', 'nope']);
         assert.equal(r.status, 1);
@@ -40,13 +40,13 @@ describe('aos-gateway add/remove', () => {
 
     test('add: absent setting is seeded from the current upstreams, then the server is added and mcp.json rewritten', () => {
         const home = tmp();
-        install(home, ['github', 'deja', 'bdb_davinci_mcp']);
+        install(home, ['github', 'chrome-devtools', 'bdb_davinci_mcp']);
         const r = run(home, ['add', 'bdb_blender_mcp']);
         assert.equal(r.status, 0);
         const st = profile.readSettings(home, () => {});
         assert.ok(st.gateway.servers.includes('bdb_blender_mcp'));
         // seed kept everything the gateway ran before (never silently dropped)
-        for (const n of ['github', 'deja', 'bdb_davinci_mcp']) assert.ok(st.gateway.servers.includes(n));
+        for (const n of ['github', 'chrome-devtools', 'bdb_davinci_mcp']) assert.ok(st.gateway.servers.includes(n));
         const cfgUp = JSON.parse(fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8')).mcpServers;
         assert.ok(cfgUp.bdb_blender_mcp, 'mcp.json rewritten with the added upstream');
         assert.ok(cfgUp.bdb_davinci_mcp, 'still-selected servers stay');
@@ -55,7 +55,7 @@ describe('aos-gateway add/remove', () => {
 
     test('remove: server comes off the selection and out of mcp.json', () => {
         const home = tmp();
-        install(home, ['github', 'deja', 'bdb_resolume_mcp']);
+        install(home, ['github', 'chrome-devtools', 'bdb_resolume_mcp']);
         const r = run(home, ['remove', 'bdb_resolume_mcp']);
         assert.equal(r.status, 0);
         const st = profile.readSettings(home, () => {});
@@ -77,20 +77,20 @@ describe('aos-gateway add/remove', () => {
 describe('doctor gatewayExposureRows', () => {
     test('preset in the harness URL narrows the exposure; estimates carry tool counts', () => {
         const { gatewayExposureRows, visibleServersFor } = require('../lib/gateway/doctor.js');
-        const sel = ['github', 'deja', 'bdb_resolume_mcp'];
+        const sel = ['github', 'chrome-devtools', 'bdb_resolume_mcp'];
         // no preset (plain URL): every selected server is visible even if other presets would exclude it
         assert.deepEqual(visibleServersFor(null, { worker: ['bdb_resolume_mcp'] }, sel).sort(), sel.slice().sort());
-        assert.deepEqual(visibleServersFor('worker', { worker: ['bdb_resolume_mcp'] }, sel).sort(), ['deja', 'github']);
+        assert.deepEqual(visibleServersFor('worker', { worker: ['bdb_resolume_mcp'] }, sel).sort(), ['chrome-devtools', 'github']);
         const home = tmp();
         const f = path.join(home, '.claude.json');
         fs.writeFileSync(f, JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp?preset=worker' } } }, null, 2) + '\n');
         const cfgDir = cfg.gatewayDir(home);
         fs.mkdirSync(cfgDir, { recursive: true });
         fs.writeFileSync(path.join(cfgDir, 'mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2) + '\n', { mode: 0o600 });
-        const rows = gatewayExposureRows({ files: [{ file: f, kind: 'claude' }], selection: sel, toolCounts: { github: 30, deja: 5 }, presets: { worker: ['bdb_resolume_mcp'] } });
+        const rows = gatewayExposureRows({ files: [{ file: f, kind: 'claude' }], selection: sel, toolCounts: { github: 30, 'chrome-devtools': 5 }, presets: { worker: ['bdb_resolume_mcp'] } });
         assert.equal(rows.length, 1);
         assert.equal(rows[0].preset, 'worker');
-        assert.deepEqual(rows[0].servers.sort(), ['deja', 'github']);
+        assert.deepEqual(rows[0].servers.sort(), ['chrome-devtools', 'github']);
         assert.equal(rows[0].tools, 35);
         assert.equal(rows[0].estimatedTokens, 35 * 85);
     });

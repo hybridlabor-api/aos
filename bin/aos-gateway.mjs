@@ -172,7 +172,39 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
     let asyncLoading = false;
     if (running) try { asyncLoading = JSON.parse(fs.readFileSync(path.join(dir, RUNTIME_FILE), 'utf8')).asyncLoading === true; } catch { /* unknown counts as off */ }
     const asyncRestartPending = running && asyncLoading !== asyncLoadingOn(dir);
-    return { running, pid: running ? readPid(dir) : null, lazyLoading, restartPending, asyncLoading, asyncRestartPending, port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
+    let toolCount = null;
+    let nodeCount = null;
+    let sizeWarning = null;
+    if (running) {
+        try {
+            const tokenFile = path.join(dir, 'token');
+            if (fs.existsSync(tokenFile)) {
+                const token = fs.readFileSync(tokenFile, 'utf8').trim();
+                if (TOKEN_RE.test(token)) {
+                    const { gatewaySizeMetrics } = await import('../lib/gateway/doctor.js');
+                    const metrics = await gatewaySizeMetrics({ port, token });
+                    if (metrics && metrics.ok) {
+                        toolCount = metrics.toolCount;
+                        nodeCount = metrics.nodeCount;
+                        sizeWarning = metrics.warning;
+                    }
+                }
+            }
+        } catch { /* metrics unavailable */ }
+    }
+    return {
+        running,
+        pid: running ? readPid(dir) : null,
+        lazyLoading,
+        restartPending,
+        asyncLoading,
+        asyncRestartPending,
+        port,
+        upstreamsScope: 'global',
+        upstreams,
+        ...(toolCount !== null ? { toolCount, nodeCount, sizeWarning } : {}),
+        ...(inUse ? { error: problem } : {}),
+    };
 }
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;
@@ -394,6 +426,12 @@ async function main() {
             console.log(`gateway: ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : 'not running'} on 127.0.0.1:${s.port}${s.error ? ` - ${s.error}` : ''}`);
             console.log(`  lazy loading: ${lazyText(s)}`);
             console.log(`  async loading: ${asyncText(s)}`);
+            if (s.running && s.toolCount !== null && s.toolCount !== undefined) {
+                console.log(`  tools: ${s.toolCount} tool${s.toolCount === 1 ? '' : 's'} (~${s.nodeCount} JSON nodes)`);
+            }
+            if (s.sizeWarning) {
+                console.log(`  WARN size: ${s.sizeWarning}`);
+            }
             for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
