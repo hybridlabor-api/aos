@@ -157,6 +157,35 @@ test('windows: gateway stop matches aos-gateway.mjs serve and its 1mcp child, st
   }
 });
 
+test('windows: gateway stop patterns match the real Lenovo command lines, supervisor first, survivors decide the result', async () => {
+  const { gatewayStopPatterns } = await import('../lib/hub/services.mjs');
+  const vbs = 'Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """C:\\Program Files\\nodejs\\node.exe"" ""C:\\Users\\Yola\\.agents\\bin\\aos-gateway.mjs"" ""serve""", 0, False\r\n';
+  const [sup, child] = gatewayStopPatterns('C:\\Users\\Yola', vbs).map((p) => new RegExp(p, 'i'));
+  const gw = '"C:\\Program Files\\nodejs\\node.exe"  "C:\\Users\\Yola\\.agents\\bin\\aos-gateway.mjs" "serve"';
+  const mcp = '"C:\\Program Files\\nodejs\\node.exe" C:\\Users\\Yola\\.agents\\gateway\\node_modules\\@1mcp\\agent\\build\\index.js serve -c C:\\Users\\Yola\\.agents\\gateway\\mcp.json --port 7791';
+  assert.ok(sup.test(gw) && !sup.test(mcp));
+  assert.ok(child.test(mcp) && !child.test(gw));
+  assert.ok(sup.test(gw.toUpperCase()), 'case-insensitive');
+  assert.ok(!sup.test('"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\Other\\.agents\\bin\\aos-gateway.mjs" serve'));
+
+  const homeWin = join(tmp, 'home-win-gw2');
+  const startup = join(homeWin, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  mkdirSync(startup, { recursive: true });
+  writeFileSync(join(startup, 'com.bdb.aos.gateway.vbs'), "' vbs stub");
+  const saved = process.env.APPDATA;
+  delete process.env.APPDATA;
+  try {
+    calls.length = 0;
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'stop');
+    const script = calls[0].args.at(-1);
+    assert.ok(script.indexOf('serve') < script.indexOf('@1mcp'), 'supervisor pattern first');
+    assert.match(script, /-ErrorAction Stop } catch \{\}/, 'one failed Stop-Process does not decide the exit code');
+    assert.match(script, /if \(\$left\.Count\)[\s\S]*exit 1 }; exit 0/, 'only survivors fail the stop');
+  } finally {
+    if (saved !== undefined) process.env.APPDATA = saved;
+  }
+});
+
 test('readServiceLog reads at most the last 64 KB and still redacts', async () => {
   const homeLog = join(tmp, 'home-tail');
   mkdirSync(join(homeLog, '.memb'), { recursive: true });
