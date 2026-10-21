@@ -38,7 +38,7 @@ Default 4 workers at a time, hard cap 6 (same as workstreams). Harness or user l
 1. Fill free slots with the next `open` item: mark it `claimed`, set `worker`, and increment `attempts` by 1. This is the only place `attempts` is incremented.
 2. On a result: mark `done` with a one-line `result`.
 3. On a worker failure, without touching `attempts`: if `attempts` < 2, set the item back to `open`; if `attempts` = 2, mark it `failed` with the error as `result`.
-4. When no item is `open` or `claimed` and `review_done` is `false`, run the review pass once over the `done` results (a reviewer subagent reads them against the `worker_brief`), then set `review_done` to `true`. Rejected items go back to `open` with `attempts` set to 1 (a reset, not an increment), so each gets exactly one more attempt: its next claim makes `attempts` 2. Then return to step 1.
+4. When no item is `open` or `claimed` and `review_done` is `false`, run the review pass once over the `done` results (a reviewer subagent reads them against the `worker_brief`), then set `review_done` to `true`. Rejected items go back to `open` with `attempts` set to 1 (a reset, not an increment), so each gets exactly one more attempt: its next claim makes `attempts` 2. Then return to step 1. The dispatcher writes the review verdict (rejected items back to `open`) and `review_done: true` in one write of swarm.json, so a crash cannot repeat the review.
 5. When no item is `open` or `claimed` and `review_done` is `true`, the run ends: report done/failed counts. No second review round.
 
 ## Stop
