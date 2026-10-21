@@ -79,6 +79,12 @@ export const GATE_WIDEN = new RegExp(String.raw`(?:^|[\s\/\\'"=;&|(\x60])aos-gat
 // A command no profile and no global grant may free: only a typed GO (or a human-typed gogate grant) opens it.
 export const neverGrantable = (command) => typeof command === "string" && [command, unIFS(command), unIFS(commandView(command).text)].some((t) => GATE_WIDEN.test(t));
 
+// PowerShell: running a string as code, or a state-changing web request, is a plain GO (a plain GET stays free, see psReadOnly).
+const PS_GUARDED = [
+  re(String.raw`(?:^|[\s;|({"'])(?:iex|Invoke-Expression)(?=[\s;|)}'"]|$)`),
+  re(String.raw`\b(?:Invoke-(?:WebRequest|RestMethod)|iwr|irm)\b[^;|\n]*?\s-m\w*[\s:=]+['"]?(?:POST|PUT|DELETE|PATCH)\b`),
+];
+
 export const GUARDED_PATTERNS = [
   re(String.raw`(?:git\s+push|${G}push)\b`),
   re(String.raw`npm\s+publish\b`),
@@ -97,6 +103,7 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})release\s+(?:edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})repo\s+(?:create|edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b`),
+  ...PS_GUARDED,
   // A base64 PowerShell command cannot be read at all. No scope: a plain GO.
   re(String.raw`(?:powershell|pwsh)(?:\.exe)?['"]?${S}\s-(?:e|ec|en|enc|enco|encodedcommand)\b`),
   // The AOS uninstaller deletes through Node's rmSync, which the rm analysis never sees. No scope: a plain GO.
@@ -1940,8 +1947,57 @@ export function winNorm(command) {
   return s;
 }
 
+// Read-only PowerShell, judged by content: every statement head must be a known read-only command
+// and nothing may write, redirect, call a method or static member, or invoke through `&`/`.`/iex.
+// Anything unclear returns false and falls through to the ordinary classifier (never frees by shape).
+const PS_CMDLET = /^(?:Get-\w+|Select-String|Select-Object|Where-Object|ForEach-Object|Sort-Object|Measure-Object|Group-Object|Compare-Object|Format-\w+|Out-String|Out-Null|Write-(?:Output|Host|Warning|Error)|Test-Path|Join-Path|Split-Path|Resolve-Path|Start-Sleep|Convert(?:From|To)-\w+|Invoke-(?:WebRequest|RestMethod)|gci|ls|dir|gc|cat|type|sls|select|where|sort|measure|ft|fl|iwr|irm|echo|pwd|gi|gp|gm|%|\?)$/i;
+const PS_KEYWORD = /^(?:try|catch|finally|foreach|if|else|elseif|for|while|break|continue)$/i;
+const PS_GIT = /^(?:log|status|diff|show|rev-parse|ls-files|describe|blame|shortlog)$/i;
+const PS_METHOD = /^(?:ToString|Trim|TrimEnd|TrimStart|Split|Contains|StartsWith|EndsWith|Replace|Substring|ToLower|ToUpper|IndexOf|GetType)$/i;
+const PS_PLAIN = /^(?:-\S*|\$[\w:.\[\]]*|\u0001|\d+|in|\[\w.\[\]]*\])$/;
+
+export function psReadOnly(command) {
+  let t = String(command);
+  const w = /^\s*(?:"?[^\s"]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:c|command)\b)[\w:]+(?:\s+(?!-)\w+)?)*)\s+-(?:c|command)\s+(["'])([\s\S]*)\2\s*$/i.exec(t);
+  if (w) t = w[2] === '"' ? w[3].replace(/\\"/g, '"') : w[3].replace(/''/g, "'");
+  if (t.length > 4096) return false;
+  let live = false;
+  t = t.replace(/'(?:[^']|'')*'|"(?:[^"`]|"")*"/g, (m) => { if (m[0] === '"' && /\$[({]/.test(m)) live = true; return "\u0001"; });
+  t = t.replace(/\b[1-6*]?>&[12]\b/g, " ").replace(/\b[1-6*]?>\s*\$null\b/gi, " ");
+  if (live || /['"`&<>]|::|\$[({]|@/.test(t)) return false;
+  for (const m of t.matchAll(/\.(\w+)\s*\(/g)) if (!PS_METHOD.test(m[1])) return false;
+  t = t.replace(/(\$[\w:.\[\]]+)\s*[-+*/%]?=(?!=)/g, "$1 ;");
+  const queue = t.split(/[;|{}()\n\r]+/);
+  let seen = 0;
+  while (queue.length) {
+    const frag = queue.shift().trim();
+    if (!frag) continue;
+    const inM = /^(\$\S+)\s+in\s+([\s\S]+)$/i.exec(frag);
+    if (inM) { queue.unshift(inM[1], inM[2]); continue; }
+    seen++;
+    const words = frag.split(/\s+/), head = words[0];
+    if (PS_KEYWORD.test(head)) { if (words.length > 1 && !/^catch$/i.test(head)) return false; continue; }
+    if (PS_PLAIN.test(head)) { if (!words.slice(1).every((x) => PS_PLAIN.test(x))) return false; continue; }
+    if (/^git$/i.test(head)) { if (!PS_GIT.test(words[1] ?? "") || words.some((x) => /^--output/i.test(x))) return false; continue; }
+    if (/^node$/i.test(head)) { if (!/^(?:--check|-c|-v|--version)$/.test(words[1] ?? "")) return false; continue; }
+    if (!PS_CMDLET.test(head)) return false;
+    if (/^(?:Invoke-(?:WebRequest|RestMethod)|iwr|irm)$/i.test(head)) {
+      for (let i = 1; i < words.length; i++) {
+        if (!words[i].startsWith("-")) continue;
+        const [name, inline] = words[i].slice(1).split(":");
+        if (/^[oib]/i.test(name)) return false;
+        if (/^m/i.test(name) && !/^max/i.test(name) && !/^(?:get|head)$/i.test(inline ?? words[i + 1] ?? "")) return false;
+      }
+    }
+  }
+  return seen > 0;
+}
+
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
+  const psGuarded = typeof command === "string" && PS_GUARDED.some((r) => r.test(command)); // raw text: a powershell -Command body is quoted
+  if (psGuarded) return null;
+  if (psReadOnly(command) && !neverGrantable(command) && !GUARDED_PATTERNS.some((r) => r.test(command))) return [];
   nest++;
   try { return withBudget(() => scopesOf(winNorm(command), protectedFor), null); } finally { nest--; }
 }
