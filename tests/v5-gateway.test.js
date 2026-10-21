@@ -963,6 +963,33 @@ http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(Number(port),'1
         assert.equal(await reapOrphan(dir, '/x/1mcp.js', 1, async () => {}), false);
     });
 
+    test('openLog writes 0600 and rotates to gateway.log.1 past the cap', async () => {
+        const { openLog } = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        const dir = tmp();
+        const l = openLog(dir, 100);
+        l.write('a'.repeat(80));
+        l.write('b'.repeat(80));
+        l.close();
+        assert.equal(fs.readFileSync(path.join(dir, 'gateway.log'), 'utf8'), 'b'.repeat(80));
+        assert.equal(fs.readFileSync(path.join(dir, 'gateway.log.1'), 'utf8'), 'a'.repeat(80));
+        if (posix) assert.equal(fs.statSync(path.join(dir, 'gateway.log')).mode & 0o777, 0o600);
+    });
+
+    test('serve writes 1mcp output and its own lines to gateway.log', async () => {
+        const dir = mkDir();
+        const port = await freePort();
+        const script = path.join(dir, 'chatty.js');
+        fs.writeFileSync(script, `const http=require('http');console.log('hello from 1mcp');console.error('[ERROR] message="Failed to connect to deja: spawn deja ENOENT"');
+http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(${port},'127.0.0.1');`);
+        const spawnFn = (cmd, args, opts) => { assert.deepEqual(opts.stdio, ['ignore', 'pipe', 'pipe']); return spawn(process.execPath, [script], opts); };
+        const h = await startServe({ dir, upstreamPort: port, spawnFn, entry: 'x', port: 0 });
+        await new Promise((r) => setTimeout(r, 700));
+        await h.stop();
+        const text = fs.readFileSync(path.join(dir, 'gateway.log'), 'utf8');
+        assert.match(text, /hello from 1mcp/);
+        assert.match(text, /Failed to connect to deja: spawn deja ENOENT/);
+    });
+
     test('refuses an empty, invalid or group-readable token', async () => {
         const quiet = { log: () => {}, entry: 'x', port: 0 };
         for (const bad of ['', '  \n', 'nothex']) {

@@ -204,14 +204,45 @@ export async function reapOrphan(dir, script, upstreamPort, sleep = (ms) => new 
     return false;
 }
 
+// gateway.log: AOS's own lines plus 1mcp's output, on every platform (the Windows hidden .vbs start has no stdout at all).
+// 0600, rotated to gateway.log.1 once it passes maxBytes. Never throws: a log that cannot be written must not stop the gateway.
+export function openLog(dir, maxBytes = 5 << 20) {
+    const file = path.join(dir, 'gateway.log');
+    let fd = null, size = 0;
+    const open = () => {
+        try {
+            try { if (fs.statSync(file).size > maxBytes) fs.renameSync(file, `${file}.1`); } catch { /* none yet */ }
+            fd = fs.openSync(file, 'a', 0o600);
+            size = fs.fstatSync(fd).size;
+            if (process.platform !== 'win32') fs.chmodSync(file, 0o600);
+        } catch { fd = null; }
+    };
+    open();
+    return {
+        write(chunk) {
+            if (fd === null) return;
+            try {
+                const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+                if (size + buf.length > maxBytes) { fs.closeSync(fd); fd = null; open(); if (fd === null) return; }
+                fs.writeSync(fd, buf);
+                size += buf.length;
+            } catch { /* best effort */ }
+        },
+        close() { if (fd !== null) try { fs.closeSync(fd); } catch { /* closed */ } fd = null; },
+    };
+}
+
 // Core of `serve`, testable: no process-wide handlers, no process.exit. Rejects when it must refuse to start.
-export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, spawnFn = spawn, log = (m) => console.error(m), backoffMs = 1000, entry } = {}) {
+export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, spawnFn = spawn, log: logIn, backoffMs = 1000, entry, logMaxBytes } = {}) {
     const token = readToken(dir);
+    let logFile = { write() {}, close() {} }; // opened once the start is not refused
+    const log = logIn || ((m) => { logFile.write(`${new Date().toISOString()} ${m}\n`); if (process.stderr.isTTY) console.error(m); });
     const script = entry || oneMcpEntry(dir);
     let probe = await get(upstreamPort, '/health');
     if (probe.error !== 'ECONNREFUSED' && await reapOrphan(dir, script, upstreamPort)) probe = { error: 'ECONNREFUSED' };
     if (probe.error !== 'ECONNREFUSED') throw new Error(`port ${upstreamPort} is already in use (not by this gateway's 1mcp); refusing to forward to a foreign process`);
 
+    logFile = openLog(dir, logMaxBytes);
     const forwarder = createForwarder({ port, upstreamPort, token });
     try { await forwarder.listen(); } catch (e) {
         throw new Error(e.code === 'EADDRINUSE' ? `port ${port} in use by another process` : `cannot listen: ${e.message}`);
@@ -243,11 +274,12 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     const start = () => {
         if (stopping) return;
         startedAt = Date.now();
-        try { child = spawnFn(process.execPath, args, { stdio: ['ignore', 'inherit', 'inherit'], shell: false }); } catch (e) {
+        try { child = spawnFn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true }); } catch (e) {
             log(`aos-gateway: cannot start 1mcp: ${e.code || e.message}`);
             return schedule();
         }
         if (child && child.pid) try { fs.writeFileSync(path.join(dir, 'upstream.pid'), String(child.pid), { mode: 0o600 }); } catch { /* best effort */ }
+        for (const out of [child.stdout, child.stderr]) if (out && out.on) out.on('data', (c) => logFile.write(c));
         child.on('error', (e) => { log(`aos-gateway: cannot start 1mcp: ${e.code || e.message}`); schedule(); });
         child.on('exit', schedule);
     };
@@ -270,6 +302,7 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
             }
             try { fs.unlinkSync(pidFile); } catch { /* already gone */ }
             try { fs.unlinkSync(runtimeFile); } catch { /* already gone */ }
+            logFile.close();
         },
     };
 }
