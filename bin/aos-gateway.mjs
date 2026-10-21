@@ -71,6 +71,14 @@ function upstreamNames(dir) {
 // failed, that exited early or did not answer MCP initialize in 60 s (3 tries) stays "unknown" until the next start: nothing
 // retries it, and `1mcp mcp restart` needs an admin login AOS never sets up. The reason is in 1mcp's own log line.
 const NEVER_CONNECTED = new Set(['unknown', 'disconnected', 'error']);
+export function redactLog(text) {
+    return String(text)
+        .replace(/\b(gh[pousr]_|github_pat_|sk-|AIza)[\w-]{8,}/g, '***')
+        .replace(/\bBearer\s+[\w.~+/=-]+/gi, 'Bearer ***')
+        .replace(/\/\/[^\s/@:]+:[^\s/@]+@/g, '//***@')
+        .replace(/([?&;]|\b)((?:[\w-]*(?:token|key|secret|passw(?:or)?d|pat|auth|credential)[\w-]*))=[^&\s"';]+/gi, '$1$2=***')
+        .replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+}
 export function connectFailures(dir) {
     const out = new Map();
     let text = '';
@@ -82,7 +90,7 @@ export function connectFailures(dir) {
             text = buf.toString('utf8');
         } finally { fs.closeSync(fd); }
     } catch { /* no log */ }
-    for (const m of text.matchAll(/\[ERROR\] message="Failed to connect to ([\w-]+): ([^"]*)"/g)) out.set(m[1], m[2]);
+    for (const m of text.matchAll(/\[ERROR\] message="Failed to connect to ([\w-]+): ([^"]*)"/g)) out.set(m[1], redactLog(m[2]));
     return out;
 }
 export const neverConnected = (name, failures) =>

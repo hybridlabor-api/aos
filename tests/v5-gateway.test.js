@@ -844,6 +844,14 @@ describe('status JSON', () => {
         await fw.close();
     });
 
+    test('log text shown by status is redacted and one line', () => {
+        const raw = 'spawn failed https://u:p4ss@h/x?token=abc123&a=1 Authorization: Bearer abc.def GITHUB_PERSONAL_ACCESS_TOKEN=ghp_abcdefghijkl OPENAI_API_KEY=sk-abcdefghij\nsecond line';
+        const out = gw.redactLog(raw);
+        for (const leak of ['p4ss', 'abc123', 'abc.def', 'ghp_abcdefghijkl', 'sk-abcdefghij']) assert.ok(!out.includes(leak), leak + ' leaked: ' + out);
+        assert.ok(!out.includes('\n') && out.length <= 200);
+        assert.match(out, /spawn failed/);
+    });
+
     test('run: 1mcp\'s mcp restart recovery is replaced by one AOS can act on', () => {
         const hint = gw.runHint('server_unavailable: Server deja is unknown. Recovery: 1mcp mcp restart deja');
         assert.match(hint, /needs an admin login.*aos-gateway status.*aos-gateway restart/);
