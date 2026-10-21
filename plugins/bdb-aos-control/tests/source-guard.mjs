@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 
 const src = readFileSync(new URL('../hooks/register.tsx', import.meta.url), 'utf8')
+const lib = readFileSync(new URL('../hooks/lib.ts', import.meta.url), 'utf8')
 const fail = msg => {
   console.error(`source-guard: ${msg}`)
   process.exit(1)
@@ -30,5 +31,11 @@ for (const line of src.split('\n')) {
   const t = line.trim()
   if (t.includes('<Button') && /(?:^|[^.\w])color=/.test(t)) fail(`Button takes no color prop: ${t}`)
 }
+
+if (!/import type \{[^}]*\bControlTab\b[^}]*\} from '\.\.\/types'/s.test(src)) fail('ControlTab must be imported from ../types')
+if (/\?\? 'soft'|mode: 'soft', grants: \[\], raw: ''\s*\}\)\)/.test(src + lib)) fail('gate must not fall back to soft on error')
+if (!/'Image' in ui/.test(src)) fail('logo image needs a capability check with text fallback')
+if (!/redact\(/.test(src)) fail('fleet/pipeline text must pass through redact')
+if (!/probeCache/.test(src)) fail('git probes must use the TTL cache')
 
 console.log('source-guard: ok')

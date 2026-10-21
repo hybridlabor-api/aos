@@ -5,7 +5,6 @@ import {
   demoFleet,
   demoPipeline,
   filterRosterSessions,
-  logoCells,
   parseGateStatus,
   parsePipelineState,
   parseProfile,
@@ -13,9 +12,26 @@ import {
   parseStatusBranch,
   parseV5Settings,
   parseWorktrees,
+  redactSession,
+  renderErrorText,
   roleHint,
   tokenEstimate,
 } from '../hooks/register'
+import {
+  bandSegments,
+  bandText,
+  contextBar,
+  createTtlCache,
+  flowSteps,
+  formatCountdown,
+  gateFromRun,
+  logoMark,
+  logoRgba,
+  redact,
+  shq,
+  usageRows,
+  usageShort,
+} from '../hooks/lib'
 
 const PIPELINE_FIXTURE = JSON.stringify({
   run_id: 'run-42',
@@ -59,7 +75,10 @@ const controlMocks = (on: any, nowMs: { n: number }, files: Record<string, strin
   on('session.id', () => ({ value: 'sid' }))
   on('session.cwd', () => ({ value: '/x' }))
   on('session.repo', () => ({ value: null }))
-  on('clock.now', () => ({ value: (nowMs.n += 60_000) }))
+  on('clock.now', () => {
+    if (nowMs.n < 0) throw new Error('boom token=abc123')
+    return { value: (nowMs.n += 60_000) }
+  })
   on('clock.every', () => ({ value: { cancel: 'noop' } } as never))
   on('fs.read', (_$: unknown, e: unknown) => {
     const path = JSON.stringify(e)
@@ -105,11 +124,6 @@ const findNode = (node: unknown, k: string): unknown => {
   }
   return undefined
 }
-
-test('logoCells returns a base64 string', () => {
-  expect(typeof logoCells()).toBe('string')
-  expect(logoCells().length).toBeGreaterThan(0)
-})
 
 test('parseGateStatus handles mode and grants', () => {
   const g = parseGateStatus('AOS go-gate, session sid: mode hard\n  grant push-feature until 2026-01-01T00:00:00Z (15 min left)')
@@ -389,4 +403,242 @@ test('filterRosterSessions groups package workers by node with count', () => {
   expect(filtered.map(s => s.name)).toEqual(['master', 'packs ×2', 'packs ×2'])
   expect(filtered.find(s => s.reason === 'engineering')).toBeDefined()
   expect(filtered.find(s => s.reason === 'review')).toBeDefined()
+})
+
+const NOW = Date.parse('2026-10-21T10:00:00Z')
+
+test('logo: image path with text fallback', () => {
+  expect(logoMark(true)).toEqual({ kind: 'image', text: 'AOS' })
+  expect(logoMark(false)).toEqual({ kind: 'text', text: 'AOS' })
+  const logo = logoRgba()
+  expect(logo.width * logo.height * 4).toBe(atob(logo.rgba).length)
+})
+
+test('formatCountdown formats minutes, hours and days, n/a without a reset', () => {
+  expect(formatCountdown('2026-10-21T10:45:00Z', NOW)).toBe('45m')
+  expect(formatCountdown('2026-10-21T12:13:00Z', NOW)).toBe('2h13m')
+  expect(formatCountdown('2026-10-24T15:00:00Z', NOW)).toBe('3d05h')
+  expect(formatCountdown('2026-10-21T09:00:00Z', NOW)).toBe('now')
+  expect(formatCountdown(undefined, NOW)).toBe('n/a')
+})
+
+test('usageRows and usageShort show n/a when the data path is empty', () => {
+  const usage = {
+    fetchedAt: NOW,
+    context: { window: 200000 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 23.5, resetsAt: '2026-10-21T12:00:00Z' }],
+  }
+  expect(usageShort(usage, NOW)).toBe('5h 24% 7d n/a')
+  expect(usageRows(usage, NOW)[0]).toEqual({ label: '5h', percent: 23.5, countdown: '2h00m', color: '#5fe0a0' })
+  expect(usageRows(null, NOW).every(r => r.percent === null && r.countdown === 'n/a')).toBe(true)
+})
+
+test('contextBar stacks categories with a legend, falls back to a single bar, then n/a', () => {
+  const stacked = contextBar(
+    {
+      window: 200000,
+      breakdown: {
+        rawMaxTokens: 200000,
+        percentage: 31,
+        categories: [
+          { name: 'Messages', tokens: 50000, kind: 'used' },
+          { name: 'Tools', tokens: 10000, kind: 'used' },
+          { name: 'Deferred tools', tokens: 9999, kind: 'deferred' },
+          { name: 'Free space', tokens: 140000, kind: 'free' },
+        ],
+      },
+    },
+    20,
+  )
+  expect(stacked.mode).toBe('stacked')
+  expect(stacked.segments.map(s => s.name)).toEqual(['Messages', 'Tools', 'Free space'])
+  expect(stacked.segments.reduce((a, s) => a + s.cells, 0)).toBe(20)
+  const single = contextBar({ tokens: 50000, window: 200000, percent: 25 }, 20)
+  expect(single.mode).toBe('single')
+  expect(single.segments.map(s => s.cells)).toEqual([5, 15])
+  expect(contextBar({ window: 200000 }, 20).mode).toBe('n/a')
+})
+
+test('flowSteps renders done, running, pending and blocked', () => {
+  const states = (phase: string, extra = {}) => flowSteps({ phase: phase as never, gate: {}, ...extra }).map(s => s.status)
+  expect(states('build')).toEqual(['done', 'done', 'running', 'pending', 'pending', 'pending', 'pending', 'pending'])
+  expect(states('review', { needs_human: true })[4]).toBe('blocked')
+  expect(states('build', { gate: { lint: 'fail' } })[2]).toBe('blocked')
+  expect(states('done').every(x => x === 'done')).toBe(true)
+  const esc = flowSteps({ phase: 'escalated', gate: {} })
+  expect(esc[esc.length - 1]).toEqual({ phase: 'escalated', label: 'ESCALATED', status: 'blocked' })
+})
+
+test('gate load failure shows unknown plus the error, never soft', () => {
+  const failed = gateFromRun(null, new Error('spawn node ENOENT'))
+  expect(failed.mode).toBe('unknown')
+  expect(failed.error).toContain('ENOENT')
+  expect(gateFromRun({ exitCode: 2, stdout: '', stderr: 'boom' }).mode).toBe('unknown')
+  expect(parseGateStatus('garbage').mode).toBe('unknown')
+  expect(gateFromRun({ exitCode: 0, stdout: 'AOS go-gate, session s: mode hard' }).mode).toBe('hard')
+})
+
+test('redact masks tokens, keys, Authorization and password=', () => {
+  expect(redact('Authorization: Bearer abcdef1234567890')).toBe('Authorization: [redacted]')
+  expect(redact('curl -H "Authorization: Basic dXNlcjpwYXNz" url')).not.toContain('dXNlcjpwYXNz')
+  expect(redact('db password=hunter2 ok')).toBe('db password=[redacted]')
+  expect(redact('GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123')).not.toContain('ghp_')
+  expect(redact('key sk-abcdefghijklmnopqrstuvwx end')).toBe('key [redacted] end')
+  expect(redact('plain text stays')).toBe('plain text stays')
+})
+
+test('parsePipelineState redacts secrets in goal and finding summaries', () => {
+  const s = parsePipelineState(JSON.stringify({ phase: 'build', goal: 'deploy with token=abc123xyz', findings: [{ id: 'f', summary: 'password=pw1' }] }))
+  expect(s!.goal).toBe('deploy with token=[redacted]')
+  expect(s!.findings[0]!.summary).toBe('password=[redacted]')
+})
+
+test('probe cache honours the TTL', async () => {
+  const cache = createTtlCache(10_000)
+  let loads = 0
+  const load = async () => ++loads
+  expect(await cache.get('k', 0, load)).toBe(1)
+  expect(await cache.get('k', 9_999, load)).toBe(1)
+  expect(await cache.get('k', 10_000, load)).toBe(2)
+  expect(loads).toBe(2)
+})
+
+test('buildWorktreeItems runs git once per TTL window', async () => {
+  let calls = 0
+  const out = (stdout: string, exitCode = 0) => ({ stdout, stderr: '', exitCode })
+  const fake = {
+    process: {
+      run: async (cmd: string[]) => {
+        calls++
+        const key = cmd.join(' ')
+        if (key.includes('worktree list')) return out('worktree /repo/main\nHEAD abc\nbranch refs/heads/main\n')
+        if (key.includes('status')) return out('## main...origin/main\n')
+        return out('main\n')
+      },
+    },
+  }
+  const cache = createTtlCache(10_000)
+  await buildWorktreeItems(fake as never, '/repo/main', null, cache, 0)
+  const first = calls
+  await buildWorktreeItems(fake as never, '/repo/main', null, cache, 5_000)
+  expect(calls).toBe(first)
+  await buildWorktreeItems(fake as never, '/repo/main', null, cache, 11_000)
+  expect(calls).toBe(first * 2)
+})
+
+test('the band is one line with gate, usage and phase', () => {
+  const segs = bandSegments({
+    gate: { mode: 'hard', grants: [], raw: '' },
+    usage: { fetchedAt: NOW, context: { window: 1 }, rateLimits: [{ kind: 'five_hour', percentUsed: 10 }, { kind: 'seven_day', percentUsed: 41 }] },
+    phase: 'ready_to_ship',
+    nowMs: NOW,
+  })
+  const text = bandText(segs)
+  expect(text).toBe('AOS │ gate HARD │ 5h 10% 7d 41% │ pipeline ready to ship')
+  expect(text.includes('\n')).toBe(false)
+  expect(bandText(bandSegments({ gate: null, usage: null, nowMs: NOW }))).toBe('AOS │ gate UNKNOWN │ 5h n/a 7d n/a │ pipeline idle')
+})
+
+test('the band and the deck render in the mod', async ($, on) => {
+  const nowMs = { n: 60_000 }
+  controlMocks(on, nowMs, {}, true)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true } as never)
+  const band = await $.ui.mount({ plugin: 'bdb-aos-control', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 5 } } as never)
+  const bandJson = JSON.stringify(await band.drawn())
+  expect(bandJson).toContain('gate SOFT')
+  expect(bandJson).toContain('5h 42%')
+  const pane = await $.ui.mount(CONTROL_MOUNT(80) as never)
+  const json = JSON.stringify(await pane.drawn())
+  expect(json).toContain('USAGE')
+  expect(json).toContain('resets 2h')
+  expect(json).toContain('CONTEXT')
+  expect(json).toContain('Messages')
+})
+
+test('redact masks prefixed identifiers and JSON forms', () => {
+  expect(redact('DB_PASSWORD=hunter2')).toBe('DB_PASSWORD=[redacted]')
+  expect(redact('OPENAI_API_KEY=abc123')).toBe('OPENAI_API_KEY=[redacted]')
+  expect(redact('GITHUB_TOKEN: xyz')).toBe('GITHUB_TOKEN: [redacted]')
+  expect(redact('{"password": "p w", "ok": 1}')).toBe('{"password": [redacted], "ok": 1}')
+  expect(redact("{'client_secret':'s3'}")).not.toContain('s3')
+  expect(redact('"Authorization": "Bearer abcdef123456"')).not.toContain('abcdef123456')
+})
+
+test('redactSession falls back safely for bad enums and redacts text', () => {
+  const s = redactSession({ id: 'x', name: 'worker-token=abc', role: 'bogus', activity: 'sleeping', cwd: '/x', updatedAt: 1, trailNode: 'API_KEY=k1' } as never)
+  expect(s.role).toBe('worker')
+  expect(s.activity).toBe('idle')
+  expect(s.name).toBe('worker-token=[redacted]')
+  expect(s.trailNode).toBe('API_KEY=[redacted]')
+})
+
+test('shq single-quotes prefilled values', () => {
+  expect(shq("a'b c")).toBe("'a'\\''b c'")
+})
+
+test('probe cache dedupes in-flight loads and evicts expired entries', async () => {
+  const cache = createTtlCache(10_000)
+  let loads = 0
+  const load = async () => ++loads
+  await Promise.all([cache.get('a', 0, load), cache.get('a', 1, load)])
+  expect(loads).toBe(1)
+  await cache.get('b', 20_000, load)
+  expect(cache.size()).toBe(1)
+})
+
+test('band shows the short gate error next to UNKNOWN', () => {
+  const t = bandText(bandSegments({ gate: { mode: 'unknown', grants: [], raw: '', error: 'spawn ENOENT' }, usage: null, nowMs: NOW }))
+  expect(t).toContain('gate UNKNOWN (spawn ENOENT)')
+})
+
+test('a throwing render becomes a one-line redacted error box', async ($, on) => {
+  const nowMs = { n: 60_000 }
+  controlMocks(on, nowMs, {}, true)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true } as never)
+  nowMs.n = -1
+  const band = await $.ui.mount({ plugin: 'bdb-aos-control', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 5 } } as never)
+  const bandJson = JSON.stringify(await band.drawn())
+  expect(bandJson).toContain('render error')
+  expect(bandJson).not.toContain('abc123')
+  const pane = await $.ui.mount(CONTROL_MOUNT(80) as never)
+  expect(JSON.stringify(await pane.drawn())).toContain('render error')
+  expect(renderErrorText(new Error('x password=p'))).toBe('AOS Control: render error: x password=[redacted]')
+})
+
+test('redact caps its input and masks an unquoted value to end of line', () => {
+  const long = redact(`${'a'.repeat(100_000)}token=x`)
+  expect(long.length).toBeLessThanOrEqual(4200)
+  expect(long.endsWith('…')).toBe(true)
+  expect(redact('password=hunter 2 more\nnext line')).toBe('password=[redacted]\nnext line')
+})
+
+test('parsePipelineState validates gate values', () => {
+  const s = parsePipelineState(JSON.stringify({ phase: 'build', gate: { lint: 'pass', tests: 'FAIL!!', seo: { x: 1 }, a11y: 'skip' } }))
+  expect(s!.gate).toEqual({ lint: 'pass', tests: 'unknown', seo: 'unknown', a11y: 'skip' })
+  expect(parsePipelineState(JSON.stringify({ phase: 'build', gate: ['x'] }))!.gate).toEqual({})
+})
+
+test('redactSession validates progress numbers', () => {
+  const base = { id: 'x', name: 'w', role: 'worker', activity: 'idle', cwd: '', updatedAt: 1 }
+  expect(redactSession({ ...base, progress: { done: 9, total: 3, blocked: -1, source: 'x' } } as never).progress).toEqual({ done: 3, total: 3, blocked: 0, source: 'plan' })
+  expect(redactSession({ ...base, progress: { done: 'a', total: NaN } } as never).progress).toEqual({ done: 0, total: 0, blocked: 0, source: 'plan' })
+  expect(redactSession({ ...base, progress: 'bad' } as never).progress).toBeUndefined()
+})
+
+test('a git probe failure throws a redacted message', async () => {
+  const fake = { process: { run: async () => ({ stdout: '', stderr: 'fatal: token=abc123 denied', exitCode: 128 }) } }
+  let msg = ''
+  await buildWorktreeItems(fake as never, '/r', null).catch(e => (msg = e.message))
+  expect(msg).toBe('git probe failed: fatal: token=[redacted]')
+})
+
+test('a stale failed probe does not evict a newer entry', async () => {
+  const cache = createTtlCache(10)
+  let fail: (e: Error) => void = () => undefined
+  const first = cache.get('k', 0, () => new Promise<number>((_, rej) => (fail = rej)))
+  const second = cache.get('k', 20, async () => 2)
+  fail(new Error('late'))
+  await first.catch(() => undefined)
+  expect(await cache.get('k', 21, async () => 3)).toBe(2)
+  expect(await second).toBe(2)
 })
