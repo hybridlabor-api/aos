@@ -104,3 +104,8 @@ aos-evolve capture --error "<error text>" --skill <skill in use>
 ```
 
 The error text is redacted inside capture; never pass secrets. The advisor agent has no shell, so the dispatcher runs the command. `--skill` is required; if the skill is unknown the capture is skipped. When evolve is off (`AOS_EVOLVE=off` or a disabled store) the command exits non-zero and the dispatcher skips it silently.
+
+### Deny-list scope (Hard Safety Boundary B2)
+
+The deny-list check applies to store paths only (what capture/store writes); candidate diffs are NOT checked yet; a diff check is required before any future step executes proposals (planned for 5.4.2+).
+
