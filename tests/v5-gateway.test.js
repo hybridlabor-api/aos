@@ -110,7 +110,7 @@ describe('config generator', () => {
     test('the shipped template yields exactly the allow-listed gateway servers and no secret value', () => {
         const real = require('../lib/mcp-secrets.js').shippedServers(ROOT);
         const out = cfg.buildUpstreams({ shipped: real, home, launcher, pathEnv: 'p' });
-        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp', 'zavora_computer_use']);
+        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'github', 'open_design_mcp', 'zavora_computer_use']);
         assert.ok(!('bdb_rhino_mcp' in out));
         assert.ok(cfg.splitServers(real).direct.bdb_rhino_mcp);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!(n in out), n);
@@ -319,7 +319,7 @@ describe('pkg-gateway', () => {
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.deepEqual(Object.keys(g).filter((n) => n !== 'codebase_memory_mcp').sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp', 'zavora_computer_use']);
+        assert.deepEqual(Object.keys(g).filter((n) => n !== 'codebase_memory_mcp').sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'github', 'open_design_mcp', 'zavora_computer_use']);
     });
 
     const pinnedOnDisk = (home) => {

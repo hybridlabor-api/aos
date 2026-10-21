@@ -27,22 +27,22 @@ function gatewayHome(selected) {
 }
 
 test('applyServerChange with a non-empty selection writes exactly selected + adopted', () => {
-    const home = gatewayHome(['github', 'deja']);
+    const home = gatewayHome(['github', 'open_design_mcp']);
     selection.applyServerChange({ home, aosRoot: ROOT, add: 'chrome-devtools', platform: 'darwin', env: {} });
-    assert.deepEqual(mcpKeys(home), ['chrome-devtools', 'deja', 'github', 'user_own']);
-    selection.applyServerChange({ home, aosRoot: ROOT, remove: 'deja', platform: 'darwin', env: {} });
+    assert.deepEqual(mcpKeys(home), ['chrome-devtools', 'github', 'open_design_mcp', 'user_own']);
+    selection.applyServerChange({ home, aosRoot: ROOT, remove: 'open_design_mcp', platform: 'darwin', env: {} });
     assert.deepEqual(mcpKeys(home), ['chrome-devtools', 'github', 'user_own']);
 });
 
 for (const verb of ['install', 'update']) {
     test(`gateway ${verb} with a non-empty selection writes exactly selected + adopted`, async () => {
-        const home = gatewayHome(['github', 'deja']);
+        const home = gatewayHome(['github', 'open_design_mcp']);
         const ctx = {
             home, run: async () => ({ status: 0, stdout: '' }), dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/n/node',
             aosRoot: ROOT, uid: 501, env: {}, sleep: async () => {}, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }),
         };
         await pkg[verb](ctx);
-        assert.deepEqual(mcpKeys(home), ['deja', 'github', 'user_own']);
+        assert.deepEqual(mcpKeys(home), ['github', 'open_design_mcp', 'user_own']);
     });
 }
 
@@ -64,7 +64,7 @@ test('enable cleans both opencode.json and opencode.jsonc and the HOME agy works
     const agy = path.join(home, '.gemini', 'config', 'mcp_config.json');
     const agyHome = path.join(home, '.agents', 'mcp_config.json');
     wj(oc, { mcp: { github: ownedOc(home, 'github'), mine: { type: 'local', command: ['node', 'm.js'] } } });
-    wj(ocJsonc, { mcp: { deja: ownedOc(home, 'deja'), mine2: { type: 'local', command: ['node', 'm2.js'] } } });
+    wj(ocJsonc, { mcp: { 'chrome-devtools': ownedOc(home, 'chrome-devtools'), mine2: { type: 'local', command: ['node', 'm2.js'] } } });
     wj(agy, { mcpServers: { github: owned(home, 'github') } });
     wj(agyHome, { mcpServers: { github: owned(home, 'github'), mine: { command: 'node', args: ['mine.js'] } } });
     const files = sec.harnessMcpFiles(home, {}, 'linux', home);
@@ -110,7 +110,7 @@ test('per-session servers are never adoptable', () => {
 });
 
 test('gateway install removes the direct copies of gateway and adopted servers from Claude and keeps the rest', async () => {
-    const home = gatewayHome(['github', 'deja']);
+    const home = gatewayHome(['github', 'open_design_mcp']);
     const claude = path.join(home, '.claude.json');
     wj(claude, { mcpServers: {
         github: owned(home, 'github'), user_own: { command: 'node', args: ['own.js'] }, mine: { command: 'node', args: ['mine.js'] },
@@ -127,7 +127,7 @@ test('gateway install removes the direct copies of gateway and adopted servers f
 test('doctor: one hygiene row lists duplicates by file + server and gateway servers outside selection + adopted', () => {
     const { gatewayChecks } = require('../lib/gateway/doctor.js');
     const home = gatewayHome(['github']);
-    fs.writeFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), JSON.stringify({ mcpServers: { github: {}, deja: {}, extra: {}, user_own: {} } }));
+    fs.writeFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), JSON.stringify({ mcpServers: { github: {}, extra1: {}, extra2: {}, user_own: {} } }));
     const ocJsonc = path.join(home, '.config', 'opencode', 'opencode.jsonc');
     fs.mkdirSync(path.dirname(ocJsonc), { recursive: true });
     fs.writeFileSync(ocJsonc, `{\n  // my comment\n  "mcp": ${JSON.stringify({ aos: harness.entryFor('opencode', TOKEN), github: ownedOc(home, 'github') })}\n}\n`);
@@ -135,7 +135,7 @@ test('doctor: one hygiene row lists duplicates by file + server and gateway serv
     const row = checks.find((c) => c.name === 'gateway hygiene');
     assert.equal(row.ok, false);
     assert.ok(row.detail.includes(`${ocJsonc}: github`), row.detail);
-    assert.ok(row.detail.includes('served but neither selected nor adopted: deja, extra'), row.detail);
+    assert.ok(row.detail.includes('served but neither selected nor adopted: extra1, extra2'), row.detail);
     assert.ok(!row.detail.includes('user_own'));
 });
 

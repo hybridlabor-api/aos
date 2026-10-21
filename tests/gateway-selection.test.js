@@ -36,7 +36,7 @@ test('resolveGatewayServers: a valid stored choice wins; invalid falls back to d
     assert.deepEqual(first.kept, ['bdb_unreal_mcp']);
     // invalid stores fall back to derivation
     assert.equal(selection.validStoredServers(['nope/ok']), null);
-    assert.deepEqual(selection.validStoredServers(['github', 'deja', 'chrome-devtools', 'memb_mcp']), ['github', 'deja', 'chrome-devtools', 'memb_mcp']);
+    assert.deepEqual(selection.validStoredServers(['github', 'chrome-devtools', 'open_design_mcp']), ['github', 'chrome-devtools', 'open_design_mcp']);
     // [] is a real selection (the user removed the last server): never re-derived
     assert.deepEqual(selection.validStoredServers([]), []);
     assert.deepEqual(selection.resolveGatewayServers({ settingServers: [], media: true, keep: ['github'] }), { servers: [], fromSetting: true, kept: [], retired: [] });
@@ -64,14 +64,14 @@ test('pkg-gateway apply: builds only the selection, writes it back, keeps adopte
 
 test('buildUpstreams: selected filters the shipped gateway set, adopted entries stay', () => {
     const shipped = {
-        github: ENTRY('github'), deja: ENTRY('deja'), 'chrome-devtools': ENTRY('cdt'), memb_mcp: ENTRY('memb'),
+        github: ENTRY('github'), adobe_uxp_mcp: ENTRY('adobe'), 'chrome-devtools': ENTRY('cdt'), open_design_mcp: ENTRY('design'),
         bdb_unreal_mcp: ENTRY('unreal'), bdb_davinci_mcp: ENTRY('dv'), bdb_resolume_mcp: ENTRY('res'),
     };
     const adopted = { my_thing: ENTRY('mything') };
     const all = cfg.buildUpstreams({ shipped, home: '/home/u', launcher, pathEnv: '/bin', adopted });
     assert.equal(Object.keys(all).length, 7 + 1);
-    const sel = cfg.buildUpstreams({ shipped, home: '/home/u', launcher, pathEnv: '/bin', adopted, selected: ['github', 'deja'] });
-    assert.deepEqual(Object.keys(sel).sort(), ['deja', 'github', 'my_thing']);
+    const sel = cfg.buildUpstreams({ shipped, home: '/home/u', launcher, pathEnv: '/bin', adopted, selected: ['github', 'adobe_uxp_mcp'] });
+    assert.deepEqual(Object.keys(sel).sort(), ['adobe_uxp_mcp', 'github', 'my_thing']);
 });
 
 test('harness URLs carry the active context profile preset for every kind', () => {
@@ -214,7 +214,7 @@ test('applyServerChange: a failing settings write restores the previous mcp.json
     fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
     fs.writeFileSync(settingsOf(home), '{ broken');
     const before = fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8');
-    assert.throws(() => selection.applyServerChange({ home, aosRoot: SRC, add: 'deja', platform: 'darwin', env: {} }), /not valid JSON/);
+    assert.throws(() => selection.applyServerChange({ home, aosRoot: SRC, add: 'chrome-devtools', platform: 'darwin', env: {} }), /not valid JSON/);
     assert.equal(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8'), before);
 });
 

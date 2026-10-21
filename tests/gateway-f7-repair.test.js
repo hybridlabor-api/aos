@@ -76,8 +76,8 @@ test('A/B end to end, platform 2: the mirror skips the gateway servers in ~/.cla
     mirrorMcpServersTo([claudeJson, desktop], generated);
     const cj = JSON.parse(fs.readFileSync(claudeJson, 'utf8')).mcpServers;
     const dk = JSON.parse(fs.readFileSync(desktop, 'utf8')).mcpServers;
-    // deja sits behind the gateway since fb655b08, so ~/.claude.json keeps only the aos entry.
-    assert.ok(cj.aos && !cj.deja && !cj.github, `~/.claude.json: ${Object.keys(cj)}`);
+    // deja is direct per harness, so ~/.claude.json keeps both aos and deja, but not github.
+    assert.ok(cj.aos && cj.deja && !cj.github, `~/.claude.json: ${Object.keys(cj)}`);
     assert.ok(dk.github && dk.deja && !dk.aos, `desktop: ${Object.keys(dk)}`);
 });
 
