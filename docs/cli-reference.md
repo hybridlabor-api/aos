@@ -88,7 +88,7 @@ aos <command> --help
 | `--plugin-migration off\|check` | Skip or only report the plugin migration. |
 | `--no-codenotch` | Skip the Codenotch desktop app. |
 | `--codex-gate` | Print the go-gate hook stanza for ~/.codex/config.toml and exit; writes nothing. |
-| `--force` | status/update/repair: force the step (also AOS_FORCE=1). |
+| `--force` | status/update/repair: force the step (also AOS_FORCE=1). With an older package, update --force installs that older version (a downgrade); without it an older package changes nothing. |
 | `--no-intro` | Skip the animated intro. |
 | `--doctor` | Run the doctor instead of installing. |
 | `-v, --verbose` | Verbose output. |

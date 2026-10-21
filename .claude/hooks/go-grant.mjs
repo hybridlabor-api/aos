@@ -17,7 +17,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   parseGogate, textHash, sessionKey, readState, writeState, gateLog, effectiveGate,
-  gogateCommandsFor, statusText, listStateKeys, OPENCODE_MAX_GRANT_MS,
+  gogateCommandsFor, statusText, listStateKeys,
 } from "./go-gate.mjs";
 
 const emptyState = (source) => ({ transcript: source, grants: [] });
@@ -35,12 +35,11 @@ export function applyGogate(prompt, { key, source, uuid = null, now = Date.now()
   if (!key || !source) return "gogate: no session id in hook input, nothing recorded.";
   if (process.env.AOS_ACP_CLIENT) return "gogate: an aos-acp worker session cannot set modes or grants.";
   if (p.cmd === "status") return status(key);
-  if (opencode && p.cmd === "off") return "gogate: `off` is not available on OpenCode (no human-origin signal there). Nothing changed.";
   let st = readState(key);
   if (!st || typeof st !== "object" || st.transcript !== source) st = emptyState(source);
   const src = { transcript: source, uuid, issued_at: new Date(now).toISOString(), text_hash: textHash(prompt) };
   if (p.cmd === "grant") {
-    const ms = opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms;
+    const ms = p.ms;
     st.grants = (Array.isArray(st.grants) ? st.grants : []).filter((g) => Date.parse(g?.until) > now);
     for (const scope of p.scopes) st.grants.push({ scope, until: new Date(now + ms).toISOString(), ...(p.session ? { session_key: key } : {}), source: src });
   } else {
@@ -55,7 +54,7 @@ export function applyGogate(prompt, { key, source, uuid = null, now = Date.now()
   }
   gateLog(key, `recorded ${p.form} ${p.cmd}${p.scopes ? ` ${p.scopes.join(",")} ${p.session ? "session" : `${p.ms / 60000}m`}` : ""}`);
   return [
-    `gogate: recorded ${p.cmd}${p.scopes ? ` for ${p.scopes.join(", ")}` : ""}${p.session ? " (session = this session id, at most 24h, survives --resume)" : ""}${opencode && p.cmd === "grant" && p.ms > OPENCODE_MAX_GRANT_MS ? " (capped at 2h on OpenCode)" : ""}.`,
+    `gogate: recorded ${p.cmd}${p.scopes ? ` for ${p.scopes.join(", ")}` : ""}${p.session ? " (session = this session id, at most 24h, survives --resume)" : ""}.`,
     "The gate verifies it against this prompt in the transcript on every use.",
     slashNote,
     "Tell the human what was recorded; never try to change modes or grants yourself.",
