@@ -37,7 +37,7 @@ these four files stopped agreeing with each other in the first place.
 ## Tool routing (automatic)
 
 Use these tools by yourself, from the situation. The user never has to say
-"use plan-canvas", "use agenttrail", "use subagents" or "run a startcycle".
+"use plan-canvas", "use agenttrail", "use subagents" or "run a fabric".
 
 If the user says "plan", "Plan", "planen" or "roadmap" with nothing else: run `aos-plan-canvas templates`, offer the matching template, then `aos-plan-canvas new <id> <dir>` and `aos-plan-canvas open <dir>/plan.mdx --mode bdb-plan-builder --await`.
 **plan-canvas** — open the browser review canvas for any plan. Check
@@ -66,9 +66,9 @@ stored as markdown/artifact where task, project and plan type say it belongs
 
 **Multi-agent runs** — pick these from the situation: agenttrail for a live
 map of any multi-agent run (subagents, worktrees, a bdb pipeline such as
-`startcycle*`, or a workflow), subagents for independent slices of work, and the
-startcycle variant (`startcycle`, `startcycle-graph` or
-`startcycle-graph-user`) that fits the task. Monitor every such run on the
+`fabric*`, or a workflow), subagents for independent slices of work, and the
+fabric variant (`fabric`, `fabric-graph` or
+`fabric-multigraph`) that fits the task. Monitor every such run on the
 agenttrail map, and let GO approvals surface there: after
 `aos-plan-canvas open` of a plan in a pipeline context, also run
 `aos-plan-canvas trail <plan-dir>` (writes the execution plan file), then
@@ -182,8 +182,8 @@ category: one-of-the-categories-below
 ```
 
 **Pipeline and role skills stay model-invocable.** Never set
-`disable-model-invocation: true` on `startcycle`, `startcycle-graph(-user)`,
-`teamwork-preview`, the `godmode-*` roles, `master-session`, `ao-orchestrator`,
+`disable-model-invocation: true` on `fabric`, `fabric-graph`, `fabric-multigraph`,
+`fabric-teamwork`, `fabric-swarm`, `fabric-loop`, the `godmode-*` roles, `master-session`, `ao-orchestrator`,
 `bdbrainstorm`, `bdbmediastorm`, `grill-me`, `grill-with-docs`, `ask-tim`,
 `memb-skill` or any playbook (`kind: playbook`). The Master and every orchestrator
 start them through the Skill tool, and hiding them forces a human to type each
@@ -208,7 +208,7 @@ resolves scalar boundaries and catches exactly this.
 | Frontend, UI, visual design | `design-ui-ux` | senior-frontend, shadcn, tailwind-patterns |
 | Backend, architecture, testing | `engineering-method` | software-architecture, test-driven-development, systematic-debugging |
 | Show control, media, 3D | `media-eventtech` | godmode-eventtech, threejs-skills, mcp-manage |
-| Pipeline and agent infrastructure | `bdb-core` | startcycle, startcycle-graph, startcycle-graph-user |
+| Pipeline and agent infrastructure | `bdb-core` | fabric, fabric-graph, fabric-multigraph |
 | Electrical, PCB, physical hardware design | `engineering-hardware` | godmode-hardware-pcb, code-first-hardware-design, pcb-layout-routing-automation |
 | Business operations, invoicing, offers, sales and GTM routines | `business-ops` | pb-invoice-check, pb-offer |
 | Language/framework specifics | `library` | typescript-pro, prisma-expert, nextjs-best-practices |
@@ -227,15 +227,17 @@ it is not a placeholder for "I did not check."
 
 ## Build pipelines
 
-Three startcycle variants — see each skill for the full contract:
+The fabric family — see each skill for the full contract:
 
 | Skill | What it is |
 |---|---|
-| `/startcycle` | Linear chain: Architect → TechLead → parallel build → Reviewer. File hand-offs in `production_artifacts/`. No `state.json`, no repair loop. |
-| `/startcycle-graph` | Dispatcher graph: durable `state.json`, Reviewer repair loop with a no-progress guard, automated quality gate, human escalation. Contract in `.agents/graph.md`, registry in `.agents/nodes.json`. |
-| `/startcycle-graph-user` | Throwaway 2-4 node fan-out. Nothing persistent left behind. |
+| `/fabric` | Master: reads the task, picks one mode below, says which and why in one line, then follows that skill. |
+| `/fabric-graph` | Dispatcher graph: durable `state.json`, Reviewer repair loop with a no-progress guard, automated quality gate, human escalation. Contract in `.agents/graph.md`, registry in `.agents/nodes.json`. Flags `--skill=`, `--profile=`, `--workstreams`. The only full pipeline; a straight-line run without state is described in `skills/basic/fabric-graph/linear.md`. |
+| `/fabric-multigraph` | Throwaway 2-4 node fan-out. Nothing persistent left behind. |
+| `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. |
+| `/fabric-swarm`, `/fabric-loop` | Documented, arrive in 5.4.1; route to `fabric-multigraph` and `loop-templates` meanwhile. |
 
-The rule that applies to all three: **agents never invoke each other.** A
+The rule that applies to every mode: **agents never invoke each other.** A
 dispatcher — the main session, or the workflow script — decides every next
 step. Independent sub-tasks go to subagents; only work that must genuinely
 react to other agents (today only `/bdbrainstorm`) needs a team.

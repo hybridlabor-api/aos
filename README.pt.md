@@ -93,7 +93,7 @@ npx -y @hybridlabor-api/aos@latest
 <td width="33%" valign="top">🔌 <b>Servidores MCP</b><br/>21 servidores para software criativo, controlo do SO, memória e delegação entre harnesses.<br/>→ <a href="#servidores-mcp">Servidores MCP</a></td>
 </tr>
 <tr>
-<td width="33%" valign="top">🚀 <b>Pipelines &amp; GO gate</b><br/><code>/startcycle</code>, <code>/startcycle-graph</code>, <code>/startcycle-graph-user</code>, e o gate de release imposto por hook.<br/>→ <a href="#as-pipelines">As pipelines</a></td>
+<td width="33%" valign="top">🚀 <b>Pipelines &amp; GO gate</b><br/><code>/fabric</code>, <code>/fabric-graph</code>, <code>/fabric-multigraph</code>, e o gate de release imposto por hook.<br/>→ <a href="#as-pipelines">As pipelines</a></td>
 <td width="33%" valign="top">💬 <b>Sessões que conversam</b><br/>A2A entre sessões de Claude Code, OpenCode, agy e Codex no localhost.<br/>→ <a href="#a2a-sess%C3%B5es-que-conversam-entre-si">A2A</a></td>
 <td width="33%" valign="top">🛠️ <b>Ferramentas</b><br/>Plan Canvas, agenttrail, archify, AOS Store, AOS Hub, aos sessions, fleet band, aos doctor.<br/>→ <a href="#skills-de-um-relance">Ferramentas</a></td>
 </tr>
@@ -125,7 +125,7 @@ Para fluxos guiados nestes domínios, ver [Playbooks](#playbooks).
 | Abrir a página local de controlo (serviços, catálogo, store, planos) | `aos hub` |
 | Procurar e adicionar skills e agents | `aos store ui` |
 | Adicionar o grafo de conhecimento de código | `npx -y @hybridlabor-api/aos@latest -y --modules=codebase-memory` |
-| Planear uma feature e depois construí-la | `/plan`, depois `/startcycle-graph` |
+| Planear uma feature e depois construí-la | `/plan`, depois `/fabric-graph` |
 
 ---
 
@@ -173,14 +173,15 @@ Para fluxos guiados nestes domínios, ver [Playbooks](#playbooks).
 
 ## Skills de um relance
 
-- [**`/startcycle`**](skills/basic/startcycle/SKILL.md) - pipeline de build linear (Architect, TechLead, build em paralelo, Reviewer) com hand-offs por ficheiro em `production_artifacts/`
-- [**`/startcycle-graph`**](skills/basic/startcycle-graph/SKILL.md) - dispatcher graph com `state.json` durável, repair loop do Reviewer, quality gate e escalada
+- [**`/fabric`**](skills/basic/fabric/SKILL.md) - entrada mestra: escolhe o modo fabric adequado à tarefa e diz porquê numa linha
+- [**`/fabric-graph`**](skills/basic/fabric-graph/SKILL.md) - dispatcher graph com `state.json` durável, repair loop do Reviewer, quality gate e escalada
   - O dispatcher invoca os subagents [`architect`](agents/architect.md), [`techlead`](agents/techlead.md), [`godmode-ui-ux`](agents/godmode-ui-ux.md), [`godmode-engineering`](agents/godmode-engineering.md), [`godmode-media-eventtech`](agents/godmode-media-eventtech.md), [`reviewer`](agents/reviewer.md) e [`godmode-shipping`](agents/godmode-shipping.md); nunca se chamam entre si
-- [**`/startcycle-graph-user`**](skills/basic/startcycle-graph-user/SKILL.md) - fan-out descartável de 2-4 nós para qualquer projeto, nada persistente fica para trás
+- [**`/fabric-multigraph`**](skills/basic/fabric-multigraph/SKILL.md) - fan-out descartável de 2-4 nós para qualquer projeto, nada persistente fica para trás
+- [**`/fabric-teamwork`**](skills/basic/fabric-teamwork/SKILL.md) - elaboração de prompts e delegação a uma equipa; `/fabric-swarm` e `/fabric-loop` estão documentados e chegam na 5.4.1
 - [**`/plan`**](commands/plan.md) - redigir, renderizar numa canvas do navegador, anotar, aguardar aprovação, depois entregar
   - [**`plan-canvas`**](skills/global_config/plan-canvas/SKILL.md) - canvas local onde anota elementos, conversa e aprova ou pede alterações
   - [**`plan-arbiter`**](skills/global_config/plan-arbiter/SKILL.md) - comparar planos concorrentes de vários agentes e produzir um plano recomendado
-- [**`/bdbrainstorm`**](skills/bdbrainstorm/SKILL.md) - brainstorm multi-agente que termina numa entrega ao `/startcycle-graph`
+- [**`/bdbrainstorm`**](skills/bdbrainstorm/SKILL.md) - brainstorm multi-agente que termina numa entrega ao `/fabric-graph`
   - [**`/grill-me`**](skills/global_config/grill-me/SKILL.md) - entrevista implacável para afinar um plano ou um design
   - [**`bdbmediastorm`**](skills/basic/bdbmediastorm/SKILL.md) - brainstorm para event tech em vivo, show control e media em tempo real
 - [**`/playbooks`**](commands/playbooks.md) - listar todos os playbooks `pb-*` com duração, dificuldade e requisitos, e iniciar um
@@ -340,7 +341,7 @@ Valores de `--platforms=`: `0` universal (todos os detetados), `1` Antigravity, 
 
 ### Project harness local
 
-Em vez de instalar em `$HOME`, deposite apenas o contrato do dispatcher (`.agents/`, os gate hooks, as definições de agent, o workflow `/startcycle-graph`, o plugin OpenCode) num único repositório:
+Em vez de instalar em `$HOME`, deposite apenas o contrato do dispatcher (`.agents/`, os gate hooks, as definições de agent, o workflow `/fabric-graph`, o plugin OpenCode) num único repositório:
 
 ```bash
 cd o-seu-projeto && npx -y @hybridlabor-api/aos@latest --project-harness -y
@@ -357,7 +358,7 @@ cd o-seu-projeto && npx -y @hybridlabor-api/aos@latest --project-harness -y
 | Claude Code / Claude Desktop | `~/.claude/skills` | `~/.claude/agents` | `~/.claude/hooks` + `settings.json` (GO gate, graph gate, env-file protection, Conventional Commits, memB inject, trail relay, A2A inbox) | manifest `.claude-plugin/` incluído no repositório (ver Contribuir); fleet mod registado em `settings.json` |
 | Google Antigravity | `~/.gemini/config/skills` | `~/.gemini/config/agents/<name>/agent.md` | `~/.gemini/config/hooks.json` e `~/.gemini/antigravity-cli/hooks.json` | `plugin.json` raiz / `plugins/bdb-aos/plugin.json`, comandos `/bdb-aos:<cmd>`, ver [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
 | Codex CLI | `~/.agents/skills` (o Codex lê esta raiz e `~/.codex/skills`; o AOS escreve apenas a primeira, para que as skills não apareçam em duplicado) | `~/.codex/agents` | `~/.codex/hooks` + `config.toml` | `.codex-plugin/` + `.agents/plugins/marketplace.json`, comandos `$bdb-aos:<cmd>`, ver [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
-| OpenCode | `~/.config/opencode/skills` | `~/.config/opencode/agents` | via plugin | plugin `bdb-aos.js` + comando `/startcycle-graph`, registado em `opencode.jsonc`; mantém uma execução de `/startcycle-graph` em movimento em `session.idle`; comandos `/bdb-aos-<cmd>` gerados; extras opt-in, ver [docs/opencode-setup.md](docs/opencode-setup.md) |
+| OpenCode | `~/.config/opencode/skills` | `~/.config/opencode/agents` | via plugin | plugin `bdb-aos.js` + comando `/fabric-graph`, registado em `opencode.jsonc`; mantém uma execução de `/fabric-graph` em movimento em `session.idle`; comandos `/bdb-aos-<cmd>` gerados; extras opt-in, ver [docs/opencode-setup.md](docs/opencode-setup.md) |
 | Cursor | `~/.cursor/skills` | nenhum | nenhum | `.cursor/rules` (projeto) |
 | Windsurf | `~/.windsurf/bdb-skills` | nenhum | nenhum | `mcp.json` |
 | Roo Code / Cline | `~/.roo/skills` | nenhum | nenhum | `.roomodes` (projeto) |
@@ -403,7 +404,7 @@ Onde um nível não tem hook, nada de mecânico impede um comando guardado: use 
 
 ## As pipelines
 
-O contrato vive em [`.agents/graph.md`](.agents/graph.md), o roster de nós em [`.agents/nodes.json`](.agents/nodes.json), o dispatcher executável em [`.claude/workflows/startcycle-dispatch.mjs`](.claude/workflows/startcycle-dispatch.mjs).
+O contrato vive em [`.agents/graph.md`](.agents/graph.md), o roster de nós em [`.agents/nodes.json`](.agents/nodes.json), o dispatcher executável em [`.claude/workflows/fabric-dispatch.mjs`](.claude/workflows/fabric-dispatch.mjs).
 
 **Uma regra: os nós nunca se invocam entre si.** Um dispatcher lê `production_artifacts/state.json` depois de cada nó devolver e decide o que corre a seguir. Não há cadeia de hand-offs nem agente a dizer a outro agente para avançar. Este design garante fidelidade de contexto, auditabilidade da lógica de roteamento num único sítio e portabilidade entre harnesses.
 
@@ -441,21 +442,23 @@ flowchart LR
 
 | Comando | Mecânica | Quando usar |
 |---|---|---|
-| `/startcycle` | Cadeia linear, hand-offs por ficheiro em `production_artifacts/`. Sem máquina de estados, sem repair loop. `/startcycle --skill=<name> <goal>` força uma skill em cada nó. | Um build direto com o roster de agentes mas sem a cerimónia. |
-| `/startcycle-graph` | O graph completo: `state.json` durável, repair loop do Reviewer, quality gate automatizado, escalada humana. | Trabalho de features onde a correção importa mais que a velocidade e quer um trilho de auditoria. |
-| `/startcycle-graph-user` | Fan-out descartável de 2-4 nós. Nada persistente. Tiers de modelo por papel; usa Antigravity, OpenCode ou Codex se instalados, subagents do Claude Code caso contrário. | Um "cria alguns workers" pontual em qualquer projeto. |
+| `/fabric` | Entrada mestra. Lê a tarefa, escolhe um dos modos abaixo e diz qual e porquê numa linha. | Quando não é claro qual modo serve. |
+| `/fabric-graph` | O graph completo: `state.json` durável, repair loop do Reviewer, quality gate automatizado, escalada humana. | Trabalho de features onde a correção importa mais que a velocidade e quer um trilho de auditoria. |
+| `/fabric-multigraph` | Fan-out descartável de 2-4 nós. Nada persistente. Tiers de modelo por papel; usa Antigravity, OpenCode ou Codex se instalados, subagents do Claude Code caso contrário. | Um "cria alguns workers" pontual em qualquer projeto. |
+| `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. | A vague brief that needs sharpening before a team gets it. |
+| `/fabric-swarm`, `/fabric-loop` | Documented, arrive in 5.4.1. Route to `/fabric-multigraph` and `loop-templates` meanwhile. | Many similar workers; repeat until a condition holds. |
 
-### As três variantes lado a lado
+### Os modos lado a lado
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"lineColor": "#6e7681", "edgeLabelBackground": "#f6f1e8", "textColor": "#15171A", "clusterBkg": "#F7F4EC", "clusterBorder": "#B9B5AA", "titleColor": "#15171A", "primaryColor": "#FFFFFF", "primaryBorderColor": "#15171A", "primaryTextColor": "#15171A"}}}%%
 flowchart TB
-    subgraph L["/startcycle (linear)"]
+    subgraph L["/fabric-graph (linear run)"]
         direction LR
         L1("Architect") --> L2("TechLead") --> L3("parallel build") --> L4("Reviewer")
         L1 -. "production_artifacts/*.md" .-> L4
     end
-    subgraph G["/startcycle-graph (durable)"]
+    subgraph G["/fabric-graph (durable)"]
         direction LR
         D{{"Dispatcher<br/>state.json"}}
         D --> N1("node") --> D
@@ -463,7 +466,7 @@ flowchart TB
         D --> Q("quality gate")
         D -. "no progress / ceiling" .-> H(["Human"])
     end
-    subgraph F["/startcycle-graph-user (throwaway)"]
+    subgraph F["/fabric-multigraph (throwaway)"]
         direction LR
         F0("main session") --> W1("worker") & W2("worker") --> F3("review pass")
     end
@@ -955,7 +958,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 
 **Categorias.** <!-- count:skills -->270<!-- /count --> skills curadas, descobertas por cada harness (o catálogo completo gerado está na secção seguinte). Oito categorias, impostas por `npm run validate`:
 
-- **bdb-core**: infraestrutura central do AOS, pipelines, ferramentas e utilitários: `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agenttrail`, `plan-canvas`, `aos-a2a`, `aos-gateway`, `aos-store`, `master-session`, `codebase-memory` e mais.
+- **bdb-core**: infraestrutura central do AOS, pipelines, ferramentas e utilitários: `fabric`, `fabric-graph`, `fabric-multigraph`, `fabric-teamwork`, `fabric-swarm`, `fabric-loop`, `agenttrail`, `plan-canvas`, `aos-a2a`, `aos-gateway`, `aos-store`, `master-session`, `codebase-memory` e mais.
 - **design-ui-ux**: frontend, design de UI, acessibilidade, tokens, motion, anti-slop: `senior-frontend`, `ui-ux-pro-max`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` e mais.
 - **engineering-method**: arquitetura, testes, debugging, CI/CD, qualidade de código: `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `docker-expert`, `makefile-pro` e mais.
 - **library**: especificidades de linguagens e frameworks: TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go e mais.
@@ -1198,7 +1201,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 |---|---|
 | `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions with cron-friendly scheduling. |
 | `agent-memory-mcp` | Hybrid memory system: persistent, searchable knowledge management for AI agents. |
-| `agent-pipeline` | Reference for the seven-node dispatcher graph that /startcycle-graph runs. |
+| `agent-pipeline` | Reference for the seven-node dispatcher graph that /fabric-graph runs. |
 | `agenttrail` | Live map of a multi-agent build in the browser: which plan component, which agent or harness, what is done, what is stuck. |
 | `ao-orchestrator` | Multi-project orchestrator across repositories using the Agent Orchestrator (AO) daemon. |
 | `aos-a2a` | List, send to and reply to live harness peers (Claude Code, OpenCode, Codex, agy) over A2A on localhost. |
@@ -1212,7 +1215,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 | `bdb-memb-mcp` | Model Context Protocol interface to the memB persistent agent memory layer. |
 | `bdb-updater` | Proactively check for and install updates to the AOS package via npm. |
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
-| `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /startcycle-graph. |
+| `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /fabric-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
 | `codebase-memory` | >- |
 | `deja-memory` | Use `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. |
@@ -1233,13 +1236,15 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 | `plan-canvas` | Open plans and HTML artifacts in a local browser canvas where the human annotates, chats, and approves. |
 | `quick-recap` | End each agent response with a red/yellow/green status line. |
 | `skill-create` | >- |
-| `startcycle` | Linear multi-agent build pipeline with file hand-offs in production_artifacts/. |
-| `startcycle-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
-| `startcycle-graph-user` | A small, throwaway multi-agent fan-out in any project. |
+| `fabric` | Master entry for the fabric family: picks the fitting mode for the task and says why. |
+| `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
+| `fabric-loop` | Repeat-until-done mode. Arrives in 5.4.1; routes to loop-templates meanwhile. |
+| `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
+| `fabric-swarm` | Many similar workers on one pool of items. Arrives in 5.4.1; routes to fabric-multigraph meanwhile. |
+| `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `stay-within-limits` | Respect 5-hour and weekly usage limits by checking usage between waves and pausing near the cap. |
 | `subagent-setup` | Configure and synchronize multi-harness subagents with optional per-harness model overrides. |
 | `synapse-integration-skill` | BDB Synapse (3D Codebase Visualizer) integration. |
-| `teamwork-preview` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `token-saver-config` | Context window output compression engine for CLI commands. |
 
 </details>
@@ -1417,7 +1422,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 |---|---|
 | `/brainstorm` | Brainstorm a topic with the matching skill: bdbrainstorm, bdbmediastorm, grill-me. |
 | `/doctor` | Check the machine and project, and print suggested permissions.allow entries without writing settings. |
-| `/graph` | Run the startcycle-graph pipeline. |
+| `/graph` | Run the fabric-graph pipeline. |
 | `/hub` | Open the AOS Hub on 127.0.0.1:7900 (services, plan kits, store) or stop/status it. |
 | `/init` | Set up the current project folder for AOS. |
 | `/loop` | Run a prompt repeatedly on an interval. |
@@ -1428,7 +1433,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 | `/playbooks` | List all pb-* playbooks and start one. |
 | `/setup` | Bring this machine to a complete, verified AOS installation. |
 | `/shipping` | Pre-ship framing and the technical release gate, with approvals under the go-gate rules. |
-| `/startproject` | Start a new composition: project init, brainstorm, then graph or startcycle. |
+| `/startproject` | Start a new composition: project init, brainstorm, then pick a fabric mode. |
 | `/store` | Browse and preview AOS skills, agents and playbooks in the local store UI. |
 
 </details>
@@ -1460,7 +1465,7 @@ Todo o trabalho de UI/UX — a persona `godmode-ui-ux` e as skills de design por
 
 - **`ask-tim`**: recomendação de skill por descrição
 - **`bdbrainstorm`** e **`bdbmediastorm`**: sessões de ideias multi-agente que terminam num plano executável
-- **`teamwork-preview`**: elaboração de prompts, delegação de papéis, configuração de colaboração
+- **`fabric-teamwork`**: elaboração de prompts, delegação de papéis, configuração de colaboração
 - **Família grilling**: `grill-me` (auditoria geral), `grill-with-docs` (ancorado em documentação), `triage` (priorização)
 - **CI/CD e geradores**: `ci-pipeline`, `github-actions-generator`, `docker-expert`, `makefile-pro`
 - **Qualidade de código**: `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`

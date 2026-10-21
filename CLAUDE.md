@@ -37,12 +37,13 @@ identically.
 
 ## Pipeline entry points
 
-- `/startcycle` — `skills/basic/startcycle/SKILL.md`
-- `/startcycle-graph` — `skills/basic/startcycle-graph/SKILL.md`, contract in `.agents/graph.md`, registry in `.agents/nodes.json`, dispatcher at `.claude/workflows/startcycle-dispatch.mjs`
-- `/startcycle-graph-user` — `skills/basic/startcycle-graph-user/SKILL.md`
+- `/fabric` — `skills/basic/fabric/SKILL.md` (master: picks the mode)
+- `/fabric-graph` — `skills/basic/fabric-graph/SKILL.md`, contract in `.agents/graph.md`, registry in `.agents/nodes.json`, dispatcher at `.claude/workflows/fabric-dispatch.mjs`
+- `/fabric-multigraph` — `skills/basic/fabric-multigraph/SKILL.md`
+- `/fabric-teamwork`, `/fabric-swarm`, `/fabric-loop` — `skills/basic/fabric-*/SKILL.md`
 
 Agent personas live in `.claude/agents/`. Agent Teams were evaluated and
-deferred for `/startcycle-graph` — it runs headless and teams need an
+deferred for `/fabric-graph` — it runs headless and teams need an
 interactive session. Read `.agents/graph.md` before reversing that.
 
 ## Validating a skill change

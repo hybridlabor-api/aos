@@ -17,7 +17,7 @@
 | `.openwiki/release_notes.md` | 20 | 🔴 High |
 | `.openwiki/architecture.md` | 15 | 🔴 High |
 | `CLAUDE.md` | 14 | 🔴 High |
-| `skills/basic/startcycle/SKILL.md` | 14 | 🔴 High |
+| `skills/basic/fabric/SKILL.md` | 14 | 🔴 High |
 | `mcp_config.json` | 13 | 🔴 High |
 | `AGENTS.md` | 12 | 🔴 High |
 | `mcps/memb-mcp/memb_ingest.py` | 12 | 🔴 High |

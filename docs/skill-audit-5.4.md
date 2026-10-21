@@ -106,9 +106,9 @@ Refs: where the name is referenced (graph = graph.md/nodes.json/profiles, hook, 
 | seo-audit | global_config | library | 100 | graph+agent | keep-core | shipping node skill (nodes.json) and named by shipping/reviewer/opensource agents |
 | shadcn | global_config | design-ui-ux | 113 | graph+agent+rules | keep-core | ui_ux node skill (nodes.json); first candidates to trim if the owner wants a smaller core |
 | software-architecture | global_config | engineering-method | 190 | graph+agent+rules | keep-core | engineering node skill (nodes.json), also named by engineering/reviewer agents |
-| startcycle | basic | bdb-core | 471 | graph+hook+rules+cmd | keep-core | pipeline entry point; named in routing block, hooks, commands |
-| startcycle-graph | basic | bdb-core | 510 | graph+hook+agent+rules+cmd | keep-core | pipeline entry point; named in routing block, hooks, commands |
-| startcycle-graph-user | basic | bdb-core | 527 | graph+hook+rules | keep-core | pipeline entry point; named in routing block, hooks, commands |
+| fabric | basic | bdb-core | 471 | graph+hook+rules+cmd | keep-core | pipeline entry point; named in routing block, hooks, commands |
+| fabric-graph | basic | bdb-core | 510 | graph+hook+agent+rules+cmd | keep-core | pipeline entry point; named in routing block, hooks, commands |
+| fabric-multigraph | basic | bdb-core | 527 | graph+hook+rules | keep-core | pipeline entry point; named in routing block, hooks, commands |
 | stay-within-limits | global_config | bdb-core | 187 | graph | keep-core | listed in nodes.json "common" for every graph node |
 | subagent-driven-development | global_config | engineering-method | 343 | graph+agent | keep-core | techlead node skill (nodes.json) |
 | systematic-debugging | global_config | engineering-method | 91 | graph+agent+rules | keep-core | reviewer node skill; systematic-debugging named by 31 agents |
@@ -286,7 +286,7 @@ Refs: where the name is referenced (graph = graph.md/nodes.json/profiles, hook, 
 | subagent-setup | global_config | bdb-core | 204 | - | move-to-store | tool/config guide for a single optional component |
 | synapse-integration-skill | (root) | bdb-core | 75 | - | move-to-store | tool/config guide for a single optional component |
 | tanstack-query-expert | global_config | library | 192 | - | move-to-store | JS/React library detail, no pipeline reference |
-| teamwork-preview | basic | bdb-core | 238 | - | move-to-store | single-purpose or documented-only; one AGENTS.md mention at most |
+| fabric-teamwork | basic | bdb-core | 238 | - | move-to-store | single-purpose or documented-only; one AGENTS.md mention at most |
 | threejs-skills | global_config | media-eventtech | 191 | graph+agent+rules | move-to-store | media/eventtech pack; in nodes.json only for the optional media_eventtech node. Needs the node to tolerate a missing skill or auto-install it |
 | tmux | global_config | library | 136 | hook | move-to-store | general research/terminal helper; harness-native deep-research exists, no pipeline reference |
 | to-spec | global_config | engineering-method | 149 | - | move-to-store | issue-tracker/domain workflow family; opt-in methodology |

@@ -3,7 +3,7 @@
 The AOS installer copies these into `~/.config/opencode` (`%APPDATA%\opencode` on Windows):
 
 - `plugins/bdb-aos.js` with `plugins/aos-hooks/` and `plugins/lib/` (go-gate, loop keeper, bus)
-- `commands/startcycle-graph.md` and one generated `commands/bdb-aos-<cmd>.md` per AOS command, called as `/bdb-aos-<cmd>` (flat hyphen names; a colon is not valid in Windows file names)
+- `commands/fabric-graph.md` and one generated `commands/bdb-aos-<cmd>.md` per AOS command, called as `/bdb-aos-<cmd>` (flat hyphen names; a colon is not valid in Windows file names)
 
 The command files are generated from `plugin-commands.json` by `node scripts/build-plugin-manifest.mjs` and checked by `--check`. A command may carry `bodies.opencode`; without it the Claude body is used with `/bdb-aos:<cmd>` rewritten to `/bdb-aos-<cmd>`.
 
@@ -63,4 +63,4 @@ opencode debug config # what OpenCode resolved: plugin_origins, command, mcp, ag
 opencode debug skill  # skills it found
 ```
 
-Checked on OpenCode 1.18.30 against a fresh `HOME` after a full install: `plugin_origins` holds one `file://.../plugins/bdb-aos.js`, `command` holds the 14 `bdb-aos-*` commands plus `startcycle-graph`, 29 agents came from `~/.opencode/agents` (21 before the ECC language-reviewer round), `debug skill` lists 249 unique skills, and the log shows no plugin error. Tests: `tests/opencode-verify.test.js`; with `AOS_E2E_CLI=1` it installs into a temp `HOME` and asks the real `opencode`.
+Checked on OpenCode 1.18.30 against a fresh `HOME` after a full install: `plugin_origins` holds one `file://.../plugins/bdb-aos.js`, `command` holds the 14 `bdb-aos-*` commands plus `fabric-graph`, 29 agents came from `~/.opencode/agents` (21 before the ECC language-reviewer round), `debug skill` lists 249 unique skills, and the log shows no plugin error. Tests: `tests/opencode-verify.test.js`; with `AOS_E2E_CLI=1` it installs into a temp `HOME` and asks the real `opencode`.
