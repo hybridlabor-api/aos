@@ -344,3 +344,12 @@ test('update leaves the hub alone when the user disabled it', async () => {
     await menu.update(m.host, m.opts());
     assert.doesNotMatch(m.text(), /Supervisor: installing/);
 });
+
+test('update with a package older than the install changes nothing and records no version', async () => {
+    const m = machine({ localKernel: '99.0.0', membVersion: '2.4.0' });
+    const code = await menu.update(m.host, m.opts());
+    assert.strictEqual(code, 0);
+    assert.match(m.text(), new RegExp(`installed 99\\.0\\.0 is newer than this package ${runningVersion.replace(/\./g, '\\.')}; nothing changed`));
+    assert.doesNotMatch(m.text(), /Verify: all ok|Verified OK/);
+    for (const c of ['saveManifest', 'flushSessionManifest', 'quickUpdateKernel', 'quickUpdateHarnesses']) assert.ok(!m.calls.includes(c), `${c} must not run`);
+});
