@@ -17,14 +17,17 @@ category: bdb-core
 `production_artifacts/swarm.json`, written ONLY by the dispatcher:
 
 ```json
-{ "goal": "", "worker_brief": "", "max_workers": 4,
+{ "goal": "", "worker_brief": "", "max_workers": 4, "review_done": false,
   "items": [ { "id": "", "input": "", "status": "open|claimed|done|failed", "worker": "", "attempts": 0, "result": "" } ] }
 ```
 
 - The dispatcher clamps `max_workers` to 1..6 on write.
 - `--skill=<name>` is passed through into the `worker_brief` of every worker.
 - Workers never write it; they return their result to the dispatcher.
-- The claim: the dispatcher marks an item `claimed` for a worker before starting it, so no item runs twice. A resumed session continues from the file: on resume every `claimed` item goes back to `open` and that counts as one attempt (`attempts` above 2 means `failed`).
+- The claim: the dispatcher marks an item `claimed` for a worker before starting it, so no item runs twice.
+- Attempt counter: `attempts` is incremented exactly once per attempt, when the dispatcher claims an item (`open` -> `claimed`). Nowhere else. Max 2 attempts per item.
+- `review_done` is `false` until the one review pass has run (see Loop step 4).
+- Resume: the file is the source of truth. On resume, every `claimed` item goes back to `open`; the interrupted attempt already counted at claim, so nothing is incremented. If that item already has `attempts` = 2, it becomes `failed` with result `interrupted` instead.
 
 ## Width
 
@@ -32,10 +35,11 @@ Default 4 workers at a time, hard cap 6 (same as workstreams). Harness or user l
 
 ## Loop
 
-1. Fill free slots with the next `open` item (mark it `claimed`, set `worker`, bump `attempts`).
+1. Fill free slots with the next `open` item: mark it `claimed`, set `worker`, and increment `attempts` by 1. This is the only place `attempts` is incremented.
 2. On a result: mark `done` with a one-line `result`.
-3. On a failed attempt: set the item back to `open` (`attempts` + 1) until `attempts` is 2, then mark it `failed` with the error as `result`.
-4. When no item is `open` or `claimed`, run one review pass over all results (a reviewer subagent reads the results against the `worker_brief`) and report done/failed counts. If the review pass rejects items, it lists them and the dispatcher sets them back to `open` once (no second review round), then reports.
+3. On a worker failure, without touching `attempts`: if `attempts` < 2, set the item back to `open`; if `attempts` = 2, mark it `failed` with the error as `result`.
+4. When no item is `open` or `claimed` and `review_done` is `false`, run the review pass once over the `done` results (a reviewer subagent reads them against the `worker_brief`), then set `review_done` to `true`. Rejected items go back to `open` with `attempts` set to 1 (a reset, not an increment), so each gets exactly one more attempt: its next claim makes `attempts` 2. Then return to step 1.
+5. When no item is `open` or `claimed` and `review_done` is `true`, the run ends: report done/failed counts. No second review round.
 
 ## Stop
 

@@ -27,6 +27,38 @@ test('fabric-swarm skill is the real contract', () => {
   assert.match(s, /Agents never invoke each other/);
 });
 
+test('fabric-swarm attempt counter is incremented exactly once, at claim', () => {
+  const s = read('skills', 'basic', 'fabric-swarm', 'SKILL.md');
+  assert.match(s, /incremented exactly once/);
+  assert.match(s, /when the dispatcher claims an item \(`open` -> `claimed`\)\. Nowhere else/);
+  assert.match(s, /increment `attempts` by 1\. This is the only place `attempts` is incremented/);
+  assert.match(s, /nothing is incremented/);
+});
+
+test('fabric-swarm allows 2 attempts per item, then failed', () => {
+  const s = read('skills', 'basic', 'fabric-swarm', 'SKILL.md');
+  assert.match(s, /Max 2 attempts per item/);
+  assert.match(s, /if `attempts` < 2, set the item back to `open`/);
+  assert.match(s, /if `attempts` = 2, mark it `failed` with the error as `result`/);
+  assert.match(s, /already has `attempts` = 2, it becomes `failed` with result `interrupted`/);
+});
+
+test('fabric-swarm runs one review pass tracked by review_done', () => {
+  const s = read('skills', 'basic', 'fabric-swarm', 'SKILL.md');
+  assert.match(s, /"review_done": false/);
+  assert.match(s, /`review_done` is `false` until the one review pass has run/);
+  assert.match(s, /and `review_done` is `false`, run the review pass once/);
+  assert.match(s, /then set `review_done` to `true`/);
+  assert.match(s, /and `review_done` is `true`, the run ends/);
+  assert.match(s, /No second review round/);
+});
+
+test('fabric-swarm rejected items get exactly one more attempt', () => {
+  const s = read('skills', 'basic', 'fabric-swarm', 'SKILL.md');
+  assert.match(s, /Rejected items go back to `open` with `attempts` set to 1/);
+  assert.match(s, /so each gets exactly one more attempt/);
+});
+
 test('fabric skill documents swarm and the flags', () => {
   const s = read('skills', 'basic', 'fabric', 'SKILL.md');
   const row = s.split('\n').find((l) => l.startsWith('| `fabric-swarm`'));
