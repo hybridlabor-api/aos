@@ -20,16 +20,19 @@ export const AOS = {
 // Redaction
 // ---------------------------------------------------------------------------
 
+const SECRET_KEY = '[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|key|authorization)[A-Za-z0-9_.-]*'
 const REDACTIONS: Array<[RegExp, string]> = [
-  [/\b(Authorization)\s*[:=]\s*(?:Bearer|Basic|Token)?\s*[^\s,;"']+/gi, '$1: [redacted]'],
+  // KEY=VALUE, KEY: VALUE, "key": "value", any identifier containing a secret word, Bearer/Basic values included
+  [new RegExp(`(["']?)(${SECRET_KEY})(\\1\\s*[:=]\\s*)("[^"]*"|'[^']*'|(?:(?:Bearer|Basic|Token)\\s+)?[^\\s,;&"'}]+)`, 'gi'), '$1$2$3[redacted]'],
   [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, 'Bearer [redacted]'],
-  [/\b((?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)[\w-]*)\s*[=:]\s*[^\s,;"'&]+/gi, '$1=[redacted]'],
   [/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/g, '[redacted]'],
   [/\bgh[pousr]_[A-Za-z0-9]{20,}/g, '[redacted]'],
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, '[redacted]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted]'],
 ]
+
+export const shq = (text: string) => `'${String(text).replace(/'/g, `'\\''`)}'`
 
 export const redact = (text: string): string => REDACTIONS.reduce((t, [re, to]) => t.replace(re, to), String(text))
 
@@ -45,13 +48,16 @@ export type TtlCache = {
 }
 
 export const createTtlCache = (ttlMs = PROBE_TTL_MS): TtlCache => {
-  const entries = new Map<string, { at: number; value: unknown }>()
+  const entries = new Map<string, { at: number; value: Promise<unknown> }>()
   return {
-    async get<T>(key: string, now: number, load: () => Promise<T>) {
+    get<T>(key: string, now: number, load: () => Promise<T>) {
       const hit = entries.get(key)
-      if (hit && now - hit.at < ttlMs) return hit.value as T
-      const value = await load()
+      if (hit && now - hit.at < ttlMs) return hit.value as Promise<T>
+      for (const [k, v] of entries) if (now - v.at >= ttlMs) entries.delete(k)
+      // in-flight probes are shared per key; a failed load is not cached
+      const value = load()
       entries.set(key, { at: now, value })
+      value.catch(() => entries.delete(key))
       return value
     },
     size: () => entries.size,
@@ -245,7 +251,7 @@ export function bandSegments(args: {
   const modeColor = mode === 'hard' ? AOS.ok : mode === 'soft' ? AOS.warn : mode === 'off' ? AOS.bad : AOS.muted
   const segs: BandSegment[] = [
     { text: 'AOS', color: AOS.accent },
-    { text: `gate ${mode.toUpperCase()}${args.gate?.error ? ' (error)' : ''}`, color: modeColor },
+    { text: `gate ${mode.toUpperCase()}${args.gate?.error ? ` (${redact(args.gate.error).slice(0, 40)})` : ''}`, color: modeColor },
     { text: usageShort(args.usage, args.nowMs), color: AOS.text },
     { text: args.phase ? `pipeline ${args.phase.replace(/_/g, ' ')}${args.needsHuman ? ' !' : ''}` : 'pipeline idle', color: args.phase ? AOS.info : AOS.muted },
   ]

@@ -13,6 +13,7 @@ import {
   gateFromRun,
   kTokens,
   logoMark,
+  shq,
   logoRgba,
   parseGateStatus,
   redact,
@@ -160,7 +161,7 @@ const dim = (rgb: number) =>
   (((rgb >> 16) & 0xff) * 0.4) << 16 | (((rgb >> 8) & 0xff) * 0.4) << 8 | ((rgb & 0xff) * 0.4)
 
 export const roleColor = (s: FleetSession) =>
-  s.activity === 'idle' ? dim(ROLE_COLOR[s.role]) : ROLE_COLOR[s.role]
+  s.activity === 'idle' ? dim(ROLE_COLOR[s.role] ?? ROLE_COLOR.worker) : ROLE_COLOR[s.role] ?? ROLE_COLOR.worker
 
 export const fit = (text: string, width: number) =>
   text.length > width ? `${text.slice(0, width - 1)}…` : text
@@ -462,15 +463,26 @@ export const demoPipeline = (): PipelineState => ({
   needs_human: false,
 })
 
-const redactSession = (s: FleetSession): FleetSession => ({
-  ...s,
-  name: redact(s.name),
-  ...(s.reason ? { reason: redact(s.reason) } : {}),
-  ...(s.phase ? { phase: redact(s.phase) } : {}),
-  ...(s.repo ? { repo: redact(s.repo) } : {}),
-  ...(s.branch ? { branch: redact(s.branch) } : {}),
-  cwd: redact(s.cwd),
-})
+const ACTIVITIES: FleetActivity[] = ['working', 'idle', 'attention']
+
+// external JSON: enums fall back safely so a malformed file can never crash a render
+export const redactSession = (s: FleetSession): FleetSession => {
+  const name = redact(String(s.name ?? s.id ?? 'unknown'))
+  return {
+    ...s,
+    id: String(s.id ?? name),
+    name,
+    role: ROLES.includes(s.role) ? s.role : roleFromName(name),
+    activity: ACTIVITIES.includes(s.activity) ? s.activity : 'idle',
+    ...(s.reason ? { reason: redact(String(s.reason)) } : {}),
+    ...(s.phase ? { phase: redact(String(s.phase)) } : {}),
+    ...(s.repo ? { repo: redact(String(s.repo)) } : {}),
+    ...(s.branch ? { branch: redact(String(s.branch)) } : {}),
+    ...(s.trailNode ? { trailNode: redact(String(s.trailNode)) } : {}),
+    cwd: redact(String(s.cwd ?? '')),
+    updatedAt: Number(s.updatedAt) || 0,
+  }
+}
 
 async function loadFleet($: EngineInterface) {
   if (await isDemo($)) {
@@ -835,8 +847,8 @@ async function renderFleetBody($: EngineInterface, e: PaneInput) {
             {shown.map(s => (
               <Box key={s.id} flexDirection="column" width={CARD}>
                 <Raster key={`sprite-${s.id}`} columns={SPRITE_W} rows={2} cells={spriteCells(s, frame)} />
-                <Text bold color={hex(roleColor(s))}>{fit(s.name, CARD - 2)}</Text>
-                <Text color={DOT[s.activity].color}>{DOT[s.activity].glyph} {fit(s.reason ?? (s.activity === 'working' ? s.phase ?? 'working' : 'idle'), CARD - 4)}</Text>
+                <Text bold color={hex(roleColor(s))}>{fit(redact(s.name), CARD - 2)}</Text>
+                <Text color={(DOT[s.activity] ?? DOT.idle).color}>{(DOT[s.activity] ?? DOT.idle).glyph} {fit(redact(s.reason ?? (s.activity === 'working' ? s.phase ?? 'working' : 'idle')), CARD - 4)}</Text>
                 {s.progress ? (
                   <Box flexDirection="row">
                     <Text color={AOS.ok}>{'■'.repeat(filled(s.progress))}</Text>
@@ -885,10 +897,10 @@ async function renderPipelineBody($: EngineInterface, e: PaneInput) {
   const summary = (
     <Box key="summary" flexDirection="column" borderStyle="round" borderColor={AOS.border} paddingX={1} marginBottom={1}>
       <Box flexDirection="row" justifyContent="space-between">
-        <Text bold wrap="truncate-end">{state.run_id}</Text>
+        <Text bold wrap="truncate-end">{redact(state.run_id)}</Text>
         <Text dimColor wrap="truncate-end">{state.iteration}/{state.max_iterations} repairs</Text>
       </Box>
-      <Text dimColor wrap="truncate-end">{state.goal}</Text>
+      <Text dimColor wrap="truncate-end">{redact(state.goal)}</Text>
       {state.needs_human && <Text color={AOS.warn}>▲ needs human</Text>}
       <Box flexDirection="row" justifyContent="space-between">
         <Text wrap="truncate-end">findings {counts.open} open ({counts.blocking} blocking)</Text>
@@ -904,7 +916,7 @@ async function renderPipelineBody($: EngineInterface, e: PaneInput) {
       ) : (
         counts.gates.map(([k, v]) => (
           <Box key={`gate-${k}`} flexDirection="row" justifyContent="space-between">
-            <Text wrap="truncate-end">{k}</Text>
+            <Text wrap="truncate-end">{redact(k)}</Text>
             <Text color={v === 'pass' ? AOS.ok : v === 'fail' ? AOS.bad : AOS.muted}>{v}</Text>
           </Box>
         ))
@@ -924,7 +936,7 @@ async function renderPipelineBody($: EngineInterface, e: PaneInput) {
           const bar = Math.round((nodeOpen.filter(f => f.severity === 'blocking').length / Math.max(1, nodeTotal)) * PIPELINE_BAR)
           return (
             <Box key={`find-${node}`} flexDirection="row" justifyContent="space-between">
-              <Text wrap="truncate-end">{node}</Text>
+              <Text wrap="truncate-end">{redact(node)}</Text>
               <Box flexDirection="row">
                 <Text color={AOS.ok}>{'■'.repeat(PIPELINE_BAR - bar)}</Text>
                 <Text color={AOS.bad}>{'■'.repeat(bar)}</Text>
@@ -975,11 +987,11 @@ async function renderGitBody($: EngineInterface, e: PaneInput) {
     <Box key={`wt-${i}`} flexDirection="row" justifyContent="space-between">
       <Box key={`wt-${i}-l`} flexDirection="row">
         {stageBadge(w.stage)}
-        <Text dimColor wrap="truncate-end">{' '}{w.isAgentWorktree ? (w.agentName ?? 'agent') : 'project'}</Text>
-        <Text wrap="truncate-end">{' '}{fit(w.branch, 24)}</Text>
+        <Text dimColor wrap="truncate-end">{' '}{w.isAgentWorktree ? redact(w.agentName ?? 'agent') : 'project'}</Text>
+        <Text wrap="truncate-end">{' '}{fit(redact(w.branch), 24)}</Text>
       </Box>
       <Box key={`wt-${i}-r`} flexDirection="row">
-        <Text dimColor wrap="truncate-end">{w.head}</Text>
+        <Text dimColor wrap="truncate-end">{redact(w.head)}</Text>
         {w.dirtyCount > 0 && <Text color={AOS.warn}>{' '}{w.dirtyCount} dirty</Text>}
         {w.aheadCount > 0 && <Text color={AOS.info}>{' '}+{w.aheadCount}</Text>}
         {w.behindCount > 0 && <Text color={AOS.bad}>{' '}-{w.behindCount}</Text>}
@@ -996,9 +1008,9 @@ async function renderGitBody($: EngineInterface, e: PaneInput) {
       <Box key="git-head" flexDirection="row" justifyContent="space-between" marginBottom={1}>
         <Text bold color={AOS.accent}>WORKTREES</Text>
         <Box flexDirection="row">
-          <Button key="fetch" plain label="fetch" onPress={() => void fillPreset($, `git -C ${root} fetch origin`)} />
+          <Button key="fetch" plain label="fetch" onPress={() => void fillPreset($, `git -C ${shq(root)} fetch origin`)} />
           <Box marginRight={1} />
-          <Button key="prune" plain label="prune" onPress={() => void fillPreset($, `git -C ${root} worktree prune`)} />
+          <Button key="prune" plain label="prune" onPress={() => void fillPreset($, `git -C ${shq(root)} worktree prune`)} />
         </Box>
       </Box>
       {wide ? (
@@ -1030,12 +1042,13 @@ async function renderControlBody($: EngineInterface, e: PaneInput) {
         <Text bold color={AOS.accent}>GO-GATE</Text>
         <Text color={MODE_COLOR[gate.mode] ?? AOS.warn}>{gate.mode.toUpperCase()}</Text>
       </Box>
+      {gate.error && <Text color={AOS.muted} wrap="truncate-end">{redact(gate.error).slice(0, 80)}</Text>}
       {gate.grants.length === 0 ? (
         <Text dimColor>no active grants</Text>
       ) : (
         gate.grants.map(g => (
           <Box key={`grant-${g.scope}`} flexDirection="row" justifyContent="space-between">
-            <Text wrap="truncate-end">{g.scope}</Text>
+            <Text wrap="truncate-end">{redact(g.scope)}</Text>
             <Text color={grantColor(g.minutesLeft)}>{timeLeft(g.minutesLeft)} left</Text>
           </Box>
         ))
@@ -1108,11 +1121,11 @@ async function renderControlBody($: EngineInterface, e: PaneInput) {
       ) : (
         services.map(s => (
           <Box key={`svc-${s.id}`} flexDirection="row" justifyContent="space-between">
-            <Text wrap="truncate-end">{s.name}{s.port ? `:${s.port}` : ''}</Text>
+            <Text wrap="truncate-end">{redact(s.name)}{s.port ? `:${s.port}` : ''}</Text>
             <Box flexDirection="row">
               <Text color={s.status === 'running' ? AOS.ok : s.status === 'down' ? AOS.bad : AOS.muted}>{s.status}</Text>
               <Box marginRight={1} />
-              <Button key={`restart-${s.id}`} plain label="restart" onPress={() => void fillPreset($, `aos service restart ${s.id}`)} />
+              <Button key={`restart-${s.id}`} plain label="restart" onPress={() => void fillPreset($, `aos service restart ${shq(s.id)}`)} />
             </Box>
           </Box>
         ))
@@ -1144,6 +1157,18 @@ async function renderControlBody($: EngineInterface, e: PaneInput) {
 // Public register hook
 // ---------------------------------------------------------------------------
 
+export const renderErrorText = (err: unknown) =>
+  `AOS Control: render error: ${redact(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
+
+function errorBox($: EngineInterface, e: Parameters<EngineInterface['ui']['resolve']>[0], err: unknown) {
+  const { Box, Text } = $.ui.resolve(e)
+  return (
+    <Box key="render-error">
+      <Text color={AOS.bad} wrap="truncate-end">{renderErrorText(err)}</Text>
+    </Box>
+  )
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
@@ -1167,6 +1192,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
+    try {
     const { Box, Text } = $.ui.resolve(e)
     const [gate, usage, pipeline, nowMs] = [await read($, gate_), await read($, usage_), await read($, pipeline_), await $.clock.now()]
     const segs = bandSegments({ gate, usage, phase: pipeline?.phase, needsHuman: pipeline?.needs_human, nowMs })
@@ -1176,6 +1202,9 @@ export const register: Register = on => {
       parts.push(<Text key={`band-${i}`} color={sg.color} bold={i === 0} wrap="truncate-end">{sg.text}</Text>)
     })
     return <Box key="band" flexDirection="row">{parts as never}</Box>
+    } catch (err) {
+      return errorBox($, e, err)
+    }
   })
 
   on('command.run', { command: 'aos-control' }, async ($, e) => {
@@ -1191,6 +1220,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    try {
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
     const active = await read($, tab_)
@@ -1222,5 +1252,8 @@ export const register: Register = on => {
         {msg && <Text color={AOS.warn} wrap="truncate-end">{redact(msg)}</Text>}
       </Box>
     )
+    } catch (err) {
+      return errorBox($, e, err)
+    }
   })
 }

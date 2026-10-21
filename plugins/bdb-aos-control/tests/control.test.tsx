@@ -12,6 +12,8 @@ import {
   parseStatusBranch,
   parseV5Settings,
   parseWorktrees,
+  redactSession,
+  renderErrorText,
   roleHint,
   tokenEstimate,
 } from '../hooks/register'
@@ -26,6 +28,7 @@ import {
   logoMark,
   logoRgba,
   redact,
+  shq,
   usageRows,
   usageShort,
 } from '../hooks/lib'
@@ -72,7 +75,10 @@ const controlMocks = (on: any, nowMs: { n: number }, files: Record<string, strin
   on('session.id', () => ({ value: 'sid' }))
   on('session.cwd', () => ({ value: '/x' }))
   on('session.repo', () => ({ value: null }))
-  on('clock.now', () => ({ value: (nowMs.n += 60_000) }))
+  on('clock.now', () => {
+    if (nowMs.n < 0) throw new Error('boom token=abc123')
+    return { value: (nowMs.n += 60_000) }
+  })
   on('clock.every', () => ({ value: { cancel: 'noop' } } as never))
   on('fs.read', (_$: unknown, e: unknown) => {
     const path = JSON.stringify(e)
@@ -547,4 +553,54 @@ test('the band and the deck render in the mod', async ($, on) => {
   expect(json).toContain('resets 2h')
   expect(json).toContain('CONTEXT')
   expect(json).toContain('Messages')
+})
+
+test('redact masks prefixed identifiers and JSON forms', () => {
+  expect(redact('DB_PASSWORD=hunter2')).toBe('DB_PASSWORD=[redacted]')
+  expect(redact('OPENAI_API_KEY=abc123')).toBe('OPENAI_API_KEY=[redacted]')
+  expect(redact('GITHUB_TOKEN: xyz')).toBe('GITHUB_TOKEN: [redacted]')
+  expect(redact('{"password": "p w", "ok": 1}')).toBe('{"password": [redacted], "ok": 1}')
+  expect(redact("{'client_secret':'s3'}")).not.toContain('s3')
+  expect(redact('"Authorization": "Bearer abcdef123456"')).not.toContain('abcdef123456')
+})
+
+test('redactSession falls back safely for bad enums and redacts text', () => {
+  const s = redactSession({ id: 'x', name: 'worker-token=abc', role: 'bogus', activity: 'sleeping', cwd: '/x', updatedAt: 1, trailNode: 'API_KEY=k1' } as never)
+  expect(s.role).toBe('worker')
+  expect(s.activity).toBe('idle')
+  expect(s.name).toBe('worker-token=[redacted]')
+  expect(s.trailNode).toBe('API_KEY=[redacted]')
+})
+
+test('shq single-quotes prefilled values', () => {
+  expect(shq("a'b c")).toBe("'a'\\''b c'")
+})
+
+test('probe cache dedupes in-flight loads and evicts expired entries', async () => {
+  const cache = createTtlCache(10_000)
+  let loads = 0
+  const load = async () => ++loads
+  await Promise.all([cache.get('a', 0, load), cache.get('a', 1, load)])
+  expect(loads).toBe(1)
+  await cache.get('b', 20_000, load)
+  expect(cache.size()).toBe(1)
+})
+
+test('band shows the short gate error next to UNKNOWN', () => {
+  const t = bandText(bandSegments({ gate: { mode: 'unknown', grants: [], raw: '', error: 'spawn ENOENT' }, usage: null, nowMs: NOW }))
+  expect(t).toContain('gate UNKNOWN (spawn ENOENT)')
+})
+
+test('a throwing render becomes a one-line redacted error box', async ($, on) => {
+  const nowMs = { n: 60_000 }
+  controlMocks(on, nowMs, {}, true)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true } as never)
+  nowMs.n = -1
+  const band = await $.ui.mount({ plugin: 'bdb-aos-control', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 5 } } as never)
+  const bandJson = JSON.stringify(await band.drawn())
+  expect(bandJson).toContain('render error')
+  expect(bandJson).not.toContain('abc123')
+  const pane = await $.ui.mount(CONTROL_MOUNT(80) as never)
+  expect(JSON.stringify(await pane.drawn())).toContain('render error')
+  expect(renderErrorText(new Error('x password=p'))).toBe('AOS Control: render error: x password=[redacted]')
 })
