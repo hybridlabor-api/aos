@@ -87,6 +87,9 @@ export const neverGrantable = (command) => typeof command === "string" && [comma
 const PS_GUARDED = [
   re(String.raw`(?:^|[\s;|({"'])(?:iex|Invoke-Expression)(?=[\s;|)}'"]|$)`),
   re(String.raw`\b(?:Invoke-(?:WebRequest|RestMethod)|iwr|irm)\b[^;|\n]*?\s-m\w*[\s:=]+['"]?(?:POST|PUT|DELETE|PATCH)\b`),
+  // Exec by indirection: the target (git push, a shell with a quoted body) is not read through Start-Process, so it is a plain GO whatever it starts.
+  re(String.raw`(?:Start-Process|saps|start|Invoke-Item|ii)(?=[\s;|)}'"]|$)`),
+  /\[(?:System\.)?Diagnostics\.Process\]\s*::\s*Start/i,
 ];
 
 export const GUARDED_PATTERNS = [
@@ -147,6 +150,7 @@ export function setOpencodeServer(url) {
 const NET_CLIENT = /(?:^|[\s;&|(`'"{])(?:curl|wget|http|https|xh|nc|ncat|netcat|socat|telnet|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)(?:\.exe)?(?=[\s'"])/i;
 const NET_CODE = /\b(?:fetch\s*\(|XMLHttpRequest|http\.request|https?\.(?:get|request)|urllib|requests\.|httpx|aiohttp|socket|net\.(?:connect|Socket|createConnection)|Net::HTTP|open-uri|URI\.open|WebClient|curl_)/;
 const LOOPBACK = /127(?:\.\d{1,3}){0,3}|localhost|::1|0\.0\.0\.0|0x7f[0-9a-f]*|2130706433|::ffff:/i;
+const LOOP_NAME = /(?:^|\.)(?:localhost|localtest\.me|lvh\.me|nip\.io|sslip\.io|xip\.io|local|lan|internal|test|localdomain)$/i;
 export function opencodeSelfPost(command) {
   if (typeof command !== "string") return false;
   const t = normDash(command);
@@ -156,7 +160,8 @@ export function opencodeSelfPost(command) {
   const ports = [...ocPorts].join("|");
   const portHit = (x) => new RegExp(`(?<!\\d)(?:${ports})(?!\\d)`).test(x);
   const loop = [t, flat, joined].some((x) => LOOPBACK.test(x));
-  const foreign = /https?:\/\/(?!(?:127|localhost|\[?::1|0\.0\.0\.0))[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/i.test(flat);
+  // Only a literal public name is foreign; names that resolve to loopback or the LAN (localtest.me, *.localhost, nip.io) are self.
+  const foreign = [...flat.matchAll(/https?:\/\/(?!(?:127|localhost|\[?::1|0\.0\.0\.0))([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})/gi)].some((m) => !LOOP_NAME.test(m[1]));
   // a computed port or host next to a loopback host, or a computed URL: cannot be resolved here
   const computed = /(?:127(?:\.\d+){0,3}|localhost|::1|0\.0\.0\.0)[^\s/]*:(?:\d*[$`{\[(]|[^\s/]*[$`{\[(])|https?:\/\/[^\s/]*[$`{\[(]/i.test(flat);
   if (!([t, flat, joined].some(portHit) && (loop || !foreign)) && !computed) return false;
@@ -168,7 +173,8 @@ export function opencodeSelfPost(command) {
   }
   return true;
 }
-export const opencodeRoute = (command) => typeof command === "string" && (opencodeSelfPost(command) || [command, unIFS(command), unIFS(commandView(command).text)].some((t) => OC_ROUTE_PATTERNS.some((r) => r.test(t))));
+// `gogate off` also never lifts the never-grantable set (aos-gate grant|work|profile writes a global grant that outlives the session).
+export const opencodeRoute = (command) => typeof command === "string" && (opencodeSelfPost(command) || neverGrantable(command) || [command, unIFS(command), unIFS(commandView(command).text)].some((t) => OC_ROUTE_PATTERNS.some((r) => r.test(t))));
 
 // ---------------------------------------------------------------------------
 // Scopes: each guarded command segment maps to the grant scope(s) it needs.
@@ -1994,6 +2000,8 @@ const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|st
 // Windows spellings read like their POSIX twins: a drive path's backslashes become slashes
 // (C:\x\bin\aos-uninstall.cmd) and git.exe / GH.EXE / npm.cmd / aos-*.ps1 lose the suffix.
 // Without this, gh.exe pr merge, git.exe push and a full-path aos-uninstall.cmd were free.
+const shellHead = (names) => new RegExp(String.raw`(^|[;&|(\n]\s*)(?:&\s*)?(?:"(?:[^"]{0,256}[\\/])?(${names})(?:\.exe)?"|'(?:[^']{0,256}[\\/])?(${names})(?:\.exe)?'|(?:[^\s"';&|()]{0,256}[\\/])?(${names})(?:\.exe)?)(?=\s)`, "gi");
+const shellHeadName = (_m, pre, a, b, c) => pre + (a || b || c);
 export function winNorm(command) {
   let s = String(command)
     .replace(/(?<![\w\\])[A-Za-z]:\\[^\s;&|'"<>]*/g, (m) => m.replace(/\\/g, "/"))
@@ -2001,6 +2009,9 @@ export function winNorm(command) {
   // Codex on Windows wraps every command as `powershell.exe -NoProfile -Command "<cmd>"`; cmd /c does
   // the same. Read both like `bash -c`, whose quoted body the classifier already opens (Lenovo P15).
   // Only when the word is there: the path prefix would otherwise cost time on pathological input.
+  // Head spellings (.\powershell.exe, 'pwsh', "C:\..\pwsh.exe", & 'powershell.exe') reduce to the bare name before any rule reads them.
+  if (/powershell|pwsh/i.test(s)) s = s.replace(shellHead("powershell|pwsh"), shellHeadName);
+  if (/\bcmd\b/i.test(s)) s = s.replace(shellHead("cmd"), shellHeadName);
   if (/powershell|pwsh/i.test(s)) s = s.replace(new RegExp(String.raw`(?:"?[^\s"]{0,256}\/)?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:${PS_CMD})\b)[\w:]+(?:\s+(?!-)\w+)?){0,16})\s+-(?:${PS_CMD})(?=\s)`, "gi"), "bash -c");
   if (/\bcmd\b/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?\bcmd(?:\.exe)?"?\s+\/[ck](?=\s)/gi, "bash -c");
   return s;
@@ -2009,18 +2020,20 @@ export function winNorm(command) {
 // Read-only PowerShell, judged by content: every statement head must be a known read-only command
 // and nothing may write, redirect, call a method or static member, or invoke through `&`/`.`/iex.
 // Anything unclear returns false and falls through to the ordinary classifier (never frees by shape).
-const PS_CMDLET = /^(?:Get-\w+|Select-String|Select-Object|Where-Object|ForEach-Object|Sort-Object|Measure-Object|Group-Object|Compare-Object|Format-\w+|Out-String|Out-Null|Write-(?:Output|Host|Warning|Error)|Test-Path|Join-Path|Split-Path|Resolve-Path|Start-Sleep|Convert(?:From|To)-\w+|Invoke-(?:WebRequest|RestMethod)|gci|ls|dir|gc|cat|type|sls|select|where|sort|measure|ft|fl|iwr|irm|echo|pwd|gi|gp|gm|%|\?)$/i;
+const PS_CMDLET = /^(?:Get-\w+|Select-String|Select-Object|Where-Object|ForEach-Object|Sort-Object|Measure-Object|Group-Object|Compare-Object|Format-(?:Table|List|Wide|Custom|Hex)|Out-String|Out-Null|Write-(?:Output|Host|Warning|Error)|Test-Path|Join-Path|Split-Path|Resolve-Path|Start-Sleep|Convert(?:From|To)-\w+|Invoke-(?:WebRequest|RestMethod)|gci|ls|dir|gc|cat|type|sls|select|where|sort|measure|ft|fl|iwr|irm|echo|pwd|gi|gp|gm|%|\?)$/i;
 const PS_KEYWORD = /^(?:try|catch|finally|foreach|if|else|elseif|for|while|break|continue)$/i;
 const PS_GIT = /^(?:log|status|diff|show|rev-parse|ls-files|describe|blame|shortlog)$/i;
 const PS_METHOD = /^(?:ToString|Trim|TrimEnd|TrimStart|Split|Contains|StartsWith|EndsWith|Replace|Substring|ToLower|ToUpper|IndexOf|GetType)$/i;
 const PS_OP = /^-(?:eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|is|isnot|and|or|xor|not|replace|split|join|f|ceq|cne|ieq|ine|imatch|cmatch|as)$/i;
-const PS_PLAIN = /^(?:-\S*|\$[\w:.\[\]]*|\u0001|\d+|in|\[\w.\[\]]*\])$/;
+const PS_SORT_PARAM = /^-(?:Property|Descending|Unique|Top|Bottom|CaseSensitive|Culture|Stable|InputObject)(?::\S+)?$/i;
+const PS_PLAIN =/^(?:-\S*|\$[\w:.\[\]]*|\u0001|\d+|in|\[\w.\[\]]*\])$/;
 
 export function psReadOnly(command) {
   let t = String(command);
   const w = new RegExp(String.raw`^\s*(?:"?[^\s"]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:${PS_CMD})\b)[\w:]+(?:\s+(?!-)\w+)?)*)\s+-(?:${PS_CMD})\s+(["'])([\s\S]*)\2\s*$`, "i").exec(t);
   if (w) t = w[2] === '"' ? w[3].replace(/\\"/g, '"') : w[3].replace(/''/g, "'");
   if (t.length > 4096) return false;
+  const isPs = !!w || /(?:^|[\s;|{(])[A-Z][a-z]+-[A-Z][A-Za-z]+\b/.test(t);
   let live = false;
   t = t.replace(/'(?:[^']|'')*'|"(?:[^"`]|"")*"/g, (m) => { if (m[0] === '"' && /\$[({]/.test(m)) live = true; return "\u0001"; });
   t = t.replace(/\b[1-6*]?>&[12]\b/g, " ").replace(/\b[1-6*]?>\s*\$null\b/gi, " ");
@@ -2042,6 +2055,8 @@ export function psReadOnly(command) {
     if (/^git$/i.test(head)) { if (!PS_GIT.test(words[1] ?? "") || words.some((x) => /^--output/i.test(x))) return false; continue; }
     if (/^node$/i.test(head)) { if (!(/^(?:--check|-c)$/.test(words[1] ?? "") ? words.length > 2 && words.slice(2).every((x) => !x.startsWith("-")) : /^(?:-v|--version)$/.test(words[1] ?? "") && words.length === 2)) return false; continue; }
     if (!PS_CMDLET.test(head)) return false;
+    // `sort` is also a POSIX command that writes (-o) and execs (--compress-program): only PowerShell's own parameters pass.
+    if (/^sort$/i.test(head) && !(isPs && words.slice(1).every((x) => !/^-/.test(x) || PS_SORT_PARAM.test(x)))) return false;
     if (/^(?:Invoke-(?:WebRequest|RestMethod)|iwr|irm)$/i.test(head)) {
       for (let i = 1; i < words.length; i++) {
         if (!words[i].startsWith("-")) continue;
@@ -2696,7 +2711,7 @@ export function gateLog(key, line) {
   try {
     mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
     const f = join(gateDir(), `${key}.log`);
-    writeNoHang(f, `${new Date().toISOString()} ${String(line).slice(0, 400).replace(/[\r\n]+/g, " ")}\n`, FS.O_APPEND);
+    writeNoHang(f, `${new Date().toISOString()} ${maskSecrets(line).slice(0, 400).replace(/[\r\n]+/g, " ")}\n`, FS.O_APPEND);
     if (statSync(f).size > LOG_MAX) { const t = readSmallRegular(f, 16 << 20, true); writeNoHang(f, typeof t === "string" ? t.split("\n").filter(Boolean).slice(-LOG_KEEP).join("\n") + "\n" : "", FS.O_TRUNC); }
   } catch { /* logging never blocks */ }
 }
@@ -3258,9 +3273,8 @@ function loadLocalReceipt(key, name) {
   } catch { return null; }
 }
 
-// A map click never approves release-class scopes (destructive, push to main, publish) and a grant lasts at most 2h.
+// A map click never approves release-class scopes (destructive, push to main, publish); a grant is capped like any other (MAX_GRANT_MS).
 const LOCAL_NEVER = new Set(["destructive", "push-main", "publish"]);
-const LOCAL_GRANT_MAX_MS = 2 * 3600e3;
 const LOCAL_REQUEST_MAX_MS = 10 * 60e3;
 const localTimeOk = (p, now) => p.issued_at <= now && now < p.expires_at && p.expires_at - p.issued_at <= (p.kind === "go" ? TOKEN_TTL_MS : MAX_GRANT_MS);
 const localNever = (p, r) => [...(p.scopes ?? []), ...(r.scopes ?? [])].some((s) => LOCAL_NEVER.has(s));
@@ -3314,7 +3328,7 @@ function localClickGrants(key, now, { opencode, hardTs, revokeTs }) {
     for (const name of clickNames(`${key}.local-g-`)) {
       const p = loadLocalReceipt(key, name);
       const r = p && p.kind === "grant" && p.cmd_hash === "" && Array.isArray(p.scopes) && p.scopes.length ? recordedRequest(key, p, now) : null;
-      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= LOCAL_GRANT_MAX_MS) || !localTimeOk(p, now) || localNever(p, r)) continue;
+      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS) || !localTimeOk(p, now) || localNever(p, r)) continue;
       const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
       if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
       const until = Math.min(p.expires_at, p.issued_at + p.ms);
@@ -3756,7 +3770,7 @@ function main() {
   if (key && !cooling && !tooLong && !codexOpaque) {
     const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
-    if (eff.mode === "off") {
+    if (eff.mode === "off" && !neverGrantable(command)) {
       gateLog(key, `off: allowed ${JSON.stringify(command.slice(0, 200))}`);
       return respond(isAgy, true, "", command);
     }
