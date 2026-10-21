@@ -209,9 +209,9 @@ export async function reapOrphan(dir, script, upstreamPort, sleep = (ms) => new 
 export function openLog(dir, maxBytes = 5 << 20) {
     const file = path.join(dir, 'gateway.log');
     let fd = null, size = 0;
-    const open = () => {
+    const open = (force = false) => {
         try {
-            try { if (fs.statSync(file).size > maxBytes) fs.renameSync(file, `${file}.1`); } catch { /* none yet */ }
+            try { if (force || fs.statSync(file).size > maxBytes) fs.renameSync(file, `${file}.1`); } catch { /* none yet */ }
             fd = fs.openSync(file, 'a', 0o600);
             size = fs.fstatSync(fd).size;
             if (process.platform !== 'win32') fs.chmodSync(file, 0o600);
@@ -223,7 +223,7 @@ export function openLog(dir, maxBytes = 5 << 20) {
             if (fd === null) return;
             try {
                 const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-                if (size + buf.length > maxBytes) { fs.closeSync(fd); fd = null; open(); if (fd === null) return; }
+                if (size + buf.length > maxBytes) { fs.closeSync(fd); fd = null; open(true); if (fd === null) return; }
                 fs.writeSync(fd, buf);
                 size += buf.length;
             } catch { /* best effort */ }

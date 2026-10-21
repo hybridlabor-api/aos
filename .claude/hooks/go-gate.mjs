@@ -2046,7 +2046,7 @@ export function psReadOnly(command) {
       for (let i = 1; i < words.length; i++) {
         if (!words[i].startsWith("-")) continue;
         const [name, inline] = words[i].slice(1).split(":");
-        if (/^[oib]/i.test(name)) return false;
+        if (/^[oibf]/i.test(name)) return false;
         if (/^m/i.test(name) && !/^max/i.test(name) && !/^(?:get|head)$/i.test(inline ?? words[i + 1] ?? "")) return false;
       }
     }
