@@ -64,6 +64,18 @@ describe('config generator', () => {
         assert.equal(o.bdb_resolume_mcp.command, '/opt/uv');
     });
 
+    test('defaultPathEnv carries the global npm bin (win32 %APPDATA%\\npm, POSIX npm prefix -g/bin)', () => {
+        const win = cfg.defaultPathEnv({ home: 'C:\\Users\\u', nodePath: 'C:\\Program Files\\nodejs\\node.exe', platform: 'win32' });
+        assert.ok(win.split(';').includes(path.join('C:\\Users\\u', 'AppData', 'Roaming', 'npm')), win);
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'win32', env: { APPDATA: 'D:\\Roam' } }), path.join('D:\\Roam', 'npm'));
+        const calls = [];
+        const run = (cmd, args, opts) => { calls.push([cmd, args, opts.shell]); return { status: 0, stdout: '/opt/npm-global\n' }; };
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'linux', run }), path.join('/opt/npm-global', 'bin'));
+        assert.deepEqual(calls, [['npm', ['prefix', '-g'], false]]);
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'linux', run: () => ({ status: 1, stdout: '' }) }), null);
+        assert.ok(cfg.defaultPathEnv({ home: 'h', nodePath: '/n/bin/node', platform: 'linux', npmBin: '/opt/npm-global/bin' }).split(':').includes('/opt/npm-global/bin'));
+    });
+
     test('defaultPathEnv includes go directories', () => {
         assert.ok(cfg.defaultPathEnv({ home, nodePath: '/n/bin/node', platform: 'darwin' }).split(':').includes(path.join(home, 'go', 'bin')));
         assert.ok(cfg.defaultPathEnv({ home, nodePath: '/n/bin/node', platform: 'darwin' }).split(':').includes('/usr/local/go/bin'));
