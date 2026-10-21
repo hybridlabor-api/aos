@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "description": "Pinned immutable checksums for benchmark probe checkers and expected outputs (fail-closed, deny-listed)",
+  "pins": {
+    "clean-code-001": {
+      "check.mjs": "ed09d8b78258ce40b1eac58bc05c0ad801b6db528048183b82a6df3fcf5b8679",
+      "expected.json": "bbbb56f923c1e48bf55b1628b9a2fcdf3a8f34ad7dfd32cbf18169c086aeadc7"
+    },
+    "instinct-export-001": {
+      "check.mjs": "7c41ad263f8889590672c8496cd2308c7a767e367aa917d169ecc5d0e1b30e8c",
+      "expected.json": "e19393de28996d94d26e539000cf10f2f6280c18067ef4ca56924201953a850c"
+    },
+    "skill-create-001": {
+      "check.mjs": "88355b59ded2ee7f6e4aab20f44b45227358d2ffaffb37aafed900368e47a7ee",
+      "expected.json": "22f1949145f91e6ad3ca78fd0e47300825ca14d5cb2e07eb046242ab92769c25"
+    }
+  }
+}

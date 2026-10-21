@@ -1,0 +1,5 @@
+{
+  "name": "sample-utility",
+  "max_description_length": 250,
+  "required_sections": ["Overview", "Commands", "Guidelines"]
+}

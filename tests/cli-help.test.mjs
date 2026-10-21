@@ -36,6 +36,25 @@ test('every package.json bin has a spec', () => {
   for (const name of Object.keys(pkg.bin)) assert.ok(covered.has(name), `bin ${name} has no spec in lib/cli-specs`);
 });
 
+test('every command in lib/cli-specs with a bin name has a package.json bin entry', () => {
+  const notShippedAsPkgBin = new Set([
+    'go-check',
+    'mcsc',
+    'aos-mcp-env',
+    'aos-memb-ingest',
+    'aos-cli',
+    'aos-setup-doctor',
+    'aos-project-doctor',
+  ]);
+  for (const s of SPECS) {
+    if (notShippedAsPkgBin.has(s.name)) continue;
+    assert.ok(
+      pkg.bin[s.name],
+      `command ${s.name} from lib/cli-specs with bin entry ${s.entry} must have a package.json bin entry`
+    );
+  }
+});
+
 for (const spec of runnable) {
   for (const flag of ['--help', '-h']) {
     test(`${spec.name} ${flag} exits 0 without side effects`, () => {

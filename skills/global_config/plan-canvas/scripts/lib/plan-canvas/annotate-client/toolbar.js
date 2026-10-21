@@ -31,6 +31,7 @@ button:disabled{opacity:.4;cursor:default}
 .bar[hidden],.launch[hidden],.card[hidden],.mini[hidden]{display:none}
 .grp{display:flex;gap:4px;align-items:center}
 .sep{width:1px;align-self:stretch;background:var(--line)}
+kbd{font:inherit;font-size:10px;font-weight:400;color:var(--mut);margin-left:2px}
 .sw{min-width:24px;min-height:24px;width:24px;height:24px;padding:0;border-radius:50%}
 .sw[data-color=red]{background:#e5484d}.sw[data-color=yellow]{background:#f5c518}.sw[data-color=blue]{background:#3b82f6}.sw[data-color=green]{background:#30a46c}
 .sw[aria-pressed=true]{outline:2px solid var(--fg);outline-offset:2px;border-color:transparent}
@@ -54,7 +55,7 @@ button:disabled{opacity:.4;cursor:default}
 
 function toolbarHtml() {
   const tool = ([id, key, label]) =>
-    `<button type="button" data-tool="${id}" aria-pressed="false" aria-keyshortcuts="${key}" aria-label="${label} tool (${key})" title="${label} (${key})">${key}</button>`;
+    `<button type="button" data-tool="${id}" aria-pressed="false" aria-keyshortcuts="${key}" aria-label="${label} tool (${key})" title="${label} (${key})">${label} <kbd>${key}</kbd></button>`;
   const color = c =>
     `<button type="button" class="sw" data-color="${c}" aria-pressed="false" aria-label="Colour ${c}" title="${c}"></button>`;
   const stroke = ([w, label]) =>

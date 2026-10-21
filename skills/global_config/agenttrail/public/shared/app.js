@@ -6,7 +6,7 @@ function renderAddSuggestions(){const box=document.getElementById('add-sugg');if
   const q=(document.getElementById('add-path')?.value||'').trim().toLowerCase()
   const list=addSuggestions.filter(p=>!q||p.toLowerCase().includes(q)).slice(0,8)
   box.innerHTML=list.map(p=>{const name=p.split('/').pop(),dir=p.slice(0,p.length-name.length)
-    return`<button type="button" class="sugg-row" onclick="pickSuggestion(this.dataset.p)" data-p="${esc(p)}"><span class="sugg-name">${esc(name)}</span><span class="sugg-dir">${esc(dir)}</span></button>`}).join('')||(q?`<div class="tree-add-msg">no known repo matches — full path works too</div>`:'')}
+    return`<button type="button" class="sugg-row" data-ev="pick" data-p="${esc(p)}"><span class="sugg-name">${esc(name)}</span><span class="sugg-dir">${esc(dir)}</span></button>`}).join('')||(q?`<div class="tree-add-msg">no known repo matches — full path works too</div>`:'')}
 function pickSuggestion(p){const i=document.getElementById('add-path');if(i)i.value=p;submitAddRepo()}
 function toast(msg,ms){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),ms||6000)}
 let setupBusy=false
@@ -43,7 +43,7 @@ function selfAsks(){return((M&&M.asks)||[]).slice().sort((a,b)=>(a.askedAt||0)-(
 function askStatusLabel(a){return a.expired||a.status==='expired'?'Abgelaufen':a.status==='go'?'GO':a.status==='deny'?'Nein':'Wartet auf dich'}
 function askCardHtml(a){
   const dim=!!(a.expired||a.status==='expired'||a.status==='go'||a.status==='deny'),busy=answering.has(String(a.id))
-  const btn=(d,cls)=>`<button class="btn ${cls}" type="button" data-id="${esc(String(a.id))}" data-decision="${d}" onclick="answerAsk(this.dataset.id,this.dataset.decision)"${dim||busy?' disabled':''}>${d==='go'?'GO':'Nein'}</button>`
+  const btn=(d,cls)=>`<button class="btn ${cls}" type="button" data-id="${esc(String(a.id))}" data-decision="${d}" data-ev="answer"${dim||busy?' disabled':''}>${d==='go'?'GO':'Nein'}</button>`
   return`<div class="run-card${dim?' ended':''}" data-ask="${esc(String(a.id))}"${dim?' style="opacity:.6;cursor:default"':''}>
     <div class="run-head"><span class="run-live-dot"></span><span class="run-name">${esc(askStatusLabel(a))}</span>${a.askedBy?`<span style="color:var(--faint);font-size:11.5px">· ${esc(a.askedBy)}</span>`:''}<span class="run-elapsed"><span class="t-ago" data-at="${a.askedAt||Date.now()}"></span></span></div>
     <div class="run-task" style="white-space:normal">${esc(a.question)}</div>
@@ -114,7 +114,7 @@ function renderTree(){
     html+=`<button class="tree-row dir root ${open?'open':''}" type="button" data-root="${b.port}" style="padding-left:8px;min-height:28px"><span class="tree-chev"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span><span class="tree-name" style="font-weight:600;color:var(--text)">${esc(b.project)}</span></button>`
     if(open)html+=renderRootTree(b)
   }
-  html+=addRepoOpen?`<div class="tree-add-form"><input id="add-path" placeholder="/path/to/repo — or pick below" autocomplete="off" spellcheck="false" oninput="renderAddSuggestions()" onkeydown="if(event.key==='Enter')submitAddRepo()"><div class="tree-sugg" id="add-sugg"></div><div class="row"><button class="btn small primary" type="button" onclick="submitAddRepo()">Add board</button><button class="btn small" type="button" onclick="addRepoOpen=false;renderTree()">Cancel</button></div><div class="tree-add-msg" id="add-msg">Its region appears on the map within a few seconds.</div></div>`:`<button class="tree-add" type="button" onclick="openAddRepo()">+ add repo</button>`
+  html+=addRepoOpen?`<div class="tree-add-form"><input id="add-path" placeholder="/path/to/repo — or pick below" autocomplete="off" spellcheck="false" data-ev="add-path"><div class="tree-sugg" id="add-sugg"></div><div class="row"><button class="btn small primary" type="button" data-ev="add-submit">Add board</button><button class="btn small" type="button" data-ev="add-cancel">Cancel</button></div><div class="tree-add-msg" id="add-msg">Its region appears on the map within a few seconds.</div></div>`:`<button class="tree-add" type="button" data-ev="add-open">+ add repo</button>`
   html+=`<div class="tree-legend"><span class="tree-legend-dot"></span>most recent edit · time since last write</div>`
   $('tree').innerHTML=html
   if(addRepoOpen){renderAddSuggestions();const i=document.getElementById('add-path');if(i&&addRepoFocus){i.focus();addRepoFocus=false}}
@@ -153,7 +153,7 @@ function renderZero(){
   // AOS patch: show AOS-specific message when aosPlan is true, otherwise show upstream init/backfill block
   const emptyStateBlock = M.aosPlan
     ? `<div class="firstrun inline"><p>Waiting for the plan — the pipeline's Architect writes ${esc(M.planFile||'the plan file')}; the map appears as soon as it exists.</p></div>`
-    : `<div class="firstrun inline"><p><strong>Level 2 — the map.</strong> You never write PLAN.md by hand: copy this prompt, paste it to your agent in this repo, and it draws the component map the board runs on.</p><button class="btn accent" type="button" onclick="copyBackfill()">Copy backfill prompt</button></div>`
+    : `<div class="firstrun inline"><p><strong>Level 2 — the map.</strong> You never write PLAN.md by hand: copy this prompt, paste it to your agent in this repo, and it draws the component map the board runs on.</p><button class="btn accent" type="button" data-ev="backfill">Copy backfill prompt</button></div>`
   $('graph').innerHTML=`<div class="zero">
     <div><h1>Watching ${esc(M.session.project)}</h1><p class="zero-sub">Every file an agent touches shows up below, live — and hooked Claude Code sessions appear as run cards with their plan and current tool. No setup needed for any of that.</p></div>
     <div class="zero-feed">${feed||'<div class="zero-empty">Waiting for the first file write — start your agent and watch this fill in.</div>'}</div>
@@ -194,8 +194,8 @@ function renderRuns(){
     const icon=agentIcon(r.agent)
     const key=r.__port+':'+r.id
     // AOS patch: SessionEnd runs show Finished, Stop runs show Wartet auf dich (Notification runs append their waiting reason), and a live run with no tool line shows Working…
-    return`<div class="run-card ${r.ended?'ended':''} ${openRuns.has(key)?'open':''}" data-run="${esc(key)}">
-      <div class="run-head"><span class="run-agent"><svg viewBox="0 0 24 24"><path fill="${agentColor(r.agent)}" d="${icon||''}"/></svg></span><span class="run-name">${esc(r.agent)}</span><span style="color:var(--faint);font-size:11.5px">· ${esc(r.__project)}</span><span class="run-live-dot"></span><span class="run-elapsed"><span class="t-ago" data-at="${r.startedAt}"></span>${comp?` · in <a href="#" style="color:var(--accent);text-decoration:none" onclick="event.preventDefault();event.stopPropagation();focusComp('${r.__port}:${comp.id}')">${esc(comp.title)}</a>`:''}</span></div>
+    return`<div class="run-card ${r.ended?'ended':''} ${openRuns.has(key)?'open':''}" data-run="${esc(key)}" style="--lane:${agentColor(r.agent)}">
+      <div class="run-head"><span class="run-agent"><svg viewBox="0 0 24 24"><path fill="${agentColor(r.agent)}" d="${icon||''}"/></svg></span><span class="run-name">${esc(r.agent)}</span><span style="color:var(--faint);font-size:11.5px">· ${esc(r.__project)}</span><span class="run-live-dot"></span><span class="run-elapsed"><span class="t-ago" data-at="${r.startedAt}"></span>${comp?` · in <a href="#" style="color:var(--accent);text-decoration:none" data-ev="focus" data-comp="${esc(r.__port+':'+comp.id)}">${esc(comp.title)}</a>`:''}</span></div>
       ${cur?`<div class="run-task">${esc(cur.content)}</div>`:r.ended&&r.done?`<div class="run-task" style="color:var(--dim)">Finished</div>`:r.ended?`<div class="run-task" style="color:var(--dim)">Wartet auf dich${r.waiting?': '+esc(r.waiting):''}</div>`:!toolLine?`<div class="run-task" style="color:var(--dim)">Working…</div>`:''}
       ${toolLine}
       ${(r.subagents||[]).filter(s=>!s.ended).map(s=>`<div class="run-sub"><span class="run-sub-dot"></span><span class="run-sub-name">${esc(s.name)}</span><span class="run-sub-ago t-ago" data-at="${s.startedAt}"></span></div>`).join('')}
@@ -218,7 +218,22 @@ function renderRuns(){
       return `<div class="cycle-row"><span class="cycle-when">${day}</span><span class="cycle-what">${esc(c.__project)} · ${c.sessions.length} session${c.sessions.length>1?'s':''}${path?` · ${esc(path)}`:''}</span></div>`
     }).join('')
   const out=asksHtml+html+hint+(past?`<div class="run-cycle" style="margin-top:10px">Past cycles</div>${past}`:'')
-  if(out!==lastRunsHtml){lastRunsHtml=out;$('runs').innerHTML=out}
+  if(out!==lastRunsHtml){lastRunsHtml=out;$('runs').innerHTML=out;markArrivals()}
 }
-$('runs').addEventListener('click',e=>{if(e.target.closest('[data-ask]'))return;const c=e.target.closest('.run-card');if(!c)return;const id=c.dataset.run
+// Lanes M1: only cards whose run or ask is new animate in; re-renders of known cards stay still.
+const seenCards=new Set()
+function markArrivals(){let i=0;for(const c of $('runs').querySelectorAll('[data-run],[data-ask]')){const k=c.dataset.run||'ask:'+c.dataset.ask;if(seenCards.has(k))continue;seenCards.add(k);c.style.setProperty('--i',String(Math.min(i++,8)));c.classList.add('aos-enter')}}
+$('runs').addEventListener('click',e=>{const fc=e.target.closest('[data-ev="focus"]');if(fc){e.preventDefault();focusComp(fc.dataset.comp);return}if(e.target.closest('[data-ask]'))return;const c=e.target.closest('.run-card');if(!c)return;const id=c.dataset.run
   openRuns.has(id)?openRuns.delete(id):openRuns.add(id);renderRuns();renderTimes()})
+
+// CSP script-src 'self' blocks inline on*= handlers, so every generated control is wired here by data-ev.
+document.addEventListener('click',e=>{const t=e.target.closest('[data-ev]');if(!t||t.disabled)return
+  const v=t.dataset.ev
+  if(v==='pick')pickSuggestion(t.dataset.p)
+  else if(v==='answer')answerAsk(t.dataset.id,t.dataset.decision)
+  else if(v==='add-submit')submitAddRepo()
+  else if(v==='add-cancel'){addRepoOpen=false;renderTree()}
+  else if(v==='add-open')openAddRepo()
+  else if(v==='backfill')copyBackfill()})
+document.addEventListener('input',e=>{if(e.target.dataset&&e.target.dataset.ev==='add-path')renderAddSuggestions()})
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.ev==='add-path')submitAddRepo()})
