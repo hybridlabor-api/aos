@@ -672,6 +672,13 @@ async function checkGateway() {
     for (const c of checks) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
     if (status) add('gateway', 'gateway lazy loading', true, (await import('./aos-gateway.mjs')).lazyText(status), '', true);
     if (status) add('gateway', 'gateway async loading', true, (await import('./aos-gateway.mjs')).asyncText(status), '', true);
+    if (status && status.running && status.toolCount !== null && status.toolCount !== undefined) {
+        const { SIZE_TOOL_LIMIT, SIZE_NODE_LIMIT, SIZE_HINT } = req('../lib/gateway/doctor.js');
+        const ok = status.toolCount <= SIZE_TOOL_LIMIT && status.nodeCount <= SIZE_NODE_LIMIT;
+        add('gateway', 'gateway tool size', ok,
+            `${status.toolCount} tool(s), ~${status.nodeCount} JSON node(s)${ok ? '' : ` (exceeds safety limit: ${SIZE_TOOL_LIMIT} tools / ${SIZE_NODE_LIMIT} nodes)`}`,
+            ok ? '' : SIZE_HINT, true);
+    }
     // Per-harness exposure: live tool counts (estimate) when the gateway answers; server list always.
     try {
         let toolCounts = undefined;
