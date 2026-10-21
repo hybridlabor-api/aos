@@ -74,3 +74,35 @@ logs; it lasts for that session, for at most 24 hours.
 - **Releases stay manual:** `npm publish`, `npm version`, and releases use the
   policy `manual` by default, so they always stop for a human unless the project
   changes that policy.
+
+## Unattended runs in a sandbox
+
+To run /factory unattended (with no human at the keyboard) while keeping the host
+machine completely safe, runs can execute with the go-gate off, but ONLY inside
+a sandbox. Outside a sandbox, the normal gate rules stay in effect.
+
+When invoked with `factory --unattended` (or `/factory --unattended`), AOS starts
+the run through the platform sandbox adapter. If no sandbox runtime is available,
+AOS refuses unattended mode with a clear error message and instructions on how to install one.
+
+### Supported sandbox runtimes
+
+| Operating System | Primary Runtime | Fallback Runtime | Installation / Prerequisite |
+|---|---|---|---|
+| macOS | Docker | Podman | Docker Desktop (`https://www.docker.com/products/docker-desktop`) or `brew install podman` |
+| Linux | Docker | Podman | `apt-get install docker.io` / `dnf install docker` or `apt-get install podman` / `dnf install podman` |
+| Windows 10+ | WSL2 | Docker | `wsl --install` or Docker Desktop (`https://www.docker.com/products/docker-desktop`) |
+
+### Sandbox detector & safety guarantees
+
+1. **Anti-spoof detector:** The gate treats a session as sandboxed only when AOS
+   itself started it inside a container or VM (Docker/Podman container with `/.dockerenv`
+   or `/run/.containerenv` AND an AOS sandbox marker env `AOS_SANDBOX_MARKER` set by the
+   launcher; or WSL2 VM via the `wsl2` adapter with `AOS_SANDBOX_MARKER`). An environment
+   variable alone on the host machine never counts.
+2. **Gate mode inside the sandbox:** Inside the sandbox, the gate automatically runs
+   in `off` mode. Hard blocks (deleting the home directory or filesystem root) and the
+   never-grantable set (`aos-gate grant|work|profile`) stay strictly blocked.
+3. **Leaving the sandbox:** The result leaves the sandbox only as a git branch or
+   patch. External release writes (`git push`, `npm publish`, `npm version`, `gh pr merge`,
+   `gh release create`) still require the human's literal GO on the host machine.

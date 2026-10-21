@@ -61,6 +61,14 @@ import { fileURLToPath } from "node:url";
 // A missing sibling must read as strict, never crash the hook (a crash exits 1 and the harness runs the command).
 let profileFor = () => ({ profile: "strict" });
 try { ({ profileFor } = await import("./gate-profile.mjs")); } catch { /* strict */ }
+export let isSandboxed = () => false;
+try {
+  const sbxMod = await import("../../lib/sandbox.mjs").catch(() => import("./sandbox.mjs"));
+  if (sbxMod?.isSandboxed) isSandboxed = sbxMod.isSandboxed;
+} catch { /* default false */ }
+export function setSandboxDetector(fn) {
+  isSandboxed = typeof fn === "function" ? fn : () => Boolean(fn);
+}
 
 // Command start: line/separator/subshell start, then optional wrappers (sudo/env/command/
 // builtin/exec/nohup/time/xargs/eval with options, `bash -c`, VAR=x), an optional opening
@@ -3638,6 +3646,7 @@ export function codexExecCommands(src) {
 // off allows; work allows unless a release scope shows. null scope = guarded but unreadable: free only without indirection.
 export function profileAllows(command) {
   if (neverGrantable(command)) return false;
+  if (isSandboxed()) return true;
   const p = profileFor().profile;
   if (p === "off") return true;
   if (p !== "work") return false;
@@ -3709,7 +3718,7 @@ function main(rawInput = readStdin()) {
 
   blockKey = hookBlockKey(input, isAgy);
   // Under work/off a fresh script is judged by its content (scriptInto), not held back by the block cooldown.
-  const looser = profileFor().profile !== "strict";
+  const looser = profileFor().profile !== "strict" || isSandboxed();
   setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: blockKey && !looser ? readBlockTs(blockKey) : 0 });
 
   // Over the length cap nothing is parsed: it is guarded, only a GO lifts it, and it is not a hard block.
@@ -3732,6 +3741,18 @@ function main(rawInput = readStdin()) {
       respond(isAgy, true);
       return;
     }
+  }
+
+  // Inside a verified sandbox, the gate runs in "off" mode.
+  // Hard blocks (checked above) and never-grantable commands stay blocked.
+  if (isSandboxed()) {
+    if (neverGrantable(command)) {
+      respond(isAgy, false, "never grantable: aos-gate config writes are blocked in all modes", command);
+      return;
+    }
+    gateLog(blockKey || "sandbox", `sandbox: allowed (gate off) ${JSON.stringify(command.slice(0, 200))}`);
+    respond(isAgy, true, "", command);
+    return;
   }
 
   const transcriptPath = input?.transcriptPath || input?.transcript_path;

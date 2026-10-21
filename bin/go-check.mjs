@@ -66,6 +66,10 @@ export function check(gate, { session, command, consume = false }) {
   if (storeReason) return { code: 1, out: { guarded: true, ok: false, scope: null, reason: storeReason } };
   if (!gate.isGuardedCommand(command)) return { code: 0, out: { guarded: false, ok: true, scope: [], reason: "" } };
   const scope = gate.commandScopes(command);
+  if (gate.isSandboxed?.()) {
+    if (gate.neverGrantable?.(command)) return { code: 1, out: { guarded: true, ok: false, scope, reason: "never grantable: aos-gate config writes are blocked in all modes" } };
+    return { code: 0, out: { guarded: true, ok: true, scope, reason: "sandboxed" } };
+  }
   if (typeof session !== "string" || !gate.slug(session)) {
     return { code: 2, out: { guarded: true, ok: false, scope, reason: "--session is missing or has no usable name" } };
   }
