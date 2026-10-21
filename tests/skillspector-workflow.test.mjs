@@ -321,7 +321,7 @@ test('spawn: matching report count passes before enforce date', () => {
     reports: [[1, 'demo', [{ id: 'SH-001', severity: 'HIGH' }]]],
     baselineJson: [],
     skillDirs: ['demo'],
-    enforceFrom: '2026-10-21',
+    enforceFrom: '2999-01-01', // the spawned filter uses the real date; a fixed near date turns into a time bomb
   });
   assert.equal(res.status, 0);
 });
