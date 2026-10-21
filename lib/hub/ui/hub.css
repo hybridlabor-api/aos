@@ -42,7 +42,7 @@ td a,.card a{color:var(--accent);text-decoration:none}td a:hover,.card a:hover{t
 .btn:active,.s-foot button:active,.confirm button:active{transform:scale(.97)}
 .btn:hover,.s-foot button:hover,.s-insp-head button:hover,.catalog-controls button:hover,.confirm button:hover{border-color:var(--accent);text-decoration:none}
 .btn:disabled,button:disabled{opacity:.5;cursor:not-allowed}
-.card input,.card select,.s-foot input,.confirm-input{font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--aos-border);border-radius:7px;padding:5px 8px;min-height:32px}
+.card input,.card select,.s-foot input,.confirm-input{font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--aos-border-strong);border-radius:7px;padding:5px 8px;min-height:32px}
 .catalog-tabs,.catalog-controls,.confirm{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 14px}
 .catalog-table{overflow-x:auto}
 

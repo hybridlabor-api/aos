@@ -55,7 +55,7 @@ function mermaidLoaderScript(url) {
 const TOKENS_CSS = `
   :root{
     --bg:#0a0a0a; --bg2:#121212; --bg3:#1a1a1b; --bg4:#242426;
-    --surface:#1a1a1b; --surface-hover:#242426; --border:#2a2a2c; --border-light:#36363a;
+    --surface:#1a1a1b; --surface-hover:#242426; --border:#2a2a2c; --border-light:#36363a; --border-field:#77797e;
     --text:#f3f3f1; --text2:#a4a6aa; --text3:#85878b;
     --accent:#54bf5c; --accent-glow:rgba(84,191,92,0.15); --accent-dim:#3f9a47; --accent-ink:#04070f;
     --green:#5fe0a0; --green-glow:rgba(95,224,160,0.15);
@@ -72,13 +72,13 @@ const TOKENS_CSS = `
   }
   [data-theme="light"]{
     --bg:#f1efe4; --bg2:#f7f5ec; --bg3:#ebe8db; --bg4:#dbd8c9;
-    --surface:#f7f5ec; --surface-hover:#f1efe4; --border:#c9c6b7; --border-light:#dbd8c9;
+    --surface:#f7f5ec; --surface-hover:#f1efe4; --border:#c9c6b7; --border-light:#dbd8c9; --border-field:#7c7866;
     --text:#04070f; --text2:#484d58; --text3:#5c616b;
     --accent:#095717; --accent-glow:rgba(9,87,23,0.1); --accent-dim:#06400f; --accent-ink:#f7f5ec;
-    --green:#0a6b3c; --green-glow:rgba(10,107,60,0.1);
-    --orange:#8a5200; --orange-glow:rgba(138,82,0,0.1);
+    --green:#08592f; --green-glow:rgba(8,89,47,0.1);
+    --orange:#734400; --orange-glow:rgba(115,68,0,0.1);
     --pink:#7a2fc9; --pink-glow:rgba(122,47,201,0.1);
-    --red:#c0182f; --red-glow:rgba(192,24,47,0.1);
+    --red:#941026; --red-glow:rgba(148,16,38,0.1);
     --teal:#0a6e62; --teal-glow:rgba(10,110,98,0.1);
     --shadow:inset 0 1px 0 rgba(255,255,255,0.7),0 1px 2px rgba(58,50,20,0.1),0 10px 24px -14px rgba(58,50,20,0.25);
     --shadow-lg:inset 0 1px 0 #fff,0 0 0 1px rgba(122,47,201,0.4),0 18px 40px -20px rgba(58,50,20,0.35);
@@ -189,7 +189,7 @@ function canvasCss() {
 
   .composer{padding:10px 14px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
   .composer .hint{font-size:10px;color:var(--text3)}
-  .composer textarea{width:100%;min-height:60px;max-height:160px;resize:vertical;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text);font-size:12.5px;font-family:var(--font);outline:none;transition:all .15s}
+  .composer textarea{width:100%;min-height:60px;max-height:160px;resize:vertical;background:var(--bg);border:1px solid var(--border-field);border-radius:10px;padding:8px 10px;color:var(--text);font-size:12.5px;font-family:var(--font);outline:none;transition:all .15s}
   .composer textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
   .composer .row{display:flex;gap:8px;align-items:center}
   .composer .send{flex:1;height:32px;border:none;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-size:12.5px;font-weight:600;cursor:pointer;transition:background .16s var(--ease-out),transform .09s var(--ease-out)}

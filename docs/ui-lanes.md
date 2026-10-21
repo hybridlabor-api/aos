@@ -73,5 +73,20 @@ Lane colours are accents (edge, tick, dot), so the bar is the 3:1 UI-element min
 | Dark | 5 | `#a9d96a` | 11.44:1 | 10.62:1 |
 
 - Light lane 2 is 5.00:1 vs `--aos-surface-2`, the tightest value; it still clears 4.5:1.
-- Accent and text: dark accent `#54bf5c` is 8.01:1 on `--aos-surface`; light accent `#095717` is 7.16:1 on `--aos-surface-2`; light `--aos-ok` `#0a6b3c` is 5.37:1 and light `--aos-warn` `#8a5200` is 5.20:1 on `--aos-surface-2`; `--aos-faint` is 5.21:1 (dark, on `--aos-surface`).
-- Status-pill tints (`--aos-status-*-bg`, `--aos-status-*-fg` on tint) are not yet measured.
+- Accent and text: dark accent `#54bf5c` is 8.01:1 on `--aos-surface`; light accent `#095717` is 7.16:1 on `--aos-surface-2`; `--aos-faint` is 5.21:1 (dark, on `--aos-surface`).
+
+### Measured status label contrast (label on its 14% tint over the surface)
+
+| Status | Light fg | on tint over `--aos-surface` / `--aos-surface-2` | Dark fg | on tint over `--aos-surface` / `--aos-surface-2` |
+|---|---|---|---|---|
+| running | `#08592f` | 6.19:1 / 5.54:1 | `#5fe0a0` | 8.53:1 / 7.74:1 |
+| done | `#0a4f94` | 6.00:1 / 5.37:1 | `#6cb8ff` | 6.97:1 / 6.34:1 |
+| needs-you | `#734400` | 6.04:1 / 5.42:1 | `#e5ac4c` | 7.20:1 / 6.54:1 |
+| stopped | `#484d58` | 6.25:1 / 5.61:1 | `#a4a6aa` | 6.15:1 / 5.60:1 |
+| failed | `#941026` | 6.31:1 / 5.65:1 | `#ff6b7a` | 5.64:1 / 5.16:1 |
+
+The light `--aos-ok`, `--aos-info`, `--aos-warn` and `--aos-bad` were darkened for this. The earlier values (`#0a6b3c`, `#0b5cad`, `#8a5200`, `#c0182f`) fell to 4.0–4.4:1 on the tint.
+
+### Form field and chip borders
+
+`--aos-border-strong` borders inputs, selects, textareas and filter chips (WCAG 1.4.11, 3:1). Dark `#77797e`: 4.54:1 on `--aos-bg`, 4.30:1 on `--aos-surface`, 3.99:1 on `--aos-surface-2`. Light `#7c7866`: 3.84:1 on `--aos-bg`, 4.06:1 on `--aos-surface`, 3.61:1 on `--aos-surface-2`. `--aos-border` and `--aos-line` stay decorative (card and row separators only).

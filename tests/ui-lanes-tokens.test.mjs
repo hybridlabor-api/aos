@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const at = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
@@ -69,4 +69,24 @@ test('plan-builder themeCss guards the aos-tokens.css read', () => {
   const body = at('skills/global_config/plan-canvas/scripts/lib/plan-builder/render.js').match(/function themeCss\(\) \{([\s\S]*?)\n\}/);
   assert.ok(body, 'themeCss not found');
   assert.match(body[1], /try\s*\{[\s\S]*aos-tokens\.css[\s\S]*\}\s*catch/);
+});
+
+test('reduced-motion block also stops ::before and ::after motion', () => {
+  const m = src.match(/@media\(prefers-reduced-motion:reduce\)\{([\s\S]*)\}\s*$/);
+  assert.ok(m, 'reduced-motion block missing');
+  assert.match(m[1], /\*::before/);
+  assert.match(m[1], /\*::after/);
+});
+
+test('served AgentTrail, Hub and Store pages carry no inline on*= handlers (CSP script-src self)', () => {
+  const dirs = ['skills/global_config/agenttrail/public', 'skills/global_config/agenttrail/public/shared', 'skills/global_config/agenttrail/public/hub', 'lib/hub/ui', 'lib/store-ui'];
+  let n = 0;
+  for (const d of dirs) {
+    for (const f of readdirSync(fileURLToPath(new URL(`../${d}`, import.meta.url)))) {
+      if (!/\.(html|js)$/.test(f)) continue;
+      n += 1;
+      assert.doesNotMatch(at(`${d}/${f}`), /\son[a-z]+=["'`]/, `${d}/${f}`);
+    }
+  }
+  assert.ok(n >= 10, `scanned only ${n} files`);
 });

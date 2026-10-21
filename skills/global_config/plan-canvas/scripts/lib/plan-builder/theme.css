@@ -1,7 +1,7 @@
 /*
  * Plan Builder theme — inlined into plan.builder.html.
  * Lanes dark theme on aos-tokens.css: obsidian steps, the shared green accent,
- * lila (#9b30c4 fallback) only as highlight for links and edges.
+ * accent text, links and edges use the accent; lila (#9b30c4 fallback) stays the focus ring only.
  * Fallback values apply when the token file is missing.
  */
 
@@ -17,7 +17,7 @@
   --ink-3: var(--aos-faint, #858585);
   --accent: var(--aos-accent, #9b30c4);
   --accent-ink: var(--aos-accent-ink, #ffffff);
-  --accent-2: var(--aos-highlight, #c05ee6);
+  --accent-2: var(--aos-accent, #c05ee6);
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --radius: 12px;
   --radius-sm: 7px;

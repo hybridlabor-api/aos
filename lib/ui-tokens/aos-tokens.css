@@ -3,7 +3,7 @@
    skills/global_config/plan-canvas/scripts/lib/plan-builder/ must stay byte-identical (those skills install on
    their own). tests/ui-tokens-sync.test.mjs checks the AgentTrail copy; tests/ui-lanes-tokens.test.mjs checks both. */
 :root{color-scheme:dark;
---aos-bg:#0a0a0a;--aos-surface:#121212;--aos-surface-2:#1a1a1b;--aos-surface-3:#242426;--aos-border:#2a2a2c;--aos-line:color-mix(in srgb,var(--aos-text) 8%,transparent);
+--aos-bg:#0a0a0a;--aos-surface:#121212;--aos-surface-2:#1a1a1b;--aos-surface-3:#242426;--aos-border:#2a2a2c;--aos-border-strong:#77797e;--aos-line:color-mix(in srgb,var(--aos-text) 8%,transparent);
 --aos-text:#f3f3f1;--aos-muted:#a4a6aa;--aos-faint:#85878b;
 --aos-accent:#54bf5c;--aos-accent-deep:#095717;--aos-accent-ink:#04070f;--aos-highlight:#c58cff;--aos-ok:#5fe0a0;--aos-warn:#e5ac4c;--aos-bad:#ff6b7a;--aos-info:#6cb8ff;
 --aos-code-bg:#0a0a0a;--aos-overlay:#000a;
@@ -11,9 +11,9 @@
 --aos-font-ui:Geist,Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
 --aos-font-mono:"Geist Mono","JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
 :root[data-theme="light"]{color-scheme:light;
---aos-bg:#f1efe4;--aos-surface:#f7f5ec;--aos-surface-2:#ebe8db;--aos-surface-3:#dbd8c9;--aos-border:#c9c6b7;
+--aos-bg:#f1efe4;--aos-surface:#f7f5ec;--aos-surface-2:#ebe8db;--aos-surface-3:#dbd8c9;--aos-border:#c9c6b7;--aos-border-strong:#7c7866;
 --aos-text:#04070f;--aos-muted:#484d58;--aos-faint:#5c616b;
---aos-accent:#095717;--aos-accent-deep:#095717;--aos-accent-ink:#f7f5ec;--aos-highlight:#7a2fc9;--aos-ok:#0a6b3c;--aos-warn:#8a5200;--aos-bad:#c0182f;--aos-info:#0b5cad;
+--aos-accent:#095717;--aos-accent-deep:#095717;--aos-accent-ink:#f7f5ec;--aos-highlight:#7a2fc9;--aos-ok:#08592f;--aos-warn:#734400;--aos-bad:#941026;--aos-info:#0a4f94;
 --aos-code-bg:#ebe8db;--aos-overlay:#0003}
 /* Lanes: identity + status + motion tokens. Rules in docs/ui-lanes.md. Lane colours are accents (edge, tick, dot), never large fills. */
 :root{
@@ -76,4 +76,4 @@
 .aos-pulse-inner::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(120px 70px at 0 0,color-mix(in srgb,var(--aos-highlight) 32%,transparent),transparent 70%);animation:aos-pulse-inner 3.2s ease-in-out infinite}
 @keyframes aos-pulse-inner{0%,100%{opacity:.25}50%{opacity:.75}}
 @media(prefers-reduced-motion:reduce){:root{--aos-motion-instant:0ms;--aos-motion-fast:0ms;--aos-motion-enter:0ms;--aos-motion-settle:0ms;--aos-motion-loop:0ms}
-*{animation:none!important;transition:none!important}}
+*,*::before,*::after{animation:none!important;transition:none!important}}
