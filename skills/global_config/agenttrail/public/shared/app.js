@@ -194,7 +194,7 @@ function renderRuns(){
     const icon=agentIcon(r.agent)
     const key=r.__port+':'+r.id
     // AOS patch: SessionEnd runs show Finished, Stop runs show Wartet auf dich (Notification runs append their waiting reason), and a live run with no tool line shows Working…
-    return`<div class="run-card ${r.ended?'ended':''} ${openRuns.has(key)?'open':''}" data-run="${esc(key)}">
+    return`<div class="run-card ${r.ended?'ended':''} ${openRuns.has(key)?'open':''}" data-run="${esc(key)}" style="--lane:${agentColor(r.agent)}">
       <div class="run-head"><span class="run-agent"><svg viewBox="0 0 24 24"><path fill="${agentColor(r.agent)}" d="${icon||''}"/></svg></span><span class="run-name">${esc(r.agent)}</span><span style="color:var(--faint);font-size:11.5px">· ${esc(r.__project)}</span><span class="run-live-dot"></span><span class="run-elapsed"><span class="t-ago" data-at="${r.startedAt}"></span>${comp?` · in <a href="#" style="color:var(--accent);text-decoration:none" onclick="event.preventDefault();event.stopPropagation();focusComp('${r.__port}:${comp.id}')">${esc(comp.title)}</a>`:''}</span></div>
       ${cur?`<div class="run-task">${esc(cur.content)}</div>`:r.ended&&r.done?`<div class="run-task" style="color:var(--dim)">Finished</div>`:r.ended?`<div class="run-task" style="color:var(--dim)">Wartet auf dich${r.waiting?': '+esc(r.waiting):''}</div>`:!toolLine?`<div class="run-task" style="color:var(--dim)">Working…</div>`:''}
       ${toolLine}
@@ -218,7 +218,10 @@ function renderRuns(){
       return `<div class="cycle-row"><span class="cycle-when">${day}</span><span class="cycle-what">${esc(c.__project)} · ${c.sessions.length} session${c.sessions.length>1?'s':''}${path?` · ${esc(path)}`:''}</span></div>`
     }).join('')
   const out=asksHtml+html+hint+(past?`<div class="run-cycle" style="margin-top:10px">Past cycles</div>${past}`:'')
-  if(out!==lastRunsHtml){lastRunsHtml=out;$('runs').innerHTML=out}
+  if(out!==lastRunsHtml){lastRunsHtml=out;$('runs').innerHTML=out;markArrivals()}
 }
+// Lanes M1: only cards whose run or ask is new animate in; re-renders of known cards stay still.
+const seenCards=new Set()
+function markArrivals(){let i=0;for(const c of $('runs').querySelectorAll('[data-run],[data-ask]')){const k=c.dataset.run||'ask:'+c.dataset.ask;if(seenCards.has(k))continue;seenCards.add(k);c.style.setProperty('--i',String(Math.min(i++,8)));c.classList.add('aos-enter')}}
 $('runs').addEventListener('click',e=>{if(e.target.closest('[data-ask]'))return;const c=e.target.closest('.run-card');if(!c)return;const id=c.dataset.run
   openRuns.has(id)?openRuns.delete(id):openRuns.add(id);renderRuns();renderTimes()})
