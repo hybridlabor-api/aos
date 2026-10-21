@@ -25,7 +25,7 @@ Based on empirical measurements from the context audit (`_context-audit/report.m
 |---|---|---|---|
 | **Gateway MCP Catalog** | ~25,738 tokens (303 tools) | ~4,200 tokens (~45 tools) | Gateway URL preset query (`?preset=worker`). Excludes 10 media upstreams (`davinci`, `unreal`, `blender`, `grandma3`, `touchdesigner`, `after-effects`, `resolume`, `rhino`, `vectorworks`, `uxp`). With gateway lazy loading (default on) the catalog is 3 meta-tools (`tool_list`, `tool_schema`, `tool_invoke`) until a schema is requested; the figures here are the non-lazy baseline. Opt out: `lazyLoading: false` in `~/.agents/gateway/gateway.json`. |
 | **Skill Frontmatter Index** | ~17,930 tokens | ~17,930 tokens (no reduction) | Every installed skill is listed by Claude Code; profiles cannot hide skills. The validator only warns (`W-DESC01`) when a description exceeds 250 characters. |
-| **Agent Manifest** | ~4,371 tokens (45 agents) | ~4,371 tokens | Provided by the `bdb-aos` plugin. `aos doctor` detects and warns on redundant copies in `~/.claude/agents`. |
+| **Agent Manifest** | ~4,371 tokens (46 agents) | ~4,371 tokens | Provided by the `bdb-aos` plugin. `aos doctor` detects and warns on redundant copies in `~/.claude/agents`. |
 | **Workspace Instructions & Memory** | ~3,848 tokens | ~3,848 tokens | `AGENTS.md`, `CLAUDE.md`, and project context rules. |
 | **MCP Server Instructions** | ~557 tokens | ~557 tokens | OpenWiki MCP instructions. |
 | **SessionStart Hooks** | ~413 tokens | ~100–350 tokens | Capped at 2,000 characters; disabled via `AOS_SESSION_START_CONTEXT=off`. |
