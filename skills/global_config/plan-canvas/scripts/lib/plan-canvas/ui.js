@@ -54,33 +54,34 @@ function mermaidLoaderScript(url) {
 // Design tokens shared by the chrome and the markdown artifact template.
 const TOKENS_CSS = `
   :root{
-    --bg:#080a0e; --bg2:#0d0f14; --bg3:#13161e; --bg4:#191d2a;
-    --surface:#101218; --surface-hover:#171a24; --border:#1d2130; --border-light:#272c3e;
-    --text:#dfe2e9; --text2:#80859a; --text3:#4c5168;
-    --accent:#6885e8; --accent-glow:rgba(104,133,232,0.15); --accent-dim:#3d5ab8;
-    --green:#4acb8a; --green-glow:rgba(74,203,138,0.15);
-    --orange:#eca85a; --orange-glow:rgba(236,168,90,0.15);
-    --pink:#e26a9e; --pink-glow:rgba(226,106,158,0.15);
-    --red:#e86060; --red-glow:rgba(232,96,96,0.15);
-    --teal:#4acbbe; --teal-glow:rgba(74,203,190,0.15);
-    --radius:8px; --radius-sm:5px;
-    --font:-apple-system,BlinkMacSystemFont,'SF Pro Display','Inter','Segoe UI',Roboto,sans-serif;
-    --mono:'SF Mono','Fira Code','JetBrains Mono','Cascadia Code',monospace;
-    --shadow:0 1px 2px rgba(0,0,0,0.4);
-    --shadow-lg:0 8px 32px rgba(0,0,0,0.6);
+    --bg:#0a0a0a; --bg2:#121212; --bg3:#1a1a1b; --bg4:#242426;
+    --surface:#1a1a1b; --surface-hover:#242426; --border:#2a2a2c; --border-light:#36363a;
+    --text:#f3f3f1; --text2:#a4a6aa; --text3:#85878b;
+    --accent:#54bf5c; --accent-glow:rgba(84,191,92,0.15); --accent-dim:#3f9a47; --accent-ink:#04070f;
+    --green:#5fe0a0; --green-glow:rgba(95,224,160,0.15);
+    --orange:#e5ac4c; --orange-glow:rgba(229,172,76,0.15);
+    --pink:#c58cff; --pink-glow:rgba(197,140,255,0.15);
+    --red:#ff6b7a; --red-glow:rgba(255,107,122,0.15);
+    --teal:#4fd8c4; --teal-glow:rgba(79,216,196,0.15);
+    --radius:12px; --radius-sm:7px;
+    --font:Geist,Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'Geist Mono','SF Mono','JetBrains Mono','Cascadia Code',monospace;
+    --shadow:inset 0 1px 0 rgba(255,255,255,0.045),0 1px 2px rgba(0,0,0,0.6),0 12px 32px -16px rgba(0,0,0,0.9);
+    --shadow-lg:inset 0 1px 0 rgba(255,255,255,0.07),0 0 0 1px rgba(197,140,255,0.28),0 28px 70px -28px #000;
+    --ease-out:cubic-bezier(.23,1,.32,1);
   }
   [data-theme="light"]{
-    --bg:#f4f5f7; --bg2:#ffffff; --bg3:#eaecef; --bg4:#dfe2e6;
-    --surface:#ffffff; --surface-hover:#f4f5f7; --border:#cdd1d9; --border-light:#dde1e8;
-    --text:#181b23; --text2:#585e6e; --text3:#9197a8;
-    --accent:#4560d0; --accent-glow:rgba(69,96,208,0.08); --accent-dim:#2f44a0;
-    --green:#16a34a; --green-glow:rgba(22,163,74,0.08);
-    --orange:#d97706; --orange-glow:rgba(217,119,6,0.08);
-    --pink:#c73877; --pink-glow:rgba(199,56,119,0.08);
-    --red:#dc2626; --red-glow:rgba(220,38,38,0.08);
-    --teal:#0d9488; --teal-glow:rgba(13,148,136,0.08);
-    --shadow:0 1px 2px rgba(0,0,0,0.04);
-    --shadow-lg:0 8px 32px rgba(0,0,0,0.08);
+    --bg:#f1efe4; --bg2:#f7f5ec; --bg3:#ebe8db; --bg4:#dbd8c9;
+    --surface:#f7f5ec; --surface-hover:#f1efe4; --border:#c9c6b7; --border-light:#dbd8c9;
+    --text:#04070f; --text2:#484d58; --text3:#5c616b;
+    --accent:#095717; --accent-glow:rgba(9,87,23,0.1); --accent-dim:#06400f; --accent-ink:#f7f5ec;
+    --green:#0a6b3c; --green-glow:rgba(10,107,60,0.1);
+    --orange:#8a5200; --orange-glow:rgba(138,82,0,0.1);
+    --pink:#7a2fc9; --pink-glow:rgba(122,47,201,0.1);
+    --red:#c0182f; --red-glow:rgba(192,24,47,0.1);
+    --teal:#0a6e62; --teal-glow:rgba(10,110,98,0.1);
+    --shadow:inset 0 1px 0 rgba(255,255,255,0.7),0 1px 2px rgba(58,50,20,0.1),0 10px 24px -14px rgba(58,50,20,0.25);
+    --shadow-lg:inset 0 1px 0 #fff,0 0 0 1px rgba(122,47,201,0.4),0 18px 40px -20px rgba(58,50,20,0.35);
   }
 `;
 
@@ -89,33 +90,37 @@ function canvasCss() {
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%}
   body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.4;overflow:hidden}
-  ::selection{background:var(--accent);color:#fff}
+  ::selection{background:var(--accent);color:var(--accent-ink)}
   ::-webkit-scrollbar{width:8px;height:8px}
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
   button{font-family:var(--font)}
 
-  .bar{display:flex;align-items:center;gap:12px;height:52px;padding:0 16px;background:color-mix(in srgb,var(--bg2) 88%,transparent);border-bottom:1px solid var(--border);backdrop-filter:blur(16px)}
+  .bar{display:flex;align-items:center;gap:12px;height:52px;padding:0 16px;background:var(--bg2);border-bottom:1px solid var(--border)}
   .brand{display:flex;align-items:center;gap:9px;min-width:0}
-  .brand .logo{width:26px;height:26px;flex:none;background:linear-gradient(135deg,var(--accent),var(--pink));border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff}
+  .brand .logo{width:26px;height:26px;flex:none;background:var(--bg4);border-radius:6px;display:flex;align-items:center;justify-content:center;font:600 12px var(--mono);color:var(--accent);box-shadow:inset 0 1px 0 rgba(255,255,255,0.06)}
   .brand .name{font-size:13.5px;font-weight:600;white-space:nowrap}
   .brand .file{font-size:11.5px;color:var(--text2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
   .bar .spacer{flex:1}
 
-  .presence{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:99px;padding:3px 10px 3px 8px;white-space:nowrap}
+  .presence{display:inline-flex;flex:none;align-items:center;gap:8px;height:28px;font-size:12px;font-weight:500;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:999px;padding:0 12px 0 8px;white-space:nowrap}
   .presence .dot{width:7px;height:7px;border-radius:99px;background:var(--text3)}
-  .presence[data-state="listening"] .dot{background:var(--green);box-shadow:0 0 0 3px var(--green-glow);animation:pulse 2s infinite}
-  .presence[data-state="thinking"] .dot,.presence[data-state="typing"] .dot{background:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);animation:pulse 1.2s infinite}
-  .presence[data-state="queued"] .dot{background:var(--orange);box-shadow:0 0 0 3px var(--orange-glow)}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .presence[data-state="listening"] .dot{background:var(--green);box-shadow:0 0 0 3px var(--green-glow)}
+  .presence[data-state="thinking"] .dot,.presence[data-state="typing"] .dot{background:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+  .presence[data-state="thinking"] .label,.presence[data-state="typing"] .label{background:linear-gradient(90deg,var(--text3) 0 38%,var(--text) 50%,var(--text3) 62% 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shimmer 2s linear infinite}
+  @keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+  .presence[data-state="queued"] .dot{background:var(--orange);box-shadow:0 0 0 3px var(--orange-glow);animation:pulse 2s ease-in-out infinite}
+  .presence[data-state="queued"]{color:var(--orange)}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
 
   .toggle{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text2);cursor:pointer;user-select:none}
   .toggle .track{width:30px;height:17px;border-radius:99px;background:var(--bg4);border:1px solid var(--border);position:relative;transition:background .15s}
   .toggle .knob{position:absolute;top:1px;left:1px;width:13px;height:13px;border-radius:99px;background:var(--text2);transition:transform .15s,background .15s}
   .toggle[aria-pressed="true"] .track{background:var(--accent);border-color:var(--accent-dim)}
-  .toggle[aria-pressed="true"] .knob{transform:translateX(13px);background:#fff}
+  .toggle[aria-pressed="true"] .knob{transform:translateX(13px);background:var(--accent-ink)}
 
-  .icon-btn{height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:11.5px;display:flex;align-items:center;gap:5px;transition:all .12s}
+  .icon-btn{height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg4);color:var(--text2);cursor:pointer;font-size:11.5px;display:flex;align-items:center;gap:5px;transition:background .16s var(--ease-out),border-color .16s var(--ease-out),color .16s var(--ease-out),transform .09s var(--ease-out)}
+  .icon-btn:active{transform:scale(.97)}
   .icon-btn:hover{border-color:var(--border-light);color:var(--text);background:var(--bg4)}
   .icon-btn.danger:hover{border-color:var(--red);color:var(--red);background:var(--red-glow)}
 
@@ -125,25 +130,28 @@ function canvasCss() {
   [data-theme] .frame iframe{background:var(--bg2)}
 
   .panel{width:340px;flex:none;display:flex;flex-direction:column;border-left:1px solid var(--border);background:var(--bg2)}
-  .panel h2{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);padding:12px 14px 8px}
+  .panel h2{font-size:12px;font-weight:500;color:var(--text3);padding:14px 14px 6px}
 
   body.chat-hidden .panel{display:none}
-  .icon-btn .count{display:none;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--accent);color:#fff;font-size:10px;font-weight:600;line-height:16px;text-align:center}
+  .icon-btn .count{display:none;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--accent);color:var(--accent-ink);font-size:10px;font-weight:600;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
   .icon-btn .count.show{display:inline-block}
 
   .verdict{display:flex;gap:8px;padding:0 14px 12px;border-bottom:1px solid var(--border)}
-  .verdict button{flex:1;height:30px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s}
+  .verdict button{flex:1;height:30px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;transition:background .16s var(--ease-out),color .16s var(--ease-out),transform .09s var(--ease-out)}
+  .verdict button:active{transform:scale(.97)}
   .verdict .approve{border:1px solid var(--green);background:var(--green-glow);color:var(--green)}
-  .verdict .approve:hover{background:var(--green);color:#fff}
+  .verdict .approve:hover{background:var(--green);color:var(--accent-ink)}
   .verdict .changes{border:1px solid var(--orange);background:var(--orange-glow);color:var(--orange)}
-  .verdict .changes:hover{background:var(--orange);color:#fff}
+  .verdict .changes:hover{background:var(--orange);color:var(--accent-ink)}
 
   .chat{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
   .msg{max-width:92%;padding:7px 10px;border-radius:10px;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
-  .msg.user{align-self:flex-end;background:var(--accent-glow);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);color:var(--text);border-bottom-right-radius:3px}
-  .msg.agent{align-self:flex-start;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-bottom-left-radius:3px}
-  .msg .meta{display:block;font-size:9.5px;color:var(--text3);margin-top:3px}
-  .msg.src-app{border-style:dashed;background:transparent;align-self:flex-start}
+  .msg.user{align-self:flex-end;background:var(--bg4);border:0;color:var(--text);border-bottom-right-radius:3px}
+  .msg.agent{align-self:flex-start;background:var(--bg3);border:0;box-shadow:var(--shadow);color:var(--text);border-bottom-left-radius:3px}
+  .msg.line-in{animation:line-in 180ms var(--ease-out) both}
+  @keyframes line-in{from{opacity:0;transform:translateY(6px)}}
+  .msg .meta{display:block;font:10.5px var(--mono);color:var(--text3);margin-top:3px;font-variant-numeric:tabular-nums}
+  .msg.src-app{border:1px dashed var(--border-light);background:transparent;box-shadow:none;align-self:flex-start}
   .msg.src-app .meta{font-weight:600}
   .msg.kind-annotation{border-left:2px solid var(--teal)}
   .msg.kind-verdict{border-left:2px solid var(--green)}
@@ -160,16 +168,18 @@ function canvasCss() {
   @keyframes typing-bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:1}}
   @media (prefers-reduced-motion:reduce){
     .typing .dots i{animation:none;opacity:.7}
-    .presence .dot{animation:none}
+    .presence .dot,.presence .label,.msg.line-in{animation:none}
+    .presence .label{color:var(--text2);background:none}
   }
   /* A queued message nobody is listening for gets an explicit, honest note. */
   .stalled{align-self:flex-start;display:none;gap:8px;background:var(--orange-glow);border:1px solid color-mix(in srgb,var(--orange) 35%,transparent);border-radius:10px;padding:8px 11px;font-size:11.5px;color:var(--text2);line-height:1.5}
   .stalled.show{display:flex}
 
   .queue{padding:8px 14px 0;display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto}
-  .pill{display:flex;align-items:flex-start;gap:8px;background:var(--bg3);border:1px solid var(--border);border-left:2px solid var(--teal);border-radius:6px;padding:6px 8px;font-size:11.5px}
-  .pill.kind-chat{border-left-color:var(--accent)}
-  .pill.kind-verdict{border-left-color:var(--green)}
+  .pill{position:relative;display:flex;align-items:flex-start;gap:8px;background:var(--bg3);border:0;border-radius:7px;padding:6px 8px 6px 14px;font-size:11.5px}
+  .pill::before{content:'';position:absolute;left:5px;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--teal)}
+  .pill.kind-chat::before{background:var(--accent)}
+  .pill.kind-verdict::before{background:var(--green)}
   .pill .where{color:var(--teal);font-family:var(--mono);font-size:10px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pill .shapes{color:var(--accent)}
   .pill .body{flex:1;min-width:0;color:var(--text2)}
@@ -179,17 +189,18 @@ function canvasCss() {
 
   .composer{padding:10px 14px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
   .composer .hint{font-size:10px;color:var(--text3)}
-  .composer textarea{width:100%;min-height:60px;max-height:160px;resize:vertical;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:12.5px;font-family:var(--font);outline:none;transition:all .15s}
+  .composer textarea{width:100%;min-height:60px;max-height:160px;resize:vertical;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text);font-size:12.5px;font-family:var(--font);outline:none;transition:all .15s}
   .composer textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
   .composer .row{display:flex;gap:8px;align-items:center}
-  .composer .send{flex:1;height:32px;border:none;border-radius:6px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .12s}
+  .composer .send{flex:1;height:32px;border:none;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-size:12.5px;font-weight:600;cursor:pointer;transition:background .16s var(--ease-out),transform .09s var(--ease-out)}
+  .composer .send:active{transform:scale(.97)}
   .composer .send:hover{background:var(--accent-dim)}
   .composer .send:disabled{opacity:.5;cursor:default}
   .composer .status{font-size:10.5px;color:var(--text3)}
 
-  .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(6px);z-index:50}
+  .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bg) 88%,transparent);z-index:50}
   .overlay.show{display:flex}
-  .overlay .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:26px 32px;text-align:center;max-width:340px}
+  .overlay .card{background:var(--surface);border:0;border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:26px 32px;text-align:center;max-width:340px}
   .overlay .card h3{font-size:14px;margin-bottom:6px}
   .overlay .card p{font-size:12px;color:var(--text2);line-height:1.5}
   `;
@@ -383,9 +394,12 @@ function canvasClientJs() {
   }
   function scrollToEnd() { chatLog.scrollTop = chatLog.scrollHeight; }
 
+  // Lanes M9: only messages that arrived since the last render slide in.
+  let shownChat = -1;
   function renderChat(entries) {
     const pinned = atBottom();
     chatLog.innerHTML = '';
+    const fresh = shownChat >= 0 ? shownChat : entries.length;
     if (!entries.length) {
       const empty = document.createElement('div');
       empty.className = 'empty';
@@ -394,7 +408,7 @@ function canvasClientJs() {
     } else {
       for (const entry of entries) {
         const div = document.createElement('div');
-        div.className = 'msg ' + (entry.role === 'agent' ? 'agent' : 'user') + ' kind-' + (entry.kind || 'chat') + (entry.source === 'app' ? ' src-app' : '');
+        div.className = 'msg ' + (entry.role === 'agent' ? 'agent' : 'user') + ' kind-' + (entry.kind || 'chat') + (entry.source === 'app' ? ' src-app' : '') + (entries.indexOf(entry) >= fresh ? ' line-in' : '');
         div.textContent = entry.text;
         const meta = document.createElement('span');
         meta.className = 'meta';
@@ -403,6 +417,7 @@ function canvasClientJs() {
         chatLog.appendChild(div);
       }
     }
+    shownChat = entries.length;
     // The indicators live at the tail of the log, so they survive re-render.
     chatLog.appendChild(typingEl);
     chatLog.appendChild(stalledEl);
@@ -540,7 +555,6 @@ function renderCanvasHtml(session, { clientPath = '/client.js', cssPath = '/canv
     <span class="file" title="${escapeHtml(session.file)}">${escapeHtml(name)}</span>
   </div>
   <div class="spacer"></div>
-  <div id="presence" class="presence" data-state="waiting"><span class="dot"></span><span class="label">agent not connected</span></div>
   <div id="annotate" class="toggle" role="switch" aria-pressed="true" title="Toggle annotate mode (Cmd/Ctrl+I)">
     <span>Annotate</span><span class="track"><span class="knob"></span></span>
   </div>
@@ -566,6 +580,7 @@ function renderCanvasHtml(session, { clientPath = '/client.js', cssPath = '/canv
     <div class="composer">
       <textarea id="chatInput" placeholder="Message your agent&#10;Enter to send &middot; Shift+Enter for a new line"></textarea>
       <div class="row">
+        <div id="presence" class="presence" data-state="waiting" role="status"><span class="dot"></span><span class="label">agent not connected</span></div>
         <button id="send" class="send" type="button">Send to agent</button>
       </div>
       <div id="sendStatus" class="status"></div>
