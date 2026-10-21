@@ -22,7 +22,7 @@ stderr, never placed in a command line.
 
 Ordering is by tier:
 
-1. pipelines: `startcycle`, `startcycle-graph`, `startcycle-graph-user`
+1. pipelines: `fabric`, `fabric-graph`, `fabric-multigraph`
 2. category `bdb-core`
 3. names starting with `bdb-` or `aos-`
 4. playbooks: names starting with `pb-`

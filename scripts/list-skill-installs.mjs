@@ -135,7 +135,7 @@ async function collectSkills(root) {
 }
 
 function tierOf(name, category) {
-  if (['startcycle', 'startcycle-graph', 'startcycle-graph-user'].includes(name)) return 1;
+  if (name === 'fabric' || name.startsWith('fabric-')) return 1;
   if (category === 'bdb-core') return 2;
   if (name.startsWith('bdb-') || name.startsWith('aos-')) return 3;
   if (name.startsWith('pb-')) return 4;

@@ -47,9 +47,9 @@ function is pure: table in, `{ target, model, reason }` out.
 
 ## The advisory hook in the dispatcher
 
-`.claude/workflows/startcycle-dispatch.mjs` imports `routeFor` lazily and
+`.claude/workflows/fabric-dispatch.mjs` imports `routeFor` lazily and
 logs each node's would-be target to stderr:
-`[router] advisory node <id> -> target: <target>` (startcycle-dispatch.mjs:
+`[router] advisory node <id> -> target: <target>` (fabric-dispatch.mjs:
 72-76, 657-666). Two boundaries matter:
 
 - when `enforce` is false it only logs; the returned model options are still

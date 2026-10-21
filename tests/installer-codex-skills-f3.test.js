@@ -28,7 +28,7 @@ const backups = () => walk(path.join(home, '.agents', 'backups')).filter((n) => 
 test('Codex detected: skills land in ~/.agents/skills only, old AOS copies are retired once, .system untouched', () => {
   assert.ok(inst.detectPlatforms().some((d) => d.key === 'codex'), 'codex shim must be detected');
   const root = path.join(home, '.codex', 'skills');
-  const old = path.join(root, 'startcycle', 'SKILL.md');
+  const old = path.join(root, 'fabric', 'SKILL.md');
   const sys = path.join(root, '.system', 'imagegen', 'SKILL.md');
   for (const [f, t] of [[old, 'old AOS copy'], [sys, 'system']]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); }
   inst.initSessionManifest({ [old]: { path: old, sha256: sha('old AOS copy') } }, []);
@@ -37,7 +37,7 @@ test('Codex detected: skills land in ~/.agents/skills only, old AOS copies are r
     inst.syncSkillsToGlobalHarnesses();
     assert.deepEqual(walk(root).filter((n) => !n.startsWith('.system')), [], `run ${run}: nothing but .system in ~/.codex/skills`);
     assert.equal(fs.readFileSync(sys, 'utf8'), 'system');
-    assert.ok(fs.existsSync(path.join(home, '.agents', 'skills', 'startcycle', 'SKILL.md')), `run ${run}: agents/skills written`);
+    assert.ok(fs.existsSync(path.join(home, '.agents', 'skills', 'fabric', 'SKILL.md')), `run ${run}: agents/skills written`);
     assert.equal(backups().length, 1, `run ${run}: exactly the one-time backup, never a new one`);
   }
 });

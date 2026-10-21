@@ -1,5 +1,5 @@
 ---
-name: teamwork-preview
+name: fabric-teamwork
 description: Multi-agent team prompt crafting and delegation. 9 steps, objective verification, integrity modes, acceptance criteria.
 category: bdb-core
 ---
@@ -17,7 +17,7 @@ Two-phase workflow:
 ## ▶️ On Claude Code: run the script, don't narrate the protocol
 
 **Action:** call the `Workflow` tool with `scriptPath` set to
-`$HOME/.claude/workflows/teamwork-dispatch.mjs` — resolve `$HOME` yourself rather
+`$HOME/.claude/workflows/fabric-teamwork-dispatch.mjs` — resolve `$HOME` yourself rather
 than hardcoding a username — and `args` set to whatever the user said after the
 command, passed through verbatim. If they said nothing, pass no `args`; step 1
 asks.
@@ -32,7 +32,7 @@ validation outcome, and any issues it reports. Do not summarise or reinterpret i
 **Do NOT walk through the nine steps yourself in response to this skill.** The
 protocol below is the specification the script implements; it is not a set of
 instructions to follow inline. This repo has already paid for that mistake once,
-recorded in `skills/basic/startcycle-graph/SKILL.md`: an earlier version embedded
+recorded in `skills/basic/fabric-graph/SKILL.md`: an earlier version embedded
 its pipeline in prose, the model followed it "in spirit" instead of invoking the
 script, and the entire graph — subagents, state, review, quality gate — silently
 never ran. A 9-step protocol with integrity modes and acceptance criteria is
@@ -55,7 +55,7 @@ today, so the prose is not a fallback there, it is the implementation. Both are
 kept in this one file deliberately: two files would drift, and the drift would be
 invisible until someone on the other harness got different behaviour.
 
-**This is not Antigravity's `/teamwork-preview`.** That command is compiled into
+**This is not Antigravity's built-in teamwork command.** That command is compiled into
 the `agy` binary, with its own conductor/orchestrator/auditor agent types, and is
 maintained by Google. This is an independent implementation of the same idea on a
 different runtime. It will behave differently, and it does not claim otherwise.
@@ -233,6 +233,6 @@ If running in Google Antigravity with native subagent support:
 - Set artifact status to `Launched`.
 
 ### 2. In Other Agent Harnesses
-- **Claude Code**: Feed the finalized prompt to dynamic workflows or dispatch via `/startcycle-graph` / subagents.
+- **Claude Code**: Feed the finalized prompt to dynamic workflows or dispatch via `/fabric-graph` / subagents.
 - **Cursor / Windsurf**: Inject the prompt into composer or project rules context.
 - **OpenCode / Codex CLI**: Pass the prompt to `opencode run` or Codex runner.

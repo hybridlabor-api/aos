@@ -308,7 +308,7 @@ describe('runtime boundary', () => {
 
 describe('dispatcher contract wiring', () => {
   test('uses the tested boundary and fixed-argv shell hardening', () => {
-    const source = fs.readFileSync(new URL('../.claude/workflows/startcycle-dispatch.mjs', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../.claude/workflows/fabric-dispatch.mjs', import.meta.url), 'utf8');
     const verifyStart = source.indexOf("if (label.startsWith('archify-verify'))");
     const verifyEnd = source.indexOf('// LLM Agent Steps:', verifyStart);
     const verifyBlock = source.slice(verifyStart, verifyEnd);

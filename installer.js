@@ -36,7 +36,7 @@ const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
-const { pruneRetiredSkills, storeProtectedDirs } = require('./lib/retired-skills');
+const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
 const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
@@ -978,7 +978,7 @@ const keptUserEdits = [];
 const GUARD_FILES = new Set(['aos-gate.mjs', 'gate-profile.mjs', 'go-gate.mjs']);
 // Runtime scripts nobody is meant to edit. A copy from an untagged pre-release matches no shipped hash and, without a
 // manifest entry, looked like a user edit (Windows: five .new files after every update); same replace-with-.bak rule.
-const RUNTIME_FILES = new Set(['startcycle-dispatch.mjs', 'stop-module-processes.js']);
+const RUNTIME_FILES = new Set(['fabric-dispatch.mjs', 'stop-module-processes.js']);
 
 function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
     const base = path.basename(targetPath);
@@ -1205,6 +1205,14 @@ function pruneRemovedSkills(manifest) {
         manifest,
         roots: globalSkillDestRoots(),
         backupDir: path.join(homeDir, '.agents', 'backups', `retired-skills-${timestamp}`),
+        log,
+        keep: storeProtectedDirs(homeDir),
+    });
+    pruneRetiredFiles({
+        home: homeDir,
+        claudeDir: claudeConfigDir(homeDir),
+        manifest,
+        backupDir: path.join(homeDir, '.agents', 'backups', `retired-files-${timestamp}`),
         log,
     });
 }
@@ -1659,9 +1667,9 @@ function detectInstallState() {
 
     const legacyMarkers = [
         path.join(homeDir, '.agents', 'AGENTS.md'),
-        path.join(geminiDir, 'config', 'skills', 'startcycle', 'SKILL.md'),
-        path.join(homeDir, '.agents', 'skills', 'startcycle', 'SKILL.md'),
-        path.join(claudeConfigDir(homeDir), 'skills', 'startcycle', 'SKILL.md')
+        path.join(geminiDir, 'config', 'skills', 'fabric', 'SKILL.md'),
+        path.join(homeDir, '.agents', 'skills', 'fabric', 'SKILL.md'),
+        path.join(claudeConfigDir(homeDir), 'skills', 'fabric', 'SKILL.md')
     ];
 
     if (!isInstalled && legacyMarkers.some(p => fs.existsSync(p))) {
@@ -5757,8 +5765,8 @@ function injectHarnessRules() {
         }, 'The harness injection below still runs.');
 
         // Dispatcher scripts must land in ~/.claude/workflows/, because that is
-        // where the skills that route to them look: startcycle-graph's SKILL.md
-        // and teamwork-preview's both tell the model to call `Workflow` with
+        // where the skills that route to them look: fabric-graph's SKILL.md
+        // and fabric-teamwork's both tell the model to call `Workflow` with
         // scriptPath `$HOME/.claude/workflows/<name>.mjs`. installProjectHarness()
         // copies them into a *project*, which only helps a project that opted into
         // the local harness -- on a plain global install those paths did not exist
@@ -5769,17 +5777,17 @@ function injectHarnessRules() {
                 copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(homeDir), 'workflows'));
                 log.step(`Installed dispatcher workflows to ${path.join(claudeConfigDir(homeDir), 'workflows')}`);
             }
-        }, '/startcycle-graph and /teamwork-preview fall back to their prose protocols.');
+        }, '/fabric-graph and /fabric-teamwork fall back to their prose protocols.');
 
-        const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
+        const fabricWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'fabric-graph.md');
         const sources = installStep('read the global rule sources', () => ({
             globalRules: fs.readFileSync(rulesMdSrc, 'utf8'),
-            startcycleContent: fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '',
+            fabricContent: fs.existsSync(fabricWorkflowSrc) ? fs.readFileSync(fabricWorkflowSrc, 'utf8') : '',
             agentsMdContent: fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : ''
         }), 'Cursor, Claude, Copilot and Codex keep their current instruction files.');
 
         if (sources.ok) {
-            const { globalRules, startcycleContent, agentsMdContent } = sources.value;
+            const { globalRules, fabricContent, agentsMdContent } = sources.value;
 
             // F8: an install or update started inside a repo must not write into that repo (.github,
             // .codex-plugin, .roomodes); a repo gets files only via --project-harness.
@@ -5879,12 +5887,12 @@ function injectHarnessRules() {
                 if (!codexContent.includes("Global Agent Instructions") && !codexContent.includes(DESTRUCTIVE_START)) {
                     codexContent = `${codexContent}\n\n${globalRules}`.trim();
                 }
-                if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
-                    codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
+                if (fabricContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
+                    codexContent = `${codexContent}\n\n---\n\n${fabricContent}`.trim();
                 }
                 codexContent = upsertRoutingBlock(upsertDestructiveBlock(codexContent));
                 fs.writeFileSync(codexPath, codexContent);
-                log.step('Synced .codex-plugin/system.md with Global Rules and /startcycle workflow');
+                log.step('Synced .codex-plugin/system.md with Global Rules and /fabric workflow');
             }, '.codex-plugin/system.md is unchanged.');
 
             const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
@@ -5913,7 +5921,7 @@ function injectHarnessRules() {
         const rooModesPath = path.join(currentDir, '.roomodes');
         const rooModesData = {
             customModes: [
-                { slug: "planner-orchestrator", name: "Planner Orchestrator", roleDefinition: "Lead System Planner & Task Decomposer. Analyzes prompts, /bdbrainstorm, and orchestrates /startcycle.", groups: ["read", "browser", "command"] },
+                { slug: "planner-orchestrator", name: "Planner Orchestrator", roleDefinition: "Lead System Planner & Task Decomposer. Analyzes prompts, /bdbrainstorm, and orchestrates /fabric.", groups: ["read", "browser", "command"] },
                 { slug: "godmode-ui-ux", name: "Godmode UI/UX", roleDefinition: "Lead Frontend Designer & UI Engineer. Anti-Slop, DTCG design tokens, fluid motion, React/Tailwind.", groups: ["read", "edit", "browser", "command"] },
                 { slug: "godmode-engineering", name: "Godmode Engineering", roleDefinition: "Senior Fullstack & Backend Engineer. DDD, Clean Architecture, TDD, TypeScript/Python.", groups: ["read", "edit", "browser", "command"] },
                 { slug: "godmode-eventtech", name: "Godmode EventTech", roleDefinition: "Architectural Authority for Real-Time Performance, Signal Flow, and Hardware Limits in live environments.", groups: ["read", "edit", "mcp", "command"] },
@@ -5951,7 +5959,7 @@ function injectHarnessRules() {
 
         installStep('write the default ~/.aos/pipeline.json', () => {
             if (!DRY_RUN) installPipelineDefault();
-        }, 'Helper agents of /startcycle-graph then inherit the session model.');
+        }, 'Helper agents of /fabric-graph then inherit the session model.');
 
         installStep('apply Claude model overrides to the shipped agents', () => {
             if (DRY_RUN || !_sessionManifest || !active.has('claudecode')) return;
@@ -5966,7 +5974,7 @@ function injectHarnessRules() {
                 copyDirRecursiveSync(agentsDirSrc, globalAgentsDir, AGENTS_COPY_EXCLUDE);
                 log.step(`Synced global .agents/ to ${globalAgentsDir}`);
             }
-        }, 'agents.md and workflows/startcycle.md may be missing globally.');
+        }, 'agents.md and workflows/fabric.md may be missing globally.');
     }
 }
 
@@ -6216,7 +6224,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     // so the a2a lib must land there or the plugin fails to load.
     installA2aLibCopies({ targetHome, opencodeDir });
 
-    // Slash-command payloads (/startcycle-graph and the generated /bdb-aos-<cmd> files).
+    // Slash-command payloads (/fabric-graph and the generated /bdb-aos-<cmd> files).
     const commandsSrc = path.join(srcDir, '.opencode', 'commands');
     if (fs.existsSync(commandsSrc)) {
         try {
@@ -6935,7 +6943,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
                 { type: 'command', command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
                 { type: 'command', command: obs(globalHooksDir, 'aos-session-hint.mjs'), timeout: 3 },
                 { type: 'command', command: obs(globalHooksDir, 'rules-inject.mjs'), timeout: 3 },
-                { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
+                { type: 'command', command: cmd(workflowsDir, 'fabric-dispatch.mjs'), timeout: 30 }
             ]
         },
         // Session-end memory capture: agy's Stop event. Payload fields are unverified on live agy; the hook skips quietly without a transcript.
@@ -7308,7 +7316,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '[[hooks.UserPromptSubmit]]',
         '[[hooks.UserPromptSubmit.hooks]]',
         'type = "command"',
-        `command = ${JSON.stringify(`node "${path.join(workflowsDir, 'startcycle-dispatch.mjs')}"`)}`,
+        `command = ${JSON.stringify(`node "${path.join(workflowsDir, 'fabric-dispatch.mjs')}"`)}`,
         'timeout = 30',
         '',
         '[[hooks.PreToolUse]]',
@@ -7426,7 +7434,7 @@ function installProjectHarness() {
             copyDirRecursiveSync(workflowsSrc, path.join(projectCodexDir, 'workflows'));
             log.step(`Copied dispatcher workflows to project harnesses`);
         }
-    }, '/startcycle dispatch degrades to graph.md as a manual guide.');
+    }, '/fabric dispatch degrades to graph.md as a manual guide.');
 
     installStep('copy hooks into project', () => {
         const hooksSrc = path.join(srcDir, '.claude', 'hooks');

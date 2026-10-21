@@ -19,8 +19,8 @@ test('installed doctor with an AO checkout, a nested plugin cache and named agy 
         write(path.join(home, '.local', 'bin', 'ao'), 'not a real ao');
         fs.mkdirSync(path.join(home, 'dev', 'agents', 'bdb-agent-orchestrator', '.git'), { recursive: true });
         const root = path.join(home, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '1.0.0');
-        write(path.join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ skills: ['./skills/basic/startcycle'] }));
-        write(path.join(root, 'skills', 'basic', 'startcycle', 'SKILL.md'), '#');
+        write(path.join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ skills: ['./skills/basic/fabric'] }));
+        write(path.join(root, 'skills', 'basic', 'fabric', 'SKILL.md'), '#');
         write(path.join(home, '.gemini', 'config', 'hooks.json'), JSON.stringify({ 'aos-context': { PreInvocation: [] }, 'aos-go-gate': { PreToolUse: [] } }));
         write(path.join(home, '.gemini', 'config', 'mcp_config.json'), JSON.stringify({ mcpServers: { mcsc: { command: 'node' } } }));
 

@@ -107,9 +107,9 @@
     <rect class="panel" x="60" y="598" width="470" height="210" rx="18"/>
     <text class="label green" x="88" y="630">PIPELINES</text>
     <text class="h2 ink" x="88" y="664">Build with a roster</text>
-    <text class="li ink mono" x="88" y="698" font-size="14">/startcycle          linear chain</text>
-    <text class="li ink mono" x="88" y="722" font-size="14">/startcycle-graph    durable state + repair loop</text>
-    <text class="li ink mono" x="88" y="746" font-size="14">/startcycle-graph-user  throwaway fan-out</text>
+    <text class="li ink mono" x="88" y="698" font-size="14">/fabric          picks the mode</text>
+    <text class="li ink mono" x="88" y="722" font-size="14">/fabric-graph    durable state + repair loop</text>
+    <text class="li ink mono" x="88" y="746" font-size="14">/fabric-multigraph  throwaway fan-out</text>
     <text class="li muted" x="88" y="782">Nodes never invoke each other. A dispatcher routes.</text>
 
     <rect class="panel" x="565" y="598" width="470" height="210" rx="18"/>

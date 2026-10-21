@@ -93,7 +93,7 @@ npx -y @hybridlabor-api/aos@latest
 <td width="33%" valign="top">🔌 <b>MCP-Server</b><br/>21 Server für Creative Software, OS-Steuerung, Memory und Harness-übergreifende Delegation.<br/>→ <a href="#mcp-server">MCP-Server</a></td>
 </tr>
 <tr>
-<td width="33%" valign="top">🚀 <b>Pipelines &amp; GO-Gate</b><br/><code>/startcycle</code>, <code>/startcycle-graph</code>, <code>/startcycle-graph-user</code> und die hook-erzwungene Release-Schleuse.<br/>→ <a href="#die-pipelines">Die Pipelines</a></td>
+<td width="33%" valign="top">🚀 <b>Pipelines &amp; GO-Gate</b><br/><code>/fabric</code>, <code>/fabric-graph</code>, <code>/fabric-multigraph</code> und die hook-erzwungene Release-Schleuse.<br/>→ <a href="#die-pipelines">Die Pipelines</a></td>
 <td width="33%" valign="top">💬 <b>Sessions, die reden</b><br/>A2A zwischen Claude-Code-, OpenCode-, agy- und Codex-Sessions auf localhost.<br/>→ <a href="#a2a-sessions-die-miteinander-reden">A2A</a></td>
 <td width="33%" valign="top">🛠️ <b>Tools</b><br/>Plan Canvas, agenttrail, archify, AOS Store, AOS Hub, aos sessions, Fleet Band, aos doctor.<br/>→ <a href="#skills-auf-einen-blick">Tools</a></td>
 </tr>
@@ -125,7 +125,7 @@ Für geführte Workflows über diese Domänen hinweg siehe [Playbooks](#playbook
 | Die lokale Kontrollseite öffnen (Services, Katalog, Store, Pläne) | `aos hub` |
 | Skills und Agents stöbern und hinzufügen | `aos store ui` |
 | Den Code-Wissensgraphen hinzufügen | `npx -y @hybridlabor-api/aos@latest -y --modules=codebase-memory` |
-| Ein Feature planen, dann bauen | `/plan`, dann `/startcycle-graph` |
+| Ein Feature planen, dann bauen | `/plan`, dann `/fabric-graph` |
 
 ---
 
@@ -173,14 +173,15 @@ Für geführte Workflows über diese Domänen hinweg siehe [Playbooks](#playbook
 
 ## Skills auf einen Blick
 
-- [**`/startcycle`**](skills/basic/startcycle/SKILL.md) - lineare Build-Pipeline (Architect, TechLead, paralleler Build, Reviewer) mit Datei-Hand-offs in `production_artifacts/`
-- [**`/startcycle-graph`**](skills/basic/startcycle-graph/SKILL.md) - Dispatcher-Graph mit persistentem `state.json`, Reviewer-Repair-Loop, Quality Gate und Eskalation
+- [**`/fabric`**](skills/basic/fabric/SKILL.md) - Master-Einstieg: wählt den passenden Fabric-Modus für die Aufgabe und nennt den Grund in einer Zeile
+- [**`/fabric-graph`**](skills/basic/fabric-graph/SKILL.md) - Dispatcher-Graph mit persistentem `state.json`, Reviewer-Repair-Loop, Quality Gate und Eskalation
   - Der Dispatcher ruft die Subagents [`architect`](agents/architect.md), [`techlead`](agents/techlead.md), [`godmode-ui-ux`](agents/godmode-ui-ux.md), [`godmode-engineering`](agents/godmode-engineering.md), [`godmode-media-eventtech`](agents/godmode-media-eventtech.md), [`reviewer`](agents/reviewer.md) und [`godmode-shipping`](agents/godmode-shipping.md) auf; sie rufen einander nie an
-- [**`/startcycle-graph-user`**](skills/basic/startcycle-graph-user/SKILL.md) - Wegwerf-Fan-out mit 2-4 Nodes für jedes Projekt, nichts bleibt persistent zurück
+- [**`/fabric-multigraph`**](skills/basic/fabric-multigraph/SKILL.md) - Wegwerf-Fan-out mit 2-4 Nodes für jedes Projekt, nichts bleibt persistent zurück
+- [**`/fabric-teamwork`**](skills/basic/fabric-teamwork/SKILL.md) - Prompt-Crafting und Delegation an ein Team; `/fabric-swarm` und `/fabric-loop` sind dokumentiert und kommen in 5.4.1
 - [**`/plan`**](commands/plan.md) - entwerfen, in einer Browser-Canvas rendern, annotieren, auf Freigabe warten, dann übergeben
   - [**`plan-canvas`**](skills/global_config/plan-canvas/SKILL.md) - lokale Canvas, in der du Elemente annotierst, chattest und freigibst oder Änderungen anforderst
   - [**`plan-arbiter`**](skills/global_config/plan-arbiter/SKILL.md) - konkurrierende Pläne mehrerer Agenten vergleichen und einen empfohlenen Plan erzeugen
-- [**`/bdbrainstorm`**](skills/bdbrainstorm/SKILL.md) - Multi-Agent-Brainstorming, das in einer Übergabe an `/startcycle-graph` endet
+- [**`/bdbrainstorm`**](skills/bdbrainstorm/SKILL.md) - Multi-Agent-Brainstorming, das in einer Übergabe an `/fabric-graph` endet
   - [**`/grill-me`**](skills/global_config/grill-me/SKILL.md) - schonungsloses Interview, um einen Plan oder ein Design zu schärfen
   - [**`bdbmediastorm`**](skills/basic/bdbmediastorm/SKILL.md) - Brainstorming für Live-Eventtech, Show Control und Real-Time-Media
 - [**`/playbooks`**](commands/playbooks.md) - alle `pb-*`-Playbooks mit Dauer, Schwierigkeit und Anforderungen listen und eines starten
@@ -340,7 +341,7 @@ npx -y @hybridlabor-api/aos@latest --dry-run                 # ausgeben, was sic
 
 ### Lokaler Project Harness
 
-Statt in `$HOME` zu installieren, legt man nur den Dispatcher-Contract (`.agents/`, die Gate-Hooks, die Agentendefinitionen, den `/startcycle-graph`-Workflow, das OpenCode-Plugin) in einem Repository ab:
+Statt in `$HOME` zu installieren, legt man nur den Dispatcher-Contract (`.agents/`, die Gate-Hooks, die Agentendefinitionen, den `/fabric-graph`-Workflow, das OpenCode-Plugin) in einem Repository ab:
 
 ```bash
 cd dein-projekt && npx -y @hybridlabor-api/aos@latest --project-harness -y
@@ -357,7 +358,7 @@ cd dein-projekt && npx -y @hybridlabor-api/aos@latest --project-harness -y
 | Claude Code / Claude Desktop | `~/.claude/skills` | `~/.claude/agents` | `~/.claude/hooks` + `settings.json` (GO-Gate, Graph-Gate, env-file-protection, Conventional Commits, memB-Inject, Trail-Relay, A2A-Inbox) | `.claude-plugin/`-Manifest liegt im Repo bei (siehe Mitwirken); Fleet Mod registriert in `settings.json` |
 | Google Antigravity | `~/.gemini/config/skills` | `~/.gemini/config/agents/<name>/agent.md` | `~/.gemini/config/hooks.json` und `~/.gemini/antigravity-cli/hooks.json` | Root-`plugin.json` / `plugins/bdb-aos/plugin.json`, Befehle `/bdb-aos:<cmd>`, siehe [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
 | Codex CLI | `~/.agents/skills` (Codex liest diese Wurzel und `~/.codex/skills`; AOS schreibt nur die erste, damit Skills nicht doppelt gelistet werden) | `~/.codex/agents` | `~/.codex/hooks` + `config.toml` | `.codex-plugin/` + `.agents/plugins/marketplace.json`, Befehle `$bdb-aos:<cmd>`, siehe [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
-| OpenCode | `~/.config/opencode/skills` | `~/.config/opencode/agents` | über Plugin | `bdb-aos.js`-Plugin + `/startcycle-graph`-Befehl, registriert in `opencode.jsonc`; hält einen `/startcycle-graph`-Lauf bei `session.idle` am Laufen; generierte `/bdb-aos-<cmd>`-Befehle; Opt-in-Extras, siehe [docs/opencode-setup.md](docs/opencode-setup.md) |
+| OpenCode | `~/.config/opencode/skills` | `~/.config/opencode/agents` | über Plugin | `bdb-aos.js`-Plugin + `/fabric-graph`-Befehl, registriert in `opencode.jsonc`; hält einen `/fabric-graph`-Lauf bei `session.idle` am Laufen; generierte `/bdb-aos-<cmd>`-Befehle; Opt-in-Extras, siehe [docs/opencode-setup.md](docs/opencode-setup.md) |
 | Cursor | `~/.cursor/skills` | keine | keine | `.cursor/rules` (Projekt) |
 | Windsurf | `~/.windsurf/bdb-skills` | keine | keine | `mcp.json` |
 | Roo Code / Cline | `~/.roo/skills` | keine | keine | `.roomodes` (Projekt) |
@@ -403,7 +404,7 @@ Wo eine Stufe keinen Hook hat, hält mechanisch nichts einen abgesicherten Befeh
 
 ## Die Pipelines
 
-Der Contract liegt in [`.agents/graph.md`](.agents/graph.md), das Node-Roster in [`.agents/nodes.json`](.agents/nodes.json), der ausführbare Dispatcher in [`.claude/workflows/startcycle-dispatch.mjs`](.claude/workflows/startcycle-dispatch.mjs).
+Der Contract liegt in [`.agents/graph.md`](.agents/graph.md), das Node-Roster in [`.agents/nodes.json`](.agents/nodes.json), der ausführbare Dispatcher in [`.claude/workflows/fabric-dispatch.mjs`](.claude/workflows/fabric-dispatch.mjs).
 
 **Eine Regel: Nodes rufen einander nie auf.** Ein Dispatcher liest `production_artifacts/state.json`, nachdem eine Node zurückkehrt, und entscheidet, was als Nächstes läuft. Es gibt keine Hand-off-Kette und keinen Agenten, der einem anderen sagt, er soll loslegen. Dieses Design sichert Context-Treue, Auditierbarkeit der Routing-Logik an genau einem Ort und Portabilität über Harnesses hinweg.
 
@@ -441,21 +442,23 @@ flowchart LR
 
 | Befehl | Mechanik | Wann |
 |---|---|---|
-| `/startcycle` | Lineare Kette, Datei-Hand-offs in `production_artifacts/`. Keine State-Machine, kein Repair-Loop. `/startcycle --skill=<name> <goal>` erzwingt einen Skill in jeder Node. | Ein geradliniger Build mit dem Agent-Roster, aber ohne Zeremonie. |
-| `/startcycle-graph` | Der volle Graph: persistentes `state.json`, Reviewer-Repair-Loop, automatisiertes Quality Gate, menschliche Eskalation. | Feature-Arbeit, bei der Korrektheit mehr zählt als Geschwindigkeit, und wenn du einen Audit-Trail willst. |
-| `/startcycle-graph-user` | Wegwerf-Fan-out mit 2-4 Nodes. Nichts persistent. Modell-Tiers pro Rolle; nutzt Antigravity, OpenCode oder Codex, falls installiert, sonst Claude-Code-Subagents. | Ein einmaliges „spawn ein paar Worker" in jedem Projekt. |
+| `/fabric` | Master-Einstieg. Liest die Aufgabe, wählt einen der Modi unten und nennt in einer Zeile welchen und warum. | Wenn unklar ist, welcher Modus passt. |
+| `/fabric-graph` | Der volle Graph: persistentes `state.json`, Reviewer-Repair-Loop, automatisiertes Quality Gate, menschliche Eskalation. | Feature-Arbeit, bei der Korrektheit mehr zählt als Geschwindigkeit, und wenn du einen Audit-Trail willst. |
+| `/fabric-multigraph` | Wegwerf-Fan-out mit 2-4 Nodes. Nichts persistent. Modell-Tiers pro Rolle; nutzt Antigravity, OpenCode oder Codex, falls installiert, sonst Claude-Code-Subagents. | Ein einmaliges „spawn ein paar Worker" in jedem Projekt. |
+| `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. | A vague brief that needs sharpening before a team gets it. |
+| `/fabric-swarm`, `/fabric-loop` | Documented, arrive in 5.4.1. Route to `/fabric-multigraph` and `loop-templates` meanwhile. | Many similar workers; repeat until a condition holds. |
 
-### Die drei Varianten im Vergleich
+### Die Modi im Vergleich
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"lineColor": "#6e7681", "edgeLabelBackground": "#f6f1e8", "textColor": "#15171A", "clusterBkg": "#F7F4EC", "clusterBorder": "#B9B5AA", "titleColor": "#15171A", "primaryColor": "#FFFFFF", "primaryBorderColor": "#15171A", "primaryTextColor": "#15171A"}}}%%
 flowchart TB
-    subgraph L["/startcycle (linear)"]
+    subgraph L["/fabric-graph (linear run)"]
         direction LR
         L1("Architect") --> L2("TechLead") --> L3("parallel build") --> L4("Reviewer")
         L1 -. "production_artifacts/*.md" .-> L4
     end
-    subgraph G["/startcycle-graph (durable)"]
+    subgraph G["/fabric-graph (durable)"]
         direction LR
         D{{"Dispatcher<br/>state.json"}}
         D --> N1("node") --> D
@@ -463,7 +466,7 @@ flowchart TB
         D --> Q("quality gate")
         D -. "no progress / ceiling" .-> H(["Human"])
     end
-    subgraph F["/startcycle-graph-user (throwaway)"]
+    subgraph F["/fabric-multigraph (throwaway)"]
         direction LR
         F0("main session") --> W1("worker") & W2("worker") --> F3("review pass")
     end
@@ -954,7 +957,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 
 **Kategorien.** <!-- count:skills -->270<!-- /count --> kuratierte Skills, von jedem Harness auffindbar (der volle generierte Katalog folgt in der nächsten Sektion). Acht Kategorien, durchgesetzt von `npm run validate`:
 
-- **bdb-core**: AOS-Core-Infrastruktur, Pipelines, Tools und Utilities: `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agenttrail`, `plan-canvas`, `aos-a2a`, `aos-gateway`, `aos-store`, `master-session`, `codebase-memory` und mehr.
+- **bdb-core**: AOS-Core-Infrastruktur, Pipelines, Tools und Utilities: `fabric`, `fabric-graph`, `fabric-multigraph`, `fabric-teamwork`, `fabric-swarm`, `fabric-loop`, `agenttrail`, `plan-canvas`, `aos-a2a`, `aos-gateway`, `aos-store`, `master-session`, `codebase-memory` und mehr.
 - **design-ui-ux**: Frontend, UI-Design, Accessibility, Tokens, Motion, Anti-Slop: `senior-frontend`, `ui-ux-pro-max`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` und mehr.
 - **engineering-method**: Architektur, Testing, Debugging, CI/CD, Codequalität: `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `docker-expert`, `makefile-pro` und mehr.
 - **library**: Sprach- und Framework-Spezifika: TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go und mehr.
@@ -1197,7 +1200,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 |---|---|
 | `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions with cron-friendly scheduling. |
 | `agent-memory-mcp` | Hybrid memory system: persistent, searchable knowledge management for AI agents. |
-| `agent-pipeline` | Reference for the seven-node dispatcher graph that /startcycle-graph runs. |
+| `agent-pipeline` | Reference for the seven-node dispatcher graph that /fabric-graph runs. |
 | `agenttrail` | Live map of a multi-agent build in the browser: which plan component, which agent or harness, what is done, what is stuck. |
 | `ao-orchestrator` | Multi-project orchestrator across repositories using the Agent Orchestrator (AO) daemon. |
 | `aos-a2a` | List, send to and reply to live harness peers (Claude Code, OpenCode, Codex, agy) over A2A on localhost. |
@@ -1211,7 +1214,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `bdb-memb-mcp` | Model Context Protocol interface to the memB persistent agent memory layer. |
 | `bdb-updater` | Proactively check for and install updates to the AOS package via npm. |
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
-| `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /startcycle-graph. |
+| `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /fabric-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
 | `codebase-memory` | >- |
 | `deja-memory` | Use `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. |
@@ -1232,13 +1235,15 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `plan-canvas` | Open plans and HTML artifacts in a local browser canvas where the human annotates, chats, and approves. |
 | `quick-recap` | End each agent response with a red/yellow/green status line. |
 | `skill-create` | >- |
-| `startcycle` | Linear multi-agent build pipeline with file hand-offs in production_artifacts/. |
-| `startcycle-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
-| `startcycle-graph-user` | A small, throwaway multi-agent fan-out in any project. |
+| `fabric` | Master entry for the fabric family: picks the fitting mode for the task and says why. |
+| `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
+| `fabric-loop` | Repeat-until-done mode. Arrives in 5.4.1; routes to loop-templates meanwhile. |
+| `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
+| `fabric-swarm` | Many similar workers on one pool of items. Arrives in 5.4.1; routes to fabric-multigraph meanwhile. |
+| `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `stay-within-limits` | Respect 5-hour and weekly usage limits by checking usage between waves and pausing near the cap. |
 | `subagent-setup` | Configure and synchronize multi-harness subagents with optional per-harness model overrides. |
 | `synapse-integration-skill` | BDB Synapse (3D Codebase Visualizer) integration. |
-| `teamwork-preview` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `token-saver-config` | Context window output compression engine for CLI commands. |
 
 </details>
@@ -1416,7 +1421,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 |---|---|
 | `/brainstorm` | Brainstorm a topic with the matching skill: bdbrainstorm, bdbmediastorm, grill-me. |
 | `/doctor` | Check the machine and project, and print suggested permissions.allow entries without writing settings. |
-| `/graph` | Run the startcycle-graph pipeline. |
+| `/graph` | Run the fabric-graph pipeline. |
 | `/hub` | Open the AOS Hub on 127.0.0.1:7900 (services, plan kits, store) or stop/status it. |
 | `/init` | Set up the current project folder for AOS. |
 | `/loop` | Run a prompt repeatedly on an interval. |
@@ -1427,7 +1432,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `/playbooks` | List all pb-* playbooks and start one. |
 | `/setup` | Bring this machine to a complete, verified AOS installation. |
 | `/shipping` | Pre-ship framing and the technical release gate, with approvals under the go-gate rules. |
-| `/startproject` | Start a new composition: project init, brainstorm, then graph or startcycle. |
+| `/startproject` | Start a new composition: project init, brainstorm, then pick a fabric mode. |
 | `/store` | Browse and preview AOS skills, agents and playbooks in the local store UI. |
 
 </details>
@@ -1459,7 +1464,7 @@ Alle UI/UX-Arbeit — die `godmode-ui-ux`-Persona und die Design-Skills, über d
 
 - **`ask-tim`**: Skill-Empfehlung nach Beschreibung
 - **`bdbrainstorm`** und **`bdbmediastorm`**: Multi-Agent-Ideation-Sessions, endend in einem ausführbaren Plan
-- **`teamwork-preview`**: Prompt-Crafting, Rollen-Delegation, Kollaborations-Setup
+- **`fabric-teamwork`**: Prompt-Crafting, Rollen-Delegation, Kollaborations-Setup
 - **Grilling-Familie**: `grill-me` (allgemeines Audit), `grill-with-docs` (dokumentationsverankert), `triage` (Priorisierung)
 - **CI/CD und Generatoren**: `ci-pipeline`, `github-actions-generator`, `docker-expert`, `makefile-pro`
 - **Codequalität**: `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`

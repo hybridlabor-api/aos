@@ -7,7 +7,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const nodes = JSON.parse(fs.readFileSync(path.join(ROOT, '.agents', 'nodes.json'), 'utf8'));
 const agentsMd = fs.readFileSync(path.join(ROOT, '.agents', 'AGENTS.md'), 'utf8');
-const dispatch = fs.readFileSync(path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs'), 'utf8');
+const dispatch = fs.readFileSync(path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs'), 'utf8');
 const { parseAgentsMd, loadCommonSkills } = require('../installer.js');
 
 function skillNames() {

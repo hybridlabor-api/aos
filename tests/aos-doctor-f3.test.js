@@ -22,7 +22,7 @@ function run(setup, extraEnv = {}) {
 
 test('Codex layout: ~/.agents/skills is checked, a lone ~/.codex/skills/.system is fine', () => {
     const { by } = run((h) => {
-        write(path.join(h, '.agents', 'skills', 'startcycle', 'SKILL.md'), '#');
+        write(path.join(h, '.agents', 'skills', 'fabric', 'SKILL.md'), '#');
         write(path.join(h, '.codex', 'skills', '.system', 'imagegen', 'SKILL.md'), '#');
     });
     assert.ok(by('Codex Skills').ok, by('Codex Skills').detail);
@@ -31,7 +31,7 @@ test('Codex layout: ~/.agents/skills is checked, a lone ~/.codex/skills/.system 
 
 test('AOS copies in both Codex roots warn, never fail', () => {
     const { by } = run((h) => {
-        for (const r of ['.agents', '.codex']) write(path.join(h, r, 'skills', 'startcycle', 'SKILL.md'), '#');
+        for (const r of ['.agents', '.codex']) write(path.join(h, r, 'skills', 'fabric', 'SKILL.md'), '#');
     });
     const d = by('Codex duplicate skills');
     assert.ok(d && !d.ok && d.warningOnly, JSON.stringify(d));
@@ -40,12 +40,12 @@ test('AOS copies in both Codex roots warn, never fail', () => {
 test('Codex duplicate skills names the doubled skills and splits AOS-shipped from foreign', () => {
     const { by } = run((h) => {
         for (const r of ['.agents', '.codex']) {
-            write(path.join(h, r, 'skills', 'startcycle', 'SKILL.md'), '#');
+            write(path.join(h, r, 'skills', 'fabric', 'SKILL.md'), '#');
             write(path.join(h, r, 'skills', 'code-first-hardware-design', 'SKILL.md'), '#');
         }
     });
     const d = by('Codex duplicate skills');
-    assert.ok(d && d.detail.includes('startcycle') && d.detail.includes('code-first-hardware-design'), JSON.stringify(d));
+    assert.ok(d && d.detail.includes('fabric') && d.detail.includes('code-first-hardware-design'), JSON.stringify(d));
     assert.match(d.fix, /Not installed by AOS \(code-first-hardware-design\)/);
     assert.match(d.fix, /npx @hybridlabor-api\/aos@latest/);
 });
@@ -61,9 +61,9 @@ test('a real ao in ~/.local/bin is executed (absolute path, no ~ expansion) and 
 });
 
 test('CLAUDE_CONFIG_DIR is honoured for the Claude skills check', () => {
-    const { by } = run((h) => write(path.join(h, 'cfg', 'skills', 'startcycle', 'SKILL.md'), '#'), (h) => ({ CLAUDE_CONFIG_DIR: path.join(h, 'cfg') }));
+    const { by } = run((h) => write(path.join(h, 'cfg', 'skills', 'fabric', 'SKILL.md'), '#'), (h) => ({ CLAUDE_CONFIG_DIR: path.join(h, 'cfg') }));
     assert.ok(by('Claude Code Skills').ok, by('Claude Code Skills').detail);
-    const plain = run((h) => write(path.join(h, 'cfg', 'skills', 'startcycle', 'SKILL.md'), '#'));
+    const plain = run((h) => write(path.join(h, 'cfg', 'skills', 'fabric', 'SKILL.md'), '#'));
     assert.ok(!plain.by('Claude Code Skills').ok);
 });
 

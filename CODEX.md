@@ -42,4 +42,4 @@ which makes this where the rule matters most, not least.
 - **Heimdall TokenSaver** — context-window compression.
 - **CAD & Hardware Studio** — Text-to-CAD (STEP, STL, 3MF), URDF/SRDF robotics, DXF, G-code slicing.
 - **Video & Media Production** — OpenMontage, Palmier Pro, local ComfyUI rendering pipelines.
-- **Build pipelines** — `/startcycle`, `/startcycle-graph`, `/startcycle-graph-user`. Agent personas are portable; the dispatcher script is Claude-Code-specific, so on Codex the invoker drives each step itself, exactly as `/startcycle` describes.
+- **Build pipelines** — `/fabric`, `/fabric-graph`, `/fabric-multigraph`. Agent personas are portable; the dispatcher script is Claude-Code-specific, so on Codex the invoker drives each step itself, exactly as `/fabric` describes.

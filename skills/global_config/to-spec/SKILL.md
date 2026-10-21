@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
-Default destination: a markdown file `production_artifacts/spec-<slug>.md`. Publish it as a GitHub issue (`gh issue create`) only when the user asks for it and says it is OK, since that is outward-facing. The spec then feeds the Architect step of `/startcycle`.
+Default destination: a markdown file `production_artifacts/spec-<slug>.md`. Publish it as a GitHub issue (`gh issue create`) only when the user asks for it and says it is OK, since that is outward-facing. The spec then feeds the Architect step of `/fabric`.
 
 ## Process
 

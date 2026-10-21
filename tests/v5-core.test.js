@@ -31,7 +31,7 @@ function machine({ copyVersion = '2.4.0' } = {}) {
     const base = path.join(home, '.agents');
     const skills = path.join(home, 'skills');
     const mcp = path.join(home, 'gemini-config');
-    fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
+    fs.mkdirSync(path.join(skills, 'fabric'), { recursive: true });
     // The gateway step would run real npm and launchctl here: keep it off in these fixtures.
     fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
     fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway'] }));

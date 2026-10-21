@@ -19,7 +19,7 @@ function sampleAoState() {
     phase: 'define',
     iteration: 0,
     max_iterations: 3,
-    pipeline: 'startcycle-graph',
+    pipeline: 'fabric-graph',
     planCanvasRequired: true,
     roles: { architect: true, techlead: true },
     models: { architect: 'Claude Sonnet 4.6 (Thinking)' },
@@ -51,7 +51,7 @@ describe('state schema contract', () => {
   });
 
   test('dispatcher shipping gate includes every canonical key', () => {
-    const dispatcher = readFileSync(resolve(root, '.claude', 'workflows', 'startcycle-dispatch.mjs'), 'utf8');
+    const dispatcher = readFileSync(resolve(root, '.claude', 'workflows', 'fabric-dispatch.mjs'), 'utf8');
     assert.match(dispatcher, /const GATE_KEYS = [^;]*?profile \? Object\.keys\(profile\.gates\) : \[[^\]]*'security'/);
     // GATE_LABELS derives its human-readable label from GATE_KEYS itself: no second hardcode to drift.
     assert.match(dispatcher, /const GATE_LABELS = profile[\s\S]*?GATE_KEYS\.join\(', '\);/);

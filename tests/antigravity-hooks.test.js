@@ -62,7 +62,7 @@ test('fresh output is valid per agy hook format: one named, non-empty hook per c
     assert.strictEqual(data['aos-go-gate'].PreToolUse[0].matcher, 'run_command|Bash');
     assert.strictEqual(data['aos-go-gate'].PreToolUse[0].hooks[0].command, 'node hooks/go-gate.mjs');
     assert.ok(data['aos-trail-relay'].PreToolUse[0].hooks[0].command.includes('trail-relay.mjs'));
-    assert.strictEqual(data['aos-context'].PreInvocation.length, 4, 'memb-inject, session-hint, rules-inject, startcycle-dispatch');
+    assert.strictEqual(data['aos-context'].PreInvocation.length, 4, 'memb-inject, session-hint, rules-inject, fabric-dispatch');
 });
 
 test('named format has no top-level "hooks" key and wires every AOS hook script', () => {
@@ -70,7 +70,7 @@ test('named format has no top-level "hooks" key and wires every AOS hook script'
     mergeAntigravityHooks(p);
     const raw = fs.readFileSync(p, 'utf8');
     assert.ok(!('hooks' in JSON.parse(raw)));
-    for (const s of ['go-gate', 'graph-gate', 'memb-inject', 'trail-relay', 'startcycle-dispatch', 'conventional-commits', 'env-file-protection']) {
+    for (const s of ['go-gate', 'graph-gate', 'memb-inject', 'trail-relay', 'fabric-dispatch', 'conventional-commits', 'env-file-protection']) {
         assert.ok(raw.includes(`${s}.mjs`), `${s}.mjs missing from agy hooks.json`);
     }
 });
@@ -121,7 +121,7 @@ test('agy commands are relative, unquoted, and observability hooks fail open', (
     assert.ok(cmds.includes('node hooks/go-gate.mjs'));
     assert.ok(cmds.includes('node hooks/trail-relay.mjs --agent agy --event PreToolUse || exit 0'));
     assert.ok(cmds.includes('node hooks/memb-inject.mjs || exit 0'));
-    assert.ok(cmds.includes('node workflows/startcycle-dispatch.mjs'));
+    assert.ok(cmds.includes('node workflows/fabric-dispatch.mjs'));
     for (const c of cmds.filter((x) => /go-gate|graph-gate|conventional|env-file/.test(x))) assert.ok(!c.includes('||'), c);
 });
 

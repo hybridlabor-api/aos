@@ -1,10 +1,10 @@
 ---
-name: startcycle-graph-user
+name: fabric-multigraph
 description: >-
   Use when a task needs a small, throwaway multi-agent fan-out (a couple of
   parallel workers plus a review pass) in ANY project — trigger phrases
   "spawn a few parallel agents", "fan out", "quick worker team" — without the
-  full /startcycle-graph contract, no .agents/graph.md bootstrap, no state.json
+  full /fabric-graph contract, no .agents/graph.md bootstrap, no state.json
   schema, no persistent files. Roles run on the session model unless
   `.aos/pipeline.json` overrides one (an external CLI can take the worker step)
   and portable across machines that may not have Antigravity/OpenCode/Codex
@@ -12,9 +12,9 @@ description: >-
 category: bdb-core
 ---
 
-# ⚡ Light Graph — disposable multi-agent fan-out
+# ⚡ fabric-multigraph — disposable multi-agent fan-out
 
-`/startcycle-graph`'s dispatcher graph is a permanent, project-scoped contract: seven
+`/fabric-graph`'s dispatcher graph is a permanent, project-scoped contract: seven
 fixed BDB roles, a `state.json` schema, a repair loop, a Stop-hook gate. That's
 the right tool for the BDB build pipeline — and the wrong tool for "spawn me 3
 workers for this one thing right now" in a project that has never heard of
@@ -39,7 +39,7 @@ small graph, not an excuse to always draw one.
 
 ## 1b. Injecting a specific skill (optional)
 
-`/startcycle-graph-user --skill=<name> <task>` (repeatable, quote a name
+`/fabric-multigraph --skill=<name> <task>` (repeatable, quote a name
 with spaces) forces that skill into this run as a hard requirement — for a
 private skill of the user's own this throwaway graph would otherwise never
 know to reach for. Extract any `--skill=` flag(s) from the invocation text
@@ -180,12 +180,12 @@ worker overrides in `.aos/pipeline.json`.
   writes no plan file) to watch the workers' file activity live in the
   browser; see the `agenttrail` skill.
 
-## 5. When to reach for `/startcycle-graph` instead
+## 5. When to reach for `/fabric-graph` instead
 
 If the task turns out to actually need the full pipeline — multiple build
 domains (UI/UX, Engineering, Media/EventTech), a real repair loop with a
 no-progress guard, or a durable record of what happened for future
-sessions — stop and use `/startcycle-graph`, not this. This skill is deliberately
+sessions — stop and use `/fabric-graph`, not this. This skill is deliberately
 too small for that job; don't stretch it to cover what the real dispatcher
 graph (`.agents/graph.md`) already does properly.
 
@@ -204,7 +204,7 @@ graph (`.agents/graph.md`) already does properly.
 
 - Any worker node running on a heavyweight tier without a specific reason forced by the task.
 - Assuming agy/OpenCode/Codex is present without checking.
-- Writing `.agents/`, `state.json`, or any persistent file for a task this skill was invoked for — that's `/startcycle-graph`'s job, not this one's.
+- Writing `.agents/`, `state.json`, or any persistent file for a task this skill was invoked for — that's `/fabric-graph`'s job, not this one's.
 - A "light" graph with more nodes than the task actually has independent workstreams.
 
 ## 8. Verification

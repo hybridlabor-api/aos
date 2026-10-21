@@ -1,13 +1,13 @@
-# R8: Domain-Adaptable Startcycle — Analysis (Step 1)
+# R8: Domain-Adaptable Fabric — Analysis (Step 1)
 
 Claim markers: **[V file:line]** = verified; **[G]** = guess/unverified. Source: Tim's R8 brief
 (`~/.aos/recovery-plan/aos-routing-and-daily-tools.md:25-26`).
 
 ## 1. What exists
 
-### 1.1 The three startcycle variants — what each hard-codes
+### 1.1 The three fabric variants — what each hard-codes
 
-| | `startcycle` | `startcycle-graph` | `startcycle-graph-user` |
+| | `fabric` | `fabric-graph` | `fabric-multigraph` |
 |---|---|---|---|
 | Deterministic? | Invoker runs steps by hand **[V SKILL.md:139]** | Yes, dispatcher script **[V graph.md:159-170]** | Invoker-driven, throwaway **[V SKILL.md:130-143]** |
 | Node roster | 5 steps, roles inline **[V SKILL.md:57-126]** | 7 fixed ids: architect, techlead, ui_ux, engineering, media_eventtech, reviewer, shipping **[V nodes.json:6-146; tests/swarm-wiring.test.js:62 pins this exact order]** | 2–4 nodes, ad-hoc per run **[V SKILL.md:18-31]** |
@@ -34,7 +34,7 @@ Edge table: Architect→TechLead→(parallel builds)→Reviewer→Shipping, repa
 3. **Artifact names enumerated in two hardcoded places**: Shipping/Reviewer prompts and the `artifacts` schema keys `frontend/backend/media` **[V dispatch.mjs:1092-1094; state.schema.json:25-33]**; `findings.node` even pins only the three build ids **[V state.schema.json:45-49]**.
 4. **Registry has no per-domain hint**: `role` is only plan/approve/build/review/gate **[V nodes.json:6-146]**; skills lists are software-heavy for the build nodes (react/db/typescript in ui_ux/engineering **[V nodes.json:52-63, 75-85]**).
 5. **The linear skill names streams and gates in prose** **[V SKILL.md:80-86, 125]** — would need a pointer to a domain profile rather than an inline table.
-6. **`pb-pcb-to-case` proves a domain pipeline ("gate" = ERC/DRC zero-error) already runs by hand** **[V pb-pcb-to-case/SKILL.md:36]**, but only as a single-repo playbook, not as a startcycle profile.
+6. **`pb-pcb-to-case` proves a domain pipeline ("gate" = ERC/DRC zero-error) already runs by hand** **[V pb-pcb-to-case/SKILL.md:36]**, but only as a single-repo playbook, not as a fabric profile.
 
 ## 3. Design proposal — domain profiles (additive, backwards compatible)
 
@@ -65,7 +65,7 @@ Per domain (sketch; node/persona per domain; gates replace lint/typecheck/tests)
 - `copywriter`: build → `copy` (copywriting + brand-voice). Gates: brief/tone check (brief honoured, documented voice), fact check (every claim tagged `[F<n>]` against `facts.md` — reuse the pb-social-pack and pb-newsletter patterns **[V pb-social-pack/SKILL.md:38; pb-newsletter/SKILL.md:35]**).
 
 **Selection rule (routing)**, mirroring `--skill=<name>` validation **[V graph.md:38-57]**:
-1. explicit `/startcycle-graph --profile=kicad <goal>` — the strongest signal;
+1. explicit `/fabric-graph --profile=kicad <goal>` — the strongest signal;
 2. otherwise the Architect's plan gate (TechnicalLead approval of the capability map **[V graph.md:96]**) emits a `profile` decision from the goal text (all four domains have published keyword-ready triggers in their existing `SKILL.md` descriptions **[V ask-tim/SKILL.md:292,306-320]** and pb-* frontmatter), no regex in the dispatcher;
 3. default profile = the current software pipeline (same 7 nodes, same gate keys) — backwards compatible **[V nodes.json:1-4 states the registry itself is meant to grow this way]**.
 A missing profile name escalates the same way as a missing `--skill` name **[V graph.md:50-54]**.
@@ -77,13 +77,13 @@ The dispatcher changes are exactly 2 things: the load step also loads a profile 
 |---|---|---|
 | `.agents/profiles/_schema.json` + a validator script `scripts/validate-profile.mjs` | S | low: gates/artifact keys are the only adjectives that can break the schema enum |
 | `.agents/profiles/{kicad,touchdesigner,creator,copywriter}.json` (4 files) | S | per-domain real skill names must exist — all do in-tree **[V §1.2]** |
-| `.claude/workflows/startcycle-dispatch.mjs`: profile loading (one sibling `load-registry` agent call), derive `BUILD_NODES`/artifact names/`GATE_KEYS` from it when present | M | highest-risk file — gate-fix loop and reviewer prompt are the main touchpoints **[V dispatch.mjs:1091-1094,1201,1214]** |
+| `.claude/workflows/fabric-dispatch.mjs`: profile loading (one sibling `load-registry` agent call), derive `BUILD_NODES`/artifact names/`GATE_KEYS` from it when present | M | highest-risk file — gate-fix loop and reviewer prompt are the main touchpoints **[V dispatch.mjs:1091-1094,1201,1214]** |
 | `.agents/state.schema.json`: open `gate` and `findings.node` + `artifacts` keys via profile-defined enums (or a merge-at-load) | M | must not break `graph-gate.mjs`'s gate predicate **[V state.schema.json:45-68]** |
-| `AGENTS.md` routing line + `skills/basic/startcycle*/SKILL.md` and `.agents/graph.md`: "domain profiles" section + skill-description triggers ("touchdesigner,KiCad,copywriting…") | S | only prose |
+| `AGENTS.md` routing line + `skills/basic/fabric*/SKILL.md` and `.agents/graph.md`: "domain profiles" section + skill-description triggers ("touchdesigner,KiCad,copywriting…") | S | only prose |
 | `tests/swarm-wiring.test.js` sibling: pin profile default graph, plus a `profile-files.test.mjs` | S | must not weaken the existing exact-order pin **[V swarm-wiring.test.js:61-62]** |
 
 **Must NOT change**: the default 7-node software pipeline (same ids, order, models **[V nodes.json:5-146]**), `go-gate.mjs`, `graph-gate.mjs`, the existing `swarm-wiring.test.js` line-62 order pin, the artifact mm files for the default domain.
 
 ## 5. Do-not-claim-yet
 
-README, README videos, `brag`/`pb-launch-video`/`pb-social-pack` may mention domain startcycles **only after step 2 is merged** — this matches the R8 brief's "Not claimed anywhere until it exists" and the plan row `r8-claims` **[V recovery-plan/production_artifacts/00_execution_plan.md:167-174]**.
+README, README videos, `brag`/`pb-launch-video`/`pb-social-pack` may mention domain fabrics **only after step 2 is merged** — this matches the R8 brief's "Not claimed anywhere until it exists" and the plan row `r8-claims` **[V recovery-plan/production_artifacts/00_execution_plan.md:167-174]**.

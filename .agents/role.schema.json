@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/.agents/role.schema.json",
   "title": "BDB Role Definition",
-  "description": "Typed role definition for Startcycle v2 multi-agent teams.",
+  "description": "Typed role definition for Fabric v2 multi-agent teams.",
   "type": "object",
   "required": ["id", "label", "role"],
   "properties": {

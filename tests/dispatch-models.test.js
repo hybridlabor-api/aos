@@ -8,7 +8,7 @@ const { spawnSync } = require('child_process');
 const { pathToFileURL } = require('node:url');
 
 const ROOT = path.join(__dirname, '..');
-const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
+const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-models-'));
 test.after(() => fs.rmSync(base, { recursive: true, force: true }));
 

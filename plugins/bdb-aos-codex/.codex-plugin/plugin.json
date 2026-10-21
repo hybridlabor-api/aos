@@ -12,13 +12,13 @@
     "agent-os",
     "cicd",
     "multiagent",
-    "startcycle",
+    "fabric",
     "bdb"
   ],
   "interface": {
     "displayName": "BDB Agent OS",
     "shortDescription": "AOS commands for setup, planning and pipelines",
-    "longDescription": "Entry-point commands for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the startcycle pipelines. Skills are installed separately by the AOS installer.",
+    "longDescription": "Entry-point commands for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the fabric pipelines. Skills are installed separately by the AOS installer.",
     "developerName": "Hybridlabor Global LLC",
     "category": "Developer Tools",
     "capabilities": [

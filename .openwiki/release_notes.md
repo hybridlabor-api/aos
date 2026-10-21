@@ -68,7 +68,7 @@ a regex false positive — but attribution and discoverability.
   had no AOS equivalent, and copying the map verbatim would have produced a router
   pointing at names that don't exist. The catalogue stays underneath as the lookup layer.
 - **The grilling family, ported (MIT).** `/grill-me` had been named as an entry point by
-  both `startcycle` and `bdbrainstorm` and never existed in AOS — the router was derived
+  both `fabric` and `bdbrainstorm` and never existed in AOS — the router was derived
   from `ask-matt` without the skills it routes to. Ports `grilling` (the interview:
   design tree, frontier rounds), `grill-me`, `grill-with-docs` (adds `domain-modeling`,
   writing settled terms into `CONTEXT.md`/ADRs as they crystallise), and `domain-modeling`
@@ -86,14 +86,14 @@ a regex false positive — but attribution and discoverability.
   distributed lock, the skill's headline capability, stays unusable by the dispatcher,
   which the Workflow runtime gives no filesystem access — precisely why AOS solves its
   own concurrent-write race with fragments instead of a lock.
-- **`teamwork-preview` is now an executable Workflow on Claude Code**, prose everywhere
+- **`fabric-teamwork` is now an executable Workflow on Claude Code**, prose everywhere
   else. All nine steps of the interactive prompt-crafting protocol became real
   `agent()` calls with schema-validated returns, so control flow branches on data instead
-  of narration — the same lesson `startcycle-graph` already learned once, recorded in its
+  of narration — the same lesson `fabric-graph` already learned once, recorded in its
   own file, after an earlier prose version was followed "in spirit" and silently skipped
   the entire dispatcher. **This surfaced a real delivery gap**: the installer only ever
   copied `.claude/workflows/` into a *project* via `--project-harness`, never to
-  `~/.claude/workflows/` — the global path both `startcycle-graph` and `teamwork-preview`
+  `~/.claude/workflows/` — the global path both `fabric-graph` and `fabric-teamwork`
   actually route through. On a plain global install, that path never existed.
   Not a copy of Antigravity's own `/teamwork-preview`, which is compiled into the `agy`
   binary — an independent implementation of the same idea, and it says so.
@@ -110,7 +110,7 @@ a regex false positive — but attribution and discoverability.
     Photoshop were unreachable through the router. Replaced with a source-material table
     (code-generated → Remotion, existing footage → Resolve/Premiere, generative → the
     Creator Extension engines).
-  - **First full end-to-end `/startcycle-graph` run, verified.** Architect → TechLead →
+  - **First full end-to-end `/fabric-graph` run, verified.** Architect → TechLead →
     Engineering → Reviewer → Shipping on a real task (an HTTP `Retry-After` parser) with
     `--skill=test-driven-development` forced in: TechLead recorded the mandate in the
     plan as an "Iron Law," Reviewer ran `npm test` itself rather than trusting the claim
@@ -123,7 +123,7 @@ deliberately stays on 4.1.0, so nobody receives this without asking for it.
 
 - **`--skill=<name>` mandatory skill injection.** Forces a specific skill — typically a
   private one no node's registry allowlist would reach for — into a pipeline run:
-  `/startcycle-graph --skill=my-own-skill add OAuth login`. Repeatable. The name is
+  `/fabric-graph --skill=my-own-skill add OAuth login`. Repeatable. The name is
   validated against installed skills *before* anything runs; one that does not resolve
   escalates instead of silently proceeding without it, as does an empty `--skill=`.
   From there it is a hard requirement: it goes into the plan, TechLead rejects a plan
@@ -133,7 +133,7 @@ deliberately stays on 4.1.0, so nobody receives this without asking for it.
   lighter variants document the same syntax, invoker-driven since neither has a
   dispatcher script to carry it. Verified end to end: escalation fires at iteration 0,
   before any agent does work.
-- **`/startcycle-graph` first run in a fresh project was broken.** Step 0 copied
+- **`/fabric-graph` first run in a fresh project was broken.** Step 0 copied
   `.agents/graph.md` and `.agents/state.schema.json` but not `.agents/nodes.json`, which
   the dispatcher loads as its very first action and escalates on when absent. Any project
   running the graph for the first time failed before Architect ran, even after following
@@ -181,7 +181,7 @@ npm publish all from a single PR merge, with no manual `gh release create` or `n
   so a co-installed original cannot collide (port 4519, own app id, own state dir,
   `AOS_PLAN_CANVAS_*` env prefix), and its version decoupled from AOS's `package.json`
   since the installer relocates the vendored tree. Mandatory at the end of `bdbrainstorm`
-  and `bdbmediastorm`, optional at `/startcycle`'s Architect→TechLead gate — `/startcycle-graph`
+  and `bdbmediastorm`, optional at `/fabric`'s Architect→TechLead gate — `/fabric-graph`
   runs headless by design, so a browser gate is never forced there.
 - **Six auxiliary agents** ported from the same source: `silent-failure-hunter`,
   `security-reviewer`, `go-build-resolver`, `database-reviewer`, `opensource-forker`,
@@ -208,7 +208,7 @@ npm publish all from a single PR merge, with no manual `gh release create` or `n
 - **New installer startup sequence**: rotating 3D ASCII intro, gradient wordmark banner, studio hero header, and a pre-flight telemetry card (detected agent platforms, daemon status, install/version state) — all before the first prompt.
 - **OpenWiki setup now runs on every Quick Update**, not just fresh installs — previously it only ever ran once and was never offered again to existing installs.
 - `bdb-os-agent-workspace` temporarily removed from the tracked module list (main branch frozen upstream while real work sits on unmerged WIP branches) — daemon/LaunchAgent code untouched, only the offer/auto-update path disabled.
-- Carried over from the v3.13 "NODEFORGE" development cycle: `/startcycle` split into three variants with a declarative node registry; new `bdb-deploy`, `triage`, and `prototype` skills; `bdbsaas-ops` retired into `bdbsaashost`; OpenWiki modernized to `langchain-ai/openwiki` v0.5.0.
+- Carried over from the v3.13 "NODEFORGE" development cycle: `/fabric` split into three variants with a declarative node registry; new `bdb-deploy`, `triage`, and `prototype` skills; `bdbsaas-ops` retired into `bdbsaashost`; OpenWiki modernized to `langchain-ai/openwiki` v0.5.0.
 - `bdb-dev-optimized-agent-skills-basic` and `bdb-dev-optimized-antigravity-skills` retired (archived on GitHub, deprecated on npm) — this package is now the only supported one.
 
 ## v3.10.0 (Dynamic Gateway Discovery, Windows Daemons & SaaS Academy)

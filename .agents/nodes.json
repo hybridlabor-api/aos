@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "description": "Declarative node registry for /startcycle-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher. executor (harness/model class) and scope (read-only | worktree-write | none) are optional and enforced by the dispatcher (graph.md, Workers and scopes). No model is pinned here: a node's model comes only from pipeline.json (docs/agent-models.md).",
+  "description": "Declarative node registry for /fabric-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher. executor (harness/model class) and scope (read-only | worktree-write | none) are optional and enforced by the dispatcher (graph.md, Workers and scopes). No model is pinned here: a node's model comes only from pipeline.json (docs/agent-models.md).",
   "common": ["read-the-damn-docs", "agenttrail", "archify", "plan-canvas", "stay-within-limits", "quick-recap", "verification-before-completion"],
   "chain": {
     "hops": {
       "master_session": "human-facing supervisor, not a node; relays the human's GO, never grants one (docs/orchestrator-chain.md)",
-      "project_orchestrator": "the dispatcher (.claude/workflows/startcycle-dispatch.mjs); decides every edge",
+      "project_orchestrator": "the dispatcher (.claude/workflows/fabric-dispatch.mjs); decides every edge",
       "package_orchestrator": "a build node or a worker slice (aos-acp / aos-a2a spawn)"
     },
     "node_hop": {
@@ -67,7 +67,7 @@
       "scope": "read-only",
       "skills": [
         "read-the-damn-docs",
-        "startcycle-graph",
+        "fabric-graph",
         "agent-pipeline",
         "subagent-driven-development",
         "plan-arbiter"

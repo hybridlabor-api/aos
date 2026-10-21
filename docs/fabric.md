@@ -1,9 +1,9 @@
-# Startcycle Family v2 (WP1 + WP2 + WP3)
+# Fabric Family v2 (WP1 + WP2 + WP3)
 
-This document describes the Startcycle Family v2 architecture implemented in AOS.
-Startcycle v2 introduces custom role registries, team configurations, and dynamic workstream schemas while preserving 100% byte-identical backward compatibility for default runs.
+This document describes the Fabric Family v2 architecture implemented in AOS.
+Fabric v2 introduces custom role registries, team configurations, and dynamic workstream schemas while preserving 100% byte-identical backward compatibility for default runs.
 
-> **Naming note:** the user-facing name for this family may still change (Flows is under consideration). All names in this document and in code (`startcycle`, `startcycle-graph`, `startcycle-graph-user`, `teamwork-preview`, `aos-team`) are internal code names and stay neutral.
+> **Naming note:** since 5.4 the family is called fabric: the master `fabric` plus the modes `fabric-graph`, `fabric-multigraph`, `fabric-teamwork`, `fabric-swarm` and `fabric-loop`. `fabric-swarm` and `fabric-loop` are documented and arrive in 5.4.1.
 
 ---
 
@@ -122,7 +122,7 @@ Stored at `.aos/teams/desktop-app.json` or `~/.aos/teams/desktop-app.json`:
 ```
 
 ### 5. Dynamic Workstreams Engine & Dispatcher (WP3)
-- **Modules:** `lib/roles/workstream.mjs`, `.claude/workflows/startcycle-dispatch.mjs`
+- **Modules:** `lib/roles/workstream.mjs`, `.claude/workflows/fabric-dispatch.mjs`
 - **Flag:** `--workstreams` (default: OFF).
   - Without `--workstreams`: 100% byte-identical backward compatibility with the legacy 7-node flow.
   - With `--workstreams`: dynamic workstream resolution driven by Architect-authored `execution_manifest`.
@@ -145,7 +145,7 @@ Stored at `.aos/teams/desktop-app.json` or `~/.aos/teams/desktop-app.json`:
 
 ### 6. Loop: the Flow Loop Template
 - **Template:** `skills/global_config/loop-templates/references/flow-loop.md`
-- The loop is not a dispatcher flag. It runs `/startcycle-graph` in rounds via the harness loop mechanism (`/loop` on Claude Code, `opencode-loop` on OpenCode, `/goal` on Codex), using the flow-loop template as the round prompt.
+- The loop is not a dispatcher flag. It runs `/fabric-graph` in rounds via the harness loop mechanism (`/loop` on Claude Code, `opencode-loop` on OpenCode, `/goal` on Codex), using the flow-loop template as the round prompt.
 - **Effort rounds:** max rounds derive from the team's effort tier — `S` = 3, `M` = 4, `L` = 5 (default 3).
 - **Stop predicate (first match halts):** zero blocking findings and all quality gates pass; round limit reached; no-progress guard fires (consecutive rounds produce the exact same blocking finding IDs — escalate immediately); quota usage ≥ 95% via `stay-within-limits` (persistent wait state, not a failure); or a node requests human escalation.
 - **Safety:** the loop never issues a GO, never runs or types `gogate`, and never auto-runs guarded commands (`git push`, `npm publish`, merges). A blocked guarded step stops the round with a report.
@@ -154,14 +154,14 @@ Stored at `.aos/teams/desktop-app.json` or `~/.aos/teams/desktop-app.json`:
 
 ## What is NOT Built Yet (Future Work Packages)
 
-The following components are defined in the architectural plan (`/Users/timrennings/.aos/briefs/plan-startcycle-v2.md`) and are intentionally out of scope for WP1, WP2 & WP3:
+The following components are defined in the architectural plan (`/Users/timrennings/.aos/briefs/plan-fabric.md`) and are intentionally out of scope for WP1, WP2 & WP3:
 
 1. **Dedicated Dispatcher-Level Loop Orchestrator (WP5, partially shipped):**
    - The loop currently ships as the flow-loop template above, driven by the harness loop mechanism.
    - Not yet built: loop accounting inside the dispatcher itself (per-workstream `iteration` counters so one flaky lane does not starve unaffected parallel streams) and automated quota-window inspection inside the dispatcher process.
 
 2. **Sibling Skills Alignment (WP4, shipped):**
-   - All four sibling skills (`/startcycle`, `/startcycle-graph`, `/startcycle-graph-user`, `/teamwork-preview`) document team and role resolution through the shared registry, including `aos-team` commands, effort rounds, playbook phases and ad-hoc role rules.
+   - The three working mode skills (`/fabric-graph`, `/fabric-multigraph`, `/fabric-teamwork`) document team and role resolution through the shared registry, including `aos-team` commands, effort rounds, playbook phases and ad-hoc role rules.
 
 3. **End-to-End Docker Verification (WP6):**
    - Containerized execution of custom roles (`tauri_expert`, `copywriter`) across a live mock project.

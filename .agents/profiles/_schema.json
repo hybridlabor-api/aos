@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/hybridlabor-api/aos/.agents/profiles/_schema.json",
-  "title": "BDB Startcycle Domain Profile",
-  "description": "Schema for a domain profile in .agents/profiles/. A profile adapts the default seven-node /startcycle-graph pipeline to a non-software domain: it replaces build nodes, renames gates, and names domain artifacts. It is sugar around .agents/nodes.json — never parsed when absent, and the default software pipeline stays exactly as is. See .agents/graph.md, section 'Domain profiles (opt-in)'.",
+  "title": "BDB Fabric Domain Profile",
+  "description": "Schema for a domain profile in .agents/profiles/. A profile adapts the default seven-node /fabric-graph pipeline to a non-software domain: it replaces build nodes, renames gates, and names domain artifacts. It is sugar around .agents/nodes.json — never parsed when absent, and the default software pipeline stays exactly as is. See .agents/graph.md, section 'Domain profiles (opt-in)'.",
   "type": "object",
   "required": [
     "version",

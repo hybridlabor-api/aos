@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const src = fs.readFileSync(path.join(root, '.claude/workflows/startcycle-dispatch.mjs'), 'utf8');
+const src = fs.readFileSync(path.join(root, '.claude/workflows/fabric-dispatch.mjs'), 'utf8');
 const block = src.slice(src.indexOf('// BEGIN canvas-verdict'), src.indexOf('// END canvas-verdict'));
 const { decideCanvasVerdict, lastJsonObject } = new Function(`${block}; return { decideCanvasVerdict, lastJsonObject };`)();
 

@@ -4,8 +4,8 @@
 // internals, so the test tracks what OpenCode actually calls:
 //
 //   W-5  chat.message recognises the AOS pipeline group, not just
-//        /startcycle-graph. Before the fix the regex was anchored to that one
-//        name, so /startcycle and /startcycle-graph-user got nothing.
+//        /fabric-graph. Before the fix the regex was anchored to that one
+//        name, so /fabric and /fabric-multigraph got nothing.
 //
 //   W-6  the session.idle loop-keeper. Claude Code blocks the exit in
 //        .claude/hooks/graph-gate.mjs; OpenCode has no Stop event, so an open
@@ -66,7 +66,7 @@ describe('OpenCode graph plugin: W-5 pipeline command matcher', () => {
         return parts.filter(p => p.synthetic).map(p => p.text).join('\n');
     }
 
-    for (const name of ['startcycle', 'startcycle-graph', 'startcycle-graph-user']) {
+    for (const name of ['fabric', 'fabric-graph', 'fabric-multigraph']) {
         test(`/${name} injects the graph instructions`, async () => {
             const out = await send(`/${name} build the thing`);
             assert.ok(out.includes('production_artifacts/state.json'),
@@ -77,22 +77,22 @@ describe('OpenCode graph plugin: W-5 pipeline command matcher', () => {
         });
     }
 
-    test('the goal is preserved verbatim for /startcycle-graph', async () => {
+    test('the goal is preserved verbatim for /fabric-graph', async () => {
         const goal = 'ship a multi-agent pipeline for opencode';
-        const out = await send(`/startcycle-graph ${goal}`);
+        const out = await send(`/fabric-graph ${goal}`);
         assert.ok(out.includes(goal));
     });
 
     test('an unrelated slash command injects nothing', async () => {
-        const out = await send('/teamwork-preview');
-        // Honest: teamwork-preview is backed by .claude/workflows/teamwork-dispatch.mjs,
+        const out = await send('/fabric-teamwork');
+        // Honest: fabric-teamwork is backed by .claude/workflows/fabric-teamwork-dispatch.mjs,
         // a Claude Code Dynamic Workflow. Claiming it works on OpenCode would be a lie.
         assert.ok(!out.includes('production_artifacts/state.json'),
             'must not claim a graph state contract for a command it cannot run');
     });
 
     test('ordinary prose injects nothing', async () => {
-        const out = await send('please startcycle the whole project graph');
+        const out = await send('please fabric the whole project graph');
         assert.ok(!out.includes('production_artifacts/state.json'));
     });
 });

@@ -3,7 +3,7 @@
     {
       "slug": "planner-orchestrator",
       "name": "Planner Orchestrator",
-      "roleDefinition": "Lead System Planner & Task Decomposer. Analyzes prompts, /bdbrainstorm, and orchestrates /startcycle.",
+      "roleDefinition": "Lead System Planner & Task Decomposer. Analyzes prompts, /bdbrainstorm, and orchestrates /fabric.",
       "groups": [
         "read",
         "browser",

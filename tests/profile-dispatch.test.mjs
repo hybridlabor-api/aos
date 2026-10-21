@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 // R8 step 2b profile-dispatch source pins.
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dispatch = fs.readFileSync(
-  path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs'), 'utf8');
+  path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs'), 'utf8');
 const schema = JSON.parse(fs.readFileSync(
   path.join(ROOT, '.agents', 'state.schema.json'), 'utf8'));
 const nodes = JSON.parse(fs.readFileSync(

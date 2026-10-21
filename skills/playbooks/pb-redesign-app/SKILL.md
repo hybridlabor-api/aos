@@ -2,14 +2,14 @@
 name: pb-redesign-app
 description: >-
   Overhaul one app's UI from an audit: UX audit and UI review of the
-  running app, token comparison, before/after plan, startcycle build,
+  running app, token comparison, before/after plan, fabric build,
   a11y tests, PR after GO.
 category: design-ui-ux
 kind: playbook
 trigger: ["redesign this app", "design overhaul", "audit and fix the UI"]
 inputs: [repo, app_url, scope]
 requires:
-  skills: [ui-ux-pro-max, godmode-ui-ux, plan-canvas, bdb-visual-edit, startcycle, wcag-audit-patterns, webapp-testing, github, "gh (external)"]
+  skills: [ui-ux-pro-max, godmode-ui-ux, plan-canvas, bdb-visual-edit, fabric, wcag-audit-patterns, webapp-testing, github, "gh (external)"]
   agents: [architect, techlead, reviewer]
   mcps: [chrome-devtools]
   store: []
@@ -44,7 +44,7 @@ The approved plan is the artifact: this template has no components, so there is 
 1. ui-ux-pro-max review (plus ux-audit and ui-review if the optional StyleSeed package is installed) — `app_url` opened and screenshotted per screen in scope with chrome-devtools (`puppeteer_navigate`, `puppeteer_screenshot`) → `production_artifacts/pb-redesign-app-<date>/audit.md` with numbered findings — app_url unreachable or chrome-devtools unavailable → log it and stop; every finding has a screenshot or a file reference
 2. Token diff (godmode-ui-ux DTCG rules; ui-tokens if the optional StyleSeed package is installed) — current tokens read from the repo versus proposed DTCG tokens → `tokens-diff.md` in the same folder — diff written, nothing applied yet
 3. plan-canvas (Plan Builder mode) — before/after per screen in scope → plan link or file in the run log — stops for approval
-4. startcycle (architect, techlead, reviewer) — the approved plan and audit → build on a new branch; godmode-ui-ux rules apply to the UI work — reviewer reports no open `blocking` finding
+4. fabric (architect, techlead, reviewer) — the approved plan and audit → build on a new branch; godmode-ui-ux rules apply to the UI work — reviewer reports no open `blocking` finding
 5. bdb-visual-edit — point fixes the human annotates in the running app via `aos-plan-canvas annotate`, each after its diff plan is approved → edited files in the run log — only the picked files change
 6. wcag-audit-patterns and webapp-testing — accessibility pass plus a browser test of the changed screens, then the repo's lint and test scripts → results in the run log — all exit 0; each audit finding marked fixed or deferred
 7. [GO] git push -u origin <branch> and gh pr create — one combined GO; the WAITING FOR GO line names the branch, base branch, PR title and the head SHA. The run stops here until the human types GO. Where the hook runs, it covers `git push`; `gh pr create` is not hooked, so this GO is its only guard. Afterwards `gh pr view <branch> --json state -q .state` equals `OPEN` and the PR URL is logged.

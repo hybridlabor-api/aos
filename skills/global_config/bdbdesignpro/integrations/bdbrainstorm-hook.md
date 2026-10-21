@@ -28,7 +28,7 @@ During the interactive grilling phase, the agent presents three focused design q
 
 ## 📦 Output Artifact from Brainstorm Hand-off
 
-When `/bdbrainstorm` completes and hands off to `/startcycle`, the generated system plan (`00_execution_plan.md`) will contain a dedicated block:
+When `/bdbrainstorm` completes and hands off to `/fabric`, the generated system plan (`00_execution_plan.md`) will contain a dedicated block:
 
 ```markdown
 ### 🎨 Creative & Motion Stack Decision (via /bdbdesignpro)
@@ -38,4 +38,4 @@ When `/bdbrainstorm` completes and hands off to `/startcycle`, the generated sys
 - **a11y Fallback:** [prefers-reduced-motion definition]
 ```
 
-This ensures the `Architect` and `TechLead` in `/startcycle` incorporate the motion engine into dependencies and build orders from day one.
+This ensures the `Architect` and `TechLead` in `/fabric` incorporate the motion engine into dependencies and build orders from day one.

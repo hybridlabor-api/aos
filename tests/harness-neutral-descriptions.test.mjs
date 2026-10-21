@@ -34,7 +34,7 @@ const changed = [
 // Descriptions that may name Claude/Claude Code, keyed by identifier.
 // reason: why the mention is legitimate and not an assumption about the harness.
 const allowlist = {
-  'teamwork-preview': 'Claude Code is one of six harnesses in an explicit supported-harness list',
+  'fabric-teamwork': 'Claude Code is one of six harnesses in an explicit supported-harness list',
   'subagent-setup': 'Claude Code is one of four harnesses the skill configures subagents for',
   'aos-a2a': 'Claude Code is one of four A2A peer kinds the skill lists',
   'pb-master': 'Claude Code is one of three spawnable worker harnesses named explicitly',

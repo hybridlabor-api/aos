@@ -1,7 +1,7 @@
 ---
 name: agent-pipeline
 description: >-
-  How BDB structures multi-agent build pipelines: the seven-node dispatcher graph /startcycle-graph runs. Use for lifecycle framing.
+  How BDB structures multi-agent build pipelines: the seven-node dispatcher graph /fabric-graph runs. Use for lifecycle framing.
 category: bdb-core
 ---
 
@@ -9,8 +9,8 @@ category: bdb-core
 
 When orchestrating or executing autonomous software development, follow the
 lifecycle below — but the **real, runnable implementation is
-[`.agents/graph.md`](../../../.agents/graph.md)**, invoked via `/startcycle-graph`
-(see [`skills/basic/startcycle-graph/SKILL.md`](../../basic/startcycle-graph/SKILL.md)).
+[`.agents/graph.md`](../../../.agents/graph.md)**, invoked via `/fabric-graph`
+(see [`skills/basic/fabric-graph/SKILL.md`](../../basic/fabric-graph/SKILL.md)).
 This file is a lifecycle summary, not a second spec — if it and `graph.md`
 ever disagree, `graph.md` is right.
 
@@ -29,7 +29,7 @@ There is no separate `/spec`, `/plan`, `/build`, `/test`, `/review`, or
 `/ship` slash command — an earlier version of this file described those and
 a `Planner_Orchestrator` agent that no longer exists (split into Architect +
 TechLead; see `graph.md`'s Nodes section for why). The whole lifecycle above
-runs through the single `/startcycle-graph` entry point, which invokes each node
+runs through the single `/fabric-graph` entry point, which invokes each node
 in turn per `graph.md`'s edge table:
 
 | Stage | Node(s) | Reads | Writes |
@@ -40,7 +40,7 @@ in turn per `graph.md`'s edge table:
 | Ship | Godmode_Shipping | all artifacts, findings | `state.gate`, requires a human `GO` |
 
 **The one rule, unchanged from `graph.md`:** these nodes never invoke each
-other. A dispatcher — the `/startcycle-graph` workflow, or the main session acting
+other. A dispatcher — the `/fabric-graph` workflow, or the main session acting
 as one — reads `production_artifacts/state.json` after each node returns and
 decides what runs next.
 
@@ -56,7 +56,7 @@ the dispatcher never calls it.
 ## 2. When to Use
 - Use when you need the lifecycle framing (define → plan → build → verify →
   ship) to structure a conversation or a manual walkthrough.
-- To actually run the pipeline autonomously, invoke `/startcycle-graph` — don't
+- To actually run the pipeline autonomously, invoke `/fabric-graph` — don't
   hand-simulate the stages here.
 - Exclude when standard tool execution is sufficient for the task at hand.
 
@@ -64,7 +64,7 @@ the dispatcher never calls it.
 1. Read `.agents/graph.md` for the current node/edge contract before
    assuming anything about how a stage works — this file summarizes it, it
    does not own it.
-2. If autonomous execution is needed, invoke `/startcycle-graph` rather than
+2. If autonomous execution is needed, invoke `/fabric-graph` rather than
    manually working through the stages above.
 3. Verify exit codes, file modifications, or state.json contents to
    guarantee a stage's side effects actually happened before reporting
@@ -75,8 +75,8 @@ the dispatcher never calls it.
 |---|---|
 | "The code change was small, so I skipped updating OpenWiki docs." | Every state change must be reflected in the relevant system records. |
 | "The ingest script exited without an error, so the memB index must be updated." | Silent failures happen; explicit verification of the side effect is mandatory. |
-| "I'll let /startcycle-graph proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
-| "This file's stage descriptions look complete, so I'll follow them 'in spirit' instead of invoking /startcycle-graph." | Exactly the failure this file was rewritten to stop — see `graph.md` and `SESSION-HANDOVER-v3.13.md` for the incident where a duplicated pipeline description caused a model to skip the real dispatcher entirely. |
+| "I'll let /fabric-graph proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
+| "This file's stage descriptions look complete, so I'll follow them 'in spirit' instead of invoking /fabric-graph." | Exactly the failure this file was rewritten to stop — see `graph.md` and `SESSION-HANDOVER-v3.13.md` for the incident where a duplicated pipeline description caused a model to skip the real dispatcher entirely. |
 
 ## 5. Red Flags
 - Referencing `/spec`, `/plan`, `/build`, `/test`, `/review`, or `/ship` as

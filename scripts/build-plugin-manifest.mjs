@@ -151,13 +151,13 @@ const manifest = {
   name: 'bdb-aos',
   version: pkg.version,
   description:
-    'Full BDB Agent OS suite: commands, 45 subagents and the startcycle pipelines for Claude Code. ' +
+    'Full BDB Agent OS suite: commands, 45 subagents and the fabric pipelines for Claude Code. ' +
     'Skills are installed separately by the AOS installer; gate hooks and MCP servers stay in the installer.',
   author: { name: 'Tim Rennings / Hybridlabor Global LLC' },
   homepage: repoUrl,
   repository: repoUrl,
   license: 'Apache-2.0',
-  keywords: ['agent-os', 'cicd', 'multiagent', 'startcycle', 'bdb'],
+  keywords: ['agent-os', 'cicd', 'multiagent', 'fabric', 'bdb'],
   commands,
 };
 
@@ -175,7 +175,7 @@ const codexManifest = {
   interface: {
     displayName: 'BDB Agent OS',
     shortDescription: 'AOS commands for setup, planning and pipelines',
-    longDescription: 'Entry-point commands for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the startcycle pipelines. Skills are installed separately by the AOS installer.',
+    longDescription: 'Entry-point commands for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the fabric pipelines. Skills are installed separately by the AOS installer.',
     developerName: 'Hybridlabor Global LLC',
     category: 'Developer Tools',
     capabilities: ['Interactive', 'Read', 'Write'],

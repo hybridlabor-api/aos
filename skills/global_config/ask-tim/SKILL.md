@@ -28,18 +28,20 @@ For a bigger or fuzzier idea, `/bdbrainstorm` runs the same interview inside a m
 
 **2. Branch: how much machinery does the build need?** This is the fork that matters, and picking wrong is expensive in both directions.
 
-- **`/startcycle`** — the linear chain, and the right answer for most daily work. Architect → TechLead → Build → Reviewer, hand-offs as plain files, no state machine.
-- **`/startcycle-graph`** — when you need the durable `state.json`, a Reviewer repair loop with a no-progress guard, an automated quality gate, and escalation to a human. Mission-critical or multi-session work. Runs headless.
-- **`/startcycle-graph-user`** — a throwaway 2–4 node fan-out for one-off parallel work. Nothing persistent left behind.
+- **`/fabric`** — the master: reads the task, picks one of the modes below and says why. The right start when you are unsure.
+- **`/fabric-graph`** — when you need the durable `state.json`, a Reviewer repair loop with a no-progress guard, an automated quality gate, and escalation to a human. Mission-critical or multi-session work. Runs headless.
+- **`/fabric-multigraph`** — a throwaway 2–4 node fan-out for one-off parallel work. Nothing persistent left behind.
+- **`/fabric-teamwork`** — a vague brief that needs 9-step prompt crafting before delegation to a team.
+- **`/fabric-swarm`, `/fabric-loop`** — documented, arrive in 5.4.1; they route to `/fabric-multigraph` and `loop-templates` until then.
 - **Two-file edit?** No pipeline. Just do it.
 
-**3. Review the plan before it is built.** At the Architect→TechLead gate, `aos-plan-canvas open production_artifacts/00_execution_plan.md` opens the plan in a browser where you point at what should change instead of retyping it. Mandatory at the end of `/bdbrainstorm` and `/bdbmediastorm`; optional in `/startcycle`; deliberately not forced in `/startcycle-graph`, which runs headless.
+**3. Review the plan before it is built.** At the Architect→TechLead gate, `aos-plan-canvas open production_artifacts/00_execution_plan.md` opens the plan in a browser where you point at what should change instead of retyping it. Mandatory at the end of `/bdbrainstorm` and `/bdbmediastorm`; optional in the linear run (`skills/basic/fabric-graph/linear.md`); deliberately not forced in `/fabric-graph`, which runs headless.
 
 **4. Build, then review adversarially.** The pipelines invoke their own build and review nodes — you do not call these by hand. Reviewer's pass is a correctness check against the plan's contract; `godmode-shipping`'s gate is mechanical (lint, typecheck, tests). Two different checks, deliberately not merged.
 
 Reach for `test-driven-development` on their own when you want one behaviour built test-first without a whole pipeline, and `git-pr-review` when reviewing a branch or PR against a fixed point.
 
-**Forcing a specific skill into a run:** `--skill=<name>` on any startcycle variant makes it a hard requirement — for a private skill of your own no node would otherwise reach for. Validated before the run starts; a name that does not resolve halts rather than proceeding without it.
+**Forcing a specific skill into a run:** `--skill=<name>` on any fabric variant makes it a hard requirement — for a private skill of your own no node would otherwise reach for. Validated before the run starts; a name that does not resolve halts rather than proceeding without it.
 
 ## Outside the core: the ECC store
 
@@ -48,7 +50,7 @@ When no native AOS skill fits, search the markdown-only ECC store before startin
 - `aos-store search <query>` finds available fallback skills and agents.
 - `aos-store install <name> --net` installs a verified item after explicit user action.
 - `aos-store list --type=skills` and `aos-store list --type=agents` show the catalogue.
-- The core remains the trusted AOS skill set; the store is a fallback, not a reason to bypass the startcycle validation.
+- The core remains the trusted AOS skill set; the store is a fallback, not a reason to bypass the fabric validation.
 - A missing `--skill` is reported by the dispatcher with the exact install command. It never downloads during a run.
 
 ---
@@ -66,7 +68,7 @@ A starting situation that generates work, then merges onto the main flow.
 
 ## What this flow does not cover
 
-Named so you don't go looking: AOS has no equivalent of a cross-session `handoff` file, and no `wayfinder`-style skill for charting a months-long effort as decision tickets. For work too large for one session, `/startcycle-graph`'s durable `state.json` is the closest thing — it is resumable, but it does not chart the fog for you.
+Named so you don't go looking: AOS has no equivalent of a cross-session `handoff` file, and no `wayfinder`-style skill for charting a months-long effort as decision tickets. For work too large for one session, `/fabric-graph`'s durable `state.json` is the closest thing — it is resumable, but it does not chart the fog for you.
 
 ---
 
@@ -74,7 +76,7 @@ Named so you don't go looking: AOS has no equivalent of a cross-session `handoff
 
 If the user's intent matches one of these, jump to the corresponding section:
 
-* **"I need to choose a build pipeline (startcycle vs startcycle-graph)"** ➔ [Agent Orchestration & Pipelines](#agent-orchestration--pipelines)
+* **"I need to choose a build pipeline (fabric vs fabric-graph)"** ➔ [Agent Orchestration & Pipelines](#agent-orchestration--pipelines)
 * **"I need multi-agent brainstorming or ideation"** ➔ [Agent Orchestration & Pipelines](#agent-orchestration--pipelines)
 * **"I want to build a new UI component or page"** ➔ [Frontend, UI & Motion](#frontend-ui--motion)
 * **"I want Tailwind, shadcn, or design-system UI work"** ➔ [Frontend, UI & Motion](#frontend-ui--motion)
@@ -102,16 +104,16 @@ If the user's intent matches one of these, jump to the corresponding section:
 
 Use these skills to orchestrate complex multi-agent workflows.
 
-* **Top Picks:** `startcycle-graph`, `bdbrainstorm`
+* **Top Picks:** `fabric-graph`, `bdbrainstorm`
 
-### Overlap: The 3 Build Pipelines
+### Overlap: The fabric modes
 Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.md` and `skills/basic/*/SKILL.md`):
-* **`startcycle`**: Use for a straight-line, predictable run through the agents with file hand-offs and no state machine. Cheapest of the three.
-* **`startcycle-graph`**: Use when you need the full dispatcher graph: durable `state.json`, a Reviewer repair loop, a quality gate, and human escalation.
-* **`startcycle-graph-user`**: Use for a small throwaway fan-out (2-4 nodes) in any project without persistent artifacts.
+* **`fabric`**: Use when unsure: it picks the fitting mode and says why.
+* **`fabric-graph`**: Use when you need the full dispatcher graph: durable `state.json`, a Reviewer repair loop, a quality gate, and human escalation.
+* **`fabric-multigraph`**: Use for a small throwaway fan-out (2-4 nodes) in any project without persistent artifacts.
 
 ### Overlap: Brainstorming
-* **`bdbrainstorm`**: For multi-agent software engineering ideation, UI/UX design, and architecture planning. Handoffs to `/startcycle-graph`.
+* **`bdbrainstorm`**: For multi-agent software engineering ideation, UI/UX design, and architecture planning. Handoffs to `/fabric-graph`.
 * **`bdbmediastorm`**: For creative-tech, live event technology, and show-control systems (TouchDesigner, Resolume, grandMA3).
 * **`brainstorming`**: Lighter-weight than `bdbrainstorm` — use before any creative or constructive work to turn a vague idea into a validated design through disciplined reasoning, without spinning up a multi-agent cycle.
 

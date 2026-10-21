@@ -1,7 +1,7 @@
 ---
 name: agenttrail
 description: >-
-  agenttrail: the live map of a multi-agent build. Use when a /startcycle
+  agenttrail: the live map of a multi-agent build. Use when a /fabric
   pipeline runs, a plan-canvas approve lands, or agents run for a human to
   watch.
 category: bdb-core

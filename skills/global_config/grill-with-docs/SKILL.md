@@ -16,8 +16,8 @@ Neither is restated here. `grilling` supplies the interview — design tree, fro
 
 Grilling produces a shared understanding, not an execution plan. When the frontier is empty, pick the pipeline the work actually needs:
 
-- `/startcycle` — a straight run with file hand-offs; the usual choice
-- `/startcycle-graph` — when the durable `state.json`, the Reviewer repair loop and human escalation earn their overhead
-- `/startcycle-graph-user` — a throwaway 2–4 node fan-out, nothing persistent left behind
+- `/fabric` — picks the fitting mode for you; the usual choice
+- `/fabric-graph` — when the durable `state.json`, the Reviewer repair loop and human escalation earn their overhead
+- `/fabric-multigraph` — a throwaway 2–4 node fan-out, nothing persistent left behind
 
 `/bdbrainstorm` and `/bdbmediastorm` run this interview as their own first step; do not run it twice.

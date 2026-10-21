@@ -86,24 +86,23 @@
       }
     },
     "startproject": {
-      "description": "Start a new composition: project init, brainstorm, then ask whether graph or startcycle follows.",
+      "description": "Start a new composition: project init, brainstorm, then ask which fabric mode follows.",
       "skills": [
         "aos-project-init",
         "bdbrainstorm",
-        "startcycle-graph",
-        "startcycle"
+        "fabric"
       ],
       "bodies": {
-        "claude": "Sequence: 1) `aos-project-init`; 2) `bdbrainstorm`; 3) stop and ask the human whether `/bdb-aos:graph` (startcycle-graph) or `startcycle` follows. Do not start a pipeline on your own. Idea: $ARGUMENTS"
+        "claude": "Sequence: 1) `aos-project-init`; 2) `bdbrainstorm`; 3) stop and ask the human which fabric mode follows (`fabric` picks one; `/bdb-aos:graph` runs fabric-graph). Do not start a pipeline on your own. Idea: $ARGUMENTS"
       }
     },
     "graph": {
-      "description": "Run the startcycle-graph pipeline: durable state, repair loop, quality gate, escalation.",
+      "description": "Run the fabric-graph pipeline: durable state, repair loop, quality gate, escalation.",
       "skills": [
-        "startcycle-graph"
+        "fabric-graph"
       ],
       "bodies": {
-        "claude": "Run the `startcycle-graph` skill; its contract defines the flow. Task: $ARGUMENTS"
+        "claude": "Run the `fabric-graph` skill; its contract defines the flow. Task: $ARGUMENTS"
       }
     },
     "shipping": {

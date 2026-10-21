@@ -121,9 +121,9 @@ const MODULE_DIRS = [
 // with the `legacyMarkers` array in installer.js's detectInstallState().
 const LEGACY_MARKERS = [
   h('.agents', 'AGENTS.md'),
-  h('.gemini', 'config', 'skills', 'startcycle', 'SKILL.md'),
-  h('.agents', 'skills', 'startcycle', 'SKILL.md'),
-  path.join(pm.claudeDir(HOME), 'skills', 'startcycle', 'SKILL.md'),
+  h('.gemini', 'config', 'skills', 'fabric', 'SKILL.md'),
+  h('.agents', 'skills', 'fabric', 'SKILL.md'),
+  path.join(pm.claudeDir(HOME), 'skills', 'fabric', 'SKILL.md'),
 ];
 
 const sha256 = (file) => {

@@ -32,7 +32,7 @@ const validCodexOutput = (stdout) => {
 const codexPayload = (prompt) => ({ hook_event_name: 'UserPromptSubmit', session_id: 's1', turn_id: 't1', cwd: os.tmpdir(), prompt });
 
 describe('Codex-shaped UserPromptSubmit payload', { skip: !CONTAINER && 'container-only (spawns hook processes)' }, () => {
-    for (const script of ['.claude/workflows/startcycle-dispatch.mjs', '.claude/hooks/rules-inject.mjs', '.claude/hooks/memb-inject.mjs']) {
+    for (const script of ['.claude/workflows/fabric-dispatch.mjs', '.claude/hooks/rules-inject.mjs', '.claude/hooks/memb-inject.mjs']) {
         test(`${script} prints nothing or valid Codex JSON for an ordinary prompt`, () => {
             const r = run(script, codexPayload('How do I implement binary search in Rust?'));
             assert.strictEqual(r.status, 0, r.stderr);
@@ -40,20 +40,20 @@ describe('Codex-shaped UserPromptSubmit payload', { skip: !CONTAINER && 'contain
         });
     }
 
-    test('startcycle-dispatch prints nothing for a Codex payload on a non-command prompt', () => {
-        const r = run('.claude/workflows/startcycle-dispatch.mjs', codexPayload('hello'));
+    test('fabric-dispatch prints nothing for a Codex payload on a non-command prompt', () => {
+        const r = run('.claude/workflows/fabric-dispatch.mjs', codexPayload('hello'));
         assert.strictEqual(r.status, 0, r.stderr);
         assert.strictEqual(r.stdout.trim(), '');
     });
 
-    test('startcycle-dispatch keeps the agy shape for a payload without hook_event_name', () => {
-        const r = run('.claude/workflows/startcycle-dispatch.mjs', { prompt: 'hello' });
+    test('fabric-dispatch keeps the agy shape for a payload without hook_event_name', () => {
+        const r = run('.claude/workflows/fabric-dispatch.mjs', { prompt: 'hello' });
         assert.strictEqual(r.status, 0, r.stderr);
         assert.deepStrictEqual(JSON.parse(r.stdout.trim()), { injectSteps: [] });
     });
 
-    test('a Claude-shaped payload also gets no injectSteps from startcycle-dispatch', () => {
-        const r = run('.claude/workflows/startcycle-dispatch.mjs', { hook_event_name: 'UserPromptSubmit', session_id: 's1', prompt: 'hello' });
+    test('a Claude-shaped payload also gets no injectSteps from fabric-dispatch', () => {
+        const r = run('.claude/workflows/fabric-dispatch.mjs', { hook_event_name: 'UserPromptSubmit', session_id: 's1', prompt: 'hello' });
         assert.strictEqual(r.status, 0, r.stderr);
         assert.ok(!/injectSteps/.test(r.stdout));
     });

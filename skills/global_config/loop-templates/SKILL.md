@@ -18,7 +18,7 @@ Reference prompts for `/bdb-aos:loop`. Pick a template, fill the placeholders, h
 
 ## Flow loop (autonomous build/review)
 
-The `flow loop` template (`references/flow-loop.md`) drives iterative build and review cycles for multi-agent workflows (run `/startcycle-graph` in rounds via the harness loop mechanism):
+The `flow loop` template (`references/flow-loop.md`) drives iterative build and review cycles for multi-agent workflows (run `/fabric-graph` in rounds via the harness loop mechanism):
 - **Stop predicate**: halts on clean review (zero blocking findings and all quality gates pass).
 - **Max rounds by effort**: capped at `max_iterations` derived from team effort (`S` = 3 rounds, `M` = 4 rounds, `L` = 5 rounds).
 - **No-progress guard**: stops and escalates immediately if consecutive review rounds produce identical blocking finding IDs.
