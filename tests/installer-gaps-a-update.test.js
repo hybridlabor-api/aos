@@ -20,7 +20,7 @@ test('aos update saves the stored Basic tier back, not tier 1', async () => {
     fs.mkdirSync(path.join(root, '.aos'), { recursive: true });
     fs.writeFileSync(path.join(root, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway', 'openwiki', 'deja', 'hub', 'memb'] }));
     const skills = path.join(root, 'skills');
-    fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
+    fs.mkdirSync(path.join(skills, 'fabric'), { recursive: true });
     const host = {
         detectInstallState: () => ({ isInstalled: true, localVersion: '0.0.1', installedModules: [], manifest: { tier: '2', isUniversal: false } }),
         resolveTargetPaths: () => ({ targetSkillDir: skills, targetMcpDir: path.join(root, 'mcp') }),

@@ -43,12 +43,11 @@ test('loop-templates SKILL.md indexes flow-loop and describes its mechanics', ()
   assert.match(skill, /effort/i, 'SKILL.md must mention effort mapping');
 });
 
-test('startcycle family skills contain Teams and roles section with required registry concepts', () => {
+test('fabric family skills contain Teams and roles section with required registry concepts', () => {
   const skillsToCheck = [
-    join(REPO, 'skills', 'basic', 'startcycle', 'SKILL.md'),
-    join(REPO, 'skills', 'basic', 'startcycle-graph', 'SKILL.md'),
-    join(REPO, 'skills', 'basic', 'startcycle-graph-user', 'SKILL.md'),
-    join(REPO, 'skills', 'basic', 'teamwork-preview', 'SKILL.md'),
+    join(REPO, 'skills', 'basic', 'fabric-graph', 'SKILL.md'),
+    join(REPO, 'skills', 'basic', 'fabric-multigraph', 'SKILL.md'),
+    join(REPO, 'skills', 'basic', 'fabric-teamwork', 'SKILL.md'),
   ];
 
   for (const skillPath of skillsToCheck) {

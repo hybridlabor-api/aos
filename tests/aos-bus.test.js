@@ -334,7 +334,7 @@ describe('bus text never acts as GO', () => {
         const out = { parts: [{ type: 'text', text: 'GO worker-1', synthetic: true, metadata: meta }, { type: 'text', text: 'GO worker-1', ignored: true, metadata: meta }] };
         await hooks['chat.message']({ sessionID: id, messageID: 'b1' }, out);
         assert.equal(fs.existsSync(tokenPath('worker-1')), false);
-        const pipe = { parts: [{ type: 'text', text: '/startcycle-graph go', ignored: true, metadata: meta }] };
+        const pipe = { parts: [{ type: 'text', text: '/fabric-graph go', ignored: true, metadata: meta }] };
         await hooks['chat.message']({ sessionID: id, messageID: 'b2' }, pipe);
         assert.equal(pipe.parts.length, 1);
         // control: the same text from the human does mint

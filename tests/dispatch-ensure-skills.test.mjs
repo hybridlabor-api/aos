@@ -1,4 +1,4 @@
-// The startcycle dispatcher must install a node's registry skills before that
+// The fabric dispatcher must install a node's registry skills before that
 // node's worker starts. Two angles: the recorded-call harness proves order and
 // payload; a full standalone run proves the deterministic polyfill really
 // installs a missing skill into the test HOME via the store CLI.
@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
+const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
 const NODES = JSON.parse(fs.readFileSync(path.join(ROOT, '.agents', 'nodes.json'), 'utf8'));
 
 function withTmpDir(name, fn) {

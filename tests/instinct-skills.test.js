@@ -26,8 +26,8 @@ const frontmatter = (name) => {
 const absHomePath = (text) => /((?:\/|\\)(?:Users|home)(?:\/|\\)[^<>/\s`'")\],\\]+)/.test(text) || /C:\\Users\\[^<>/\s`'")\],\\]+/.test(text);
 
 // Slim plugins carry no skills array: a basic skill registers by bare name in a
-// skills.sh.json grouping. startcycle is the reference basic skill.
-const REFERENCE = 'startcycle';
+// skills.sh.json grouping. fabric is the reference basic skill.
+const REFERENCE = 'fabric';
 
 const parseJson = (rel) => JSON.parse(readFileSync(join(ROOT, rel), 'utf8'));
 
@@ -166,12 +166,12 @@ describe('instinct & skill-create ecosystem skills', () => {
     }
   });
 
-  test('all four are registered in skills.sh.json exactly like startcycle; the plugin manifests stay slim', () => {
+  test('all four are registered in skills.sh.json exactly like fabric; the plugin manifests stay slim', () => {
     for (const rel of ['plugin.json', 'plugins/bdb-aos/plugin.json']) {
       assert.equal(parseJson(rel).skills, undefined, `${rel}: slim plugins carry no skills array`);
     }
     const ref = groupedSkill(REFERENCE);
-    assert.equal(typeof ref.skill, 'string', 'skills.sh.json: startcycle not listed as a string');
+    assert.equal(typeof ref.skill, 'string', 'skills.sh.json: fabric not listed as a string');
     for (const name of SKILLS) {
       const hit = groupedSkill(name);
       assert.ok(hit, `skills.sh.json: \`${name}\` not grouped`);

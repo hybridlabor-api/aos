@@ -10,7 +10,7 @@
  *    - installProjectHarness: multiple full runs in simulated project environment.
  * 2. Multi-Harness Interoperability Simulation:
  *    - memb-inject.mjs: Antigravity, Codex, and Claude simulation environments with real SQLite fixture.
- *    - startcycle-dispatch.mjs: Antigravity, Codex, and standalone CLI simulation with fast-exit and command recognition.
+ *    - fabric-dispatch.mjs: Antigravity, Codex, and standalone CLI simulation with fast-exit and command recognition.
  * 3. Diagnostic Accuracy (aos-doctor.mjs):
  *    - Isolated platform simulations (Claude-only, Antigravity-only, Codex-only, Tri-Harness).
  *    - Hook version sensitivity (v3 pass, v2 fail, missing stamp fail).
@@ -36,7 +36,7 @@ const require = createRequire(import.meta.url);
 const REPO_ROOT = path.resolve(__dirname, '..');
 const INSTALLER_PATH = path.join(REPO_ROOT, 'installer.js');
 const MEMB_INJECT_PATH = path.join(REPO_ROOT, '.claude', 'hooks', 'memb-inject.mjs');
-const STARTCYCLE_DISPATCH_PATH = path.join(REPO_ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
+const FABRIC_DISPATCH_PATH = path.join(REPO_ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
 const DOCTOR_PATH = path.join(REPO_ROOT, 'skills', 'global_config', 'aos-setup', 'scripts', 'aos-doctor.mjs');
 const DOCTOR_ENV = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' };
 
@@ -138,10 +138,10 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(cmds.filter(c => c.includes('trail-relay.mjs')).length, 2, 'Antigravity trail relay on PreToolUse and Stop');
       assert.strictEqual(cmds.filter(c => c.includes('custom-pre-tool')).length, 1, 'exactly 1 foreign tool hook');
 
-      assert.strictEqual(parsed['aos-context'].PreInvocation.length, 4, 'aos-context PreInvocation has memb, session-hint, rules, startcycle');
+      assert.strictEqual(parsed['aos-context'].PreInvocation.length, 4, 'aos-context PreInvocation has memb, session-hint, rules, fabric');
       const preInvocCmds = parsed['aos-context'].PreInvocation.map(h => h.command);
       assert.strictEqual(preInvocCmds.filter(c => c.includes('memb-inject.mjs')).length, 1);
-      assert.strictEqual(preInvocCmds.filter(c => c.includes('startcycle-dispatch.mjs')).length, 1);
+      assert.strictEqual(preInvocCmds.filter(c => c.includes('fabric-dispatch.mjs')).length, 1);
 
       // 11th run snapshot check
       const snapshotBefore = fs.readFileSync(hooksFile, 'utf8');
@@ -192,7 +192,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual((content.match(/go-gate\.mjs/g) || []).length, 1, 'exactly 1 go-gate hook');
       assert.strictEqual((content.match(/graph-gate\.mjs/g) || []).length, 1, 'exactly 1 graph-gate hook');
       assert.strictEqual((content.match(/memb-inject\.mjs/g) || []).length, 2, 'exactly 2 memb-inject hooks');
-      assert.strictEqual((content.match(/startcycle-dispatch\.mjs/g) || []).length, 1, 'exactly 1 startcycle-dispatch hook');
+      assert.strictEqual((content.match(/fabric-dispatch\.mjs/g) || []).length, 1, 'exactly 1 fabric-dispatch hook');
       assert.strictEqual((content.match(/trail-relay\.mjs/g) || []).length, 2, 'exactly 2 trail-relay hooks');
 
       // 11th run snapshot check
@@ -225,7 +225,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
   });
 
   // ==========================================================================
-  // AREA 2: INTEROPERABILITY SIMULATION (memb-inject & startcycle-dispatch)
+  // AREA 2: INTEROPERABILITY SIMULATION (memb-inject & fabric-dispatch)
   // ==========================================================================
   describe('Area 2: Multi-Harness Interoperability Simulation', () => {
     let mockHome;
@@ -344,13 +344,13 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert(out.hookSpecificOutput.additionalContext.includes('hexagonal architecture'));
     });
 
-    test('startcycle-dispatch: Antigravity simulation on non-command prompt exits immediately with code 0', () => {
+    test('fabric-dispatch: Antigravity simulation on non-command prompt exits immediately with code 0', () => {
       const nonCmdPayload = JSON.stringify({
         prompt: 'Please explain this function in detail.'
       });
 
       const t0 = Date.now();
-      const res = runNode(STARTCYCLE_DISPATCH_PATH, {
+      const res = runNode(FABRIC_DISPATCH_PATH, {
         input: nonCmdPayload,
         cwd: mockProjectDir
       });
@@ -362,12 +362,12 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.deepStrictEqual(out, { injectSteps: [] }, 'returns empty injectSteps payload');
     });
 
-    test('startcycle-dispatch: Codex simulation on non-command userPrompt exits cleanly with code 0', () => {
+    test('fabric-dispatch: Codex simulation on non-command userPrompt exits cleanly with code 0', () => {
       const nonCmdPayload = JSON.stringify({
         userPrompt: 'Write a regex for email addresses.'
       });
 
-      const res = runNode(STARTCYCLE_DISPATCH_PATH, {
+      const res = runNode(FABRIC_DISPATCH_PATH, {
         input: nonCmdPayload,
         cwd: mockProjectDir
       });
@@ -377,13 +377,13 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.deepStrictEqual(out, { injectSteps: [] });
     });
 
-    test('startcycle-dispatch: Antigravity simulation on /startcycle-graph triggers and recognizes goal', () => {
+    test('fabric-dispatch: Antigravity simulation on /fabric-graph triggers and recognizes goal', () => {
       const cmdPayload = JSON.stringify({
-        prompt: '/startcycle-graph Implement OAuth2 token refresh pipeline'
+        prompt: '/fabric-graph Implement OAuth2 token refresh pipeline'
       });
 
       // Pass PATH without agy binary so deterministic adapter executes quickly
-      const res = runNode(STARTCYCLE_DISPATCH_PATH, {
+      const res = runNode(FABRIC_DISPATCH_PATH, {
         input: cmdPayload,
         env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
         cwd: REPO_ROOT // has .agents/nodes.json
@@ -398,8 +398,8 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert(['ready_to_ship', 'escalated'].includes(out.result.phase), 'phase is valid');
     });
 
-    test('startcycle-dispatch: Standalone CLI arguments invocation recognizes goal', () => {
-      const res = runNode(STARTCYCLE_DISPATCH_PATH, {
+    test('fabric-dispatch: Standalone CLI arguments invocation recognizes goal', () => {
+      const res = runNode(FABRIC_DISPATCH_PATH, {
         args: ['Refactor database repository layer'],
         env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
         cwd: REPO_ROOT
@@ -563,14 +563,14 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(res.status, 0);
     });
 
-    test('startcycle-dispatch: handles large adversarial prompt (200KB) without buffer overflow', () => {
+    test('fabric-dispatch: handles large adversarial prompt (200KB) without buffer overflow', () => {
       const largeGoal = 'x'.repeat(200 * 1024);
       const payload = JSON.stringify({
-        prompt: `/startcycle-graph ${largeGoal}`
+        prompt: `/fabric-graph ${largeGoal}`
       });
 
       for (let i = 0; i < 5; i++) {
-        const res = runNode(STARTCYCLE_DISPATCH_PATH, {
+        const res = runNode(FABRIC_DISPATCH_PATH, {
           input: payload,
           env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
           cwd: REPO_ROOT,

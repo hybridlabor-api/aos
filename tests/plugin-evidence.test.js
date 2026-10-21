@@ -10,13 +10,13 @@ test('finds nested skills through plugin.json and rejects a foreign cache', () =
     try {
         const root = path.join(home, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '4.18.1');
         const put = (rel, text) => { const p = path.join(root, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
-        put('.claude-plugin/plugin.json', JSON.stringify({ skills: ['./skills/basic/startcycle', './skills/basic/other'] }));
-        put('skills/basic/startcycle/SKILL.md', '#');
+        put('.claude-plugin/plugin.json', JSON.stringify({ skills: ['./skills/basic/fabric', './skills/basic/other'] }));
+        put('skills/basic/fabric/SKILL.md', '#');
         put('skills/basic/other/SKILL.md', '#');
         put('skills/basic/unlisted/SKILL.md', '#');
-        const r = pluginSkills(home, ['startcycle']);
-        assert.ok(r && r.skills.has('startcycle') && r.skills.size === 2, 'listed skills only');
+        const r = pluginSkills(home, ['fabric']);
+        assert.ok(r && r.skills.has('fabric') && r.skills.size === 2, 'listed skills only');
         assert.strictEqual(pluginSkills(home, ['missing']), null);
-        assert.strictEqual(pluginSkills(fs.mkdtempSync(path.join(home, 'x-')), ['startcycle']), null);
+        assert.strictEqual(pluginSkills(fs.mkdtempSync(path.join(home, 'x-')), ['fabric']), null);
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });

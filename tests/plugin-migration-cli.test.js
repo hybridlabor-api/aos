@@ -223,21 +223,21 @@ test('CLAUDE_CONFIG_DIR is honoured for settings and plugin detection', () => {
 test('pluginInstalled follows plugin.json skills and nested layouts, and requires every wanted skill', () => {
   const h = home();
   const installPath = path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '2.0.0');
-  for (const rel of ['skills/basic/startcycle', 'skills/global_config/memb-skill', 'extra/other-skill']) {
+  for (const rel of ['skills/basic/fabric', 'skills/global_config/memb-skill', 'extra/other-skill']) {
     fs.mkdirSync(path.join(installPath, rel), { recursive: true });
     fs.writeFileSync(path.join(installPath, rel, 'SKILL.md'), 'x');
   }
   fs.mkdirSync(path.join(installPath, 'skills', 'node_modules', 'ghost'), { recursive: true });
   fs.writeFileSync(path.join(installPath, 'skills', 'node_modules', 'ghost', 'SKILL.md'), 'x');
-  fs.writeFileSync(path.join(installPath, 'plugin.json'), JSON.stringify({ name: 'bdb-aos', skills: ['./skills/basic/startcycle', './skills/global_config', '../outside'] }));
+  fs.writeFileSync(path.join(installPath, 'plugin.json'), JSON.stringify({ name: 'bdb-aos', skills: ['./skills/basic/fabric', './skills/global_config', '../outside'] }));
   fs.writeFileSync(path.join(h, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'bdb-aos@bdb-marketplace': [{ installPath }] } }));
-  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['memb-skill', 'startcycle']);
-  assert.equal(pm.pluginInstalled(h, ['startcycle', 'memb-skill']), true);
-  assert.equal(pm.pluginInstalled(h, ['startcycle', 'not-delivered']), false, 'one missing wanted skill blocks it');
+  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['memb-skill', 'fabric']);
+  assert.equal(pm.pluginInstalled(h, ['fabric', 'memb-skill']), true);
+  assert.equal(pm.pluginInstalled(h, ['fabric', 'not-delivered']), false, 'one missing wanted skill blocks it');
   assert.equal(pm.pluginInstalled(h, ['other-skill']), false, 'not declared in plugin.json');
   assert.equal(pm.pluginInstalled(h, ['ghost']), false, 'node_modules is skipped');
   fs.writeFileSync(path.join(installPath, 'plugin.json'), JSON.stringify({ name: 'bdb-aos' }));
-  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['memb-skill', 'startcycle'], 'default ./skills is walked recursively');
+  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['memb-skill', 'fabric'], 'default ./skills is walked recursively');
 });
 
 // Issue #54: ONE summary line for the end of the install/update output when the plugin step failed.

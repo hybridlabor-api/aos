@@ -537,15 +537,15 @@ test('B3: hub store UI has the inspector and reads /api/store/skill', () => {
 
 test('GET /api/store/skill: same contract as /api/skill', async () => {
   const h = handler('/api/store/skill');
-  const ok = await h({ url: new URL('/api/store/skill?name=startcycle', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
+  const ok = await h({ url: new URL('/api/store/skill?name=fabric', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
   assert.equal(ok.status, 200);
-  assert.equal(ok.json.name, 'startcycle');
+  assert.equal(ok.json.name, 'fabric');
   assert.match(ok.json.frontmatter, /name:/);
   assert.ok(ok.json.body.length > 0);
   assert.match(ok.json.path, /^(skills|agents|\.claude)\//);
   const bad = await h({ url: new URL('/api/store/skill?name=a%2Fb', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
   assert.equal(bad.status, 400);
-  const kind = await h({ url: new URL('/api/store/skill?name=startcycle&kind=foo', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
+  const kind = await h({ url: new URL('/api/store/skill?name=fabric&kind=foo', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
   assert.equal(kind.status, 400);
   const missing = await h({ url: new URL('/api/store/skill?name=no-such-skill-xyz', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
   assert.equal(missing.status, 404);

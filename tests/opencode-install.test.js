@@ -29,7 +29,7 @@ test('every command has a flat hyphen OpenCode file with no colon names inside',
   }
   assert.match(fs.readFileSync(path.join(OC_DIR, 'bdb-aos-init.md'), 'utf8'), /`\/bdb-aos-setup`/);
   assert.match(fs.readFileSync(path.join(OC_DIR, 'bdb-aos-loop.md'), 'utf8'), /OpenCode has no built-in loop/);
-  assert.ok(fs.existsSync(path.join(OC_DIR, 'startcycle-graph.md')), 'existing command stays');
+  assert.ok(fs.existsSync(path.join(OC_DIR, 'fabric-graph.md')), 'existing command stays');
 });
 
 test('--check passes, and fails when only the opencode body changes', () => {
@@ -41,7 +41,7 @@ test('--check passes, and fails when only the opencode body changes', () => {
   assert.throws(() => check(file), (e) => /\.opencode\/commands\/ is out of date \(bdb-aos-setup\.md\)/.test(e.stderr));
 });
 
-test('--check flags a hand-edited and a stale generated file, but not startcycle-graph.md', () => {
+test('--check flags a hand-edited and a stale generated file, but not fabric-graph.md', () => {
   const edited = path.join(OC_DIR, 'bdb-aos-store.md');
   const original = fs.readFileSync(edited, 'utf8');
   const stale = path.join(OC_DIR, 'bdb-aos-zzz-stale.md');

@@ -34,7 +34,7 @@ function machine({ dangling = false, bare = false } = {}) {
     const base = bare ? path.join(home, 'empty-agents') : path.join(home, '.agents');
     const skills = path.join(home, 'skills');
     const mcp = path.join(home, 'gemini-config');
-    fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
+    fs.mkdirSync(path.join(skills, 'fabric'), { recursive: true });
     fs.mkdirSync(base, { recursive: true });
     // The gateway step would run real npm and launchctl here: keep it off in these fixtures.
     fs.mkdirSync(path.join(home, '.aos'), { recursive: true });

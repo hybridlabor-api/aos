@@ -1,17 +1,17 @@
 {
-  "skill_name": "startcycle",
+  "skill_name": "fabric-graph",
   "trigger": {
     "positive": [
       {
-        "prompt": "Execute the standard startcycle workflow.",
+        "prompt": "Execute the standard fabric-graph workflow.",
         "top_k": 3
       },
       {
-        "prompt": "Run the startcycle tasks.",
+        "prompt": "Run the fabric-graph tasks.",
         "top_k": 3
       },
       {
-        "prompt": "Please apply the startcycle skill.",
+        "prompt": "Please apply the fabric-graph skill.",
         "top_k": 3
       }
     ],
