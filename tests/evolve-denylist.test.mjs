@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { isDenied, assertNotDenied, matchesPattern, loadDenyList } from '../lib/evolve/deny.mjs';
 
@@ -24,6 +25,13 @@ describe('AOS Evolve Deny-List & Production Path Guard (Hard Safety Boundary B2)
     assert.equal(rootContent.version, 1);
     assert.ok(Array.isArray(rootContent.paths));
     assert.ok(rootContent.paths.length > 25);
+  });
+
+  test('NF-7: pinned-denylist.json integrity matches pinned sha256 hash', () => {
+    const raw = fs.readFileSync(pinnedFixturePath);
+    const hash = crypto.createHash('sha256').update(raw).digest('hex');
+    const EXPECTED_HASH = '1a273f4e53c65ec41dec6b28f9c087b883f9d333af35742deb0dcfd04bd20fcd';
+    assert.equal(hash, EXPECTED_HASH, 'tests/fixtures/pinned-denylist.json sha256 must match pinned hash');
   });
 
   test('equality test: deny-list.json and evolve/deny-list.json are strictly identical', () => {

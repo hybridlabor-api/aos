@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { loadSchema, KNOWN_SCHEMAS } from '../lib/evolve/validate.mjs';
 import { loadDenyList, isDenied, getTrustRootDenyListPath } from '../lib/evolve/deny.mjs';
 import { loadPins, getTrustRootPinsPath } from '../lib/evolve/probe-load.mjs';
@@ -97,6 +98,27 @@ describe('AOS Evolve Packaging & Trust Roots (Blocking 1-3: NF-0, NF-1, NF-2)', 
       () => loadPins('/nonexistent/path/to/pins.json'),
       /Pins file not found/,
       'Must fail closed when pins file is missing'
+    );
+  });
+
+  test('NF-0 packaging: npm pack --dry-run --json includes evolve/ and deny-list.json in tarball', () => {
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const r = spawnSync(npmCmd, ['pack', '--dry-run', '--json'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      timeout: 120000,
+      env: { ...process.env, npm_config_ignore_scripts: 'true' },
+    });
+    assert.equal(r.status, 0, `npm pack failed: ${r.stderr || r.stdout}`);
+    const packInfo = JSON.parse(r.stdout);
+    const files = (packInfo[0]?.files || []).map((f) => f.path);
+    assert.ok(
+      files.includes('deny-list.json'),
+      'pack contents must include deny-list.json'
+    );
+    assert.ok(
+      files.some((f) => f.startsWith('evolve/')),
+      'pack contents must include evolve/ directory files'
     );
   });
 });

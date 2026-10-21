@@ -85,7 +85,7 @@ function readBoundedStdin(maxBytes) {
   });
 }
 
-export async function main(args = process.argv.slice(2)) {
+export async function main(args = process.argv.slice(2), opts = {}) {
   if (args.length === 0 || args.includes('-h') || args.includes('--help') || args[0] === 'help') {
     process.stdout.write(HELP_TEXT);
     return 0;
@@ -100,13 +100,17 @@ export async function main(args = process.argv.slice(2)) {
   }
 
   if (cmd === 'enable') {
-    const confirmation = await confirmEnable();
+    const confirmation = await confirmEnable(opts);
     if (!confirmation.ok) {
       process.stderr.write(`Error: ${confirmation.reason}\n`);
       return 1;
     }
-    const removed = enableEvolve();
-    process.stdout.write(removed ? 'AOS Evolve re-enabled.\n' : 'AOS Evolve was not disabled.\n');
+    enableEvolve();
+    if (process.env.AOS_EVOLVE === 'off' || process.env.AOS_EVOLVE === '0') {
+      process.stdout.write('AOS Evolve enabled via marker (~/.aos/evolve/ENABLED), but note: AOS_EVOLVE=off environment variable is active and still disables evolution cycles.\n');
+    } else {
+      process.stdout.write('AOS Evolve enabled.\n');
+    }
     return 0;
   }
 
@@ -138,7 +142,7 @@ export async function main(args = process.argv.slice(2)) {
       }, null, 2) + '\n');
     } else {
       process.stdout.write(`AOS Evolve Status:
-  State:         ${disabled ? 'DISABLED (kill switch active)' : 'ENABLED'}
+  State:         ${disabled ? 'DISABLED (kill switch active or not enabled)' : 'ENABLED'}
   Store:         ${storePath}
   Failures:      ${failures.length} unique signatures (${failures.reduce((sum, f) => sum + (f.count || 1), 0)} total occurrences)
 `);
@@ -148,7 +152,7 @@ export async function main(args = process.argv.slice(2)) {
 
   if (cmd === 'capture') {
     if (isEvolveDisabled()) {
-      process.stderr.write('Error: AOS Evolve is disabled via kill switch (~/.aos/evolve/DISABLED or AOS_EVOLVE=off)\n');
+      process.stderr.write('Error: AOS Evolve is disabled (fresh home requires "aos-evolve enable", or kill switch active via ~/.aos/evolve/DISABLED or AOS_EVOLVE=off)\n');
       return 1;
     }
 

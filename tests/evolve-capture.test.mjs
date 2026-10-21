@@ -29,6 +29,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     fakeHome = path.join(tmpDir, 'home');
     fs.mkdirSync(path.join(fakeHome, '.aos', 'evolve'), { recursive: true, mode: 0o700 });
     testStorePath = path.join(fakeHome, '.aos', 'evolve', 'failure.json');
+    enableEvolve({ home: fakeHome });
   });
 
   afterEach(() => {
@@ -172,17 +173,106 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     assert.equal(fs.existsSync(testStorePath), false, 'storage file must not be created on dryRun');
   });
 
+  test('B1: fresh home is disabled by default and captureFailure refuses with clear message', () => {
+    const freshHome = path.join(tmpDir, 'fresh-home');
+    const freshStorePath = path.join(freshHome, '.aos', 'evolve', 'failure.json');
+    assert.equal(isEvolveDisabled({ home: freshHome }), true, 'fresh home must be disabled by default');
+
+    const result = captureFailure({
+      error: 'Test error on fresh home',
+      skill: 'clean-code',
+      storagePath: freshStorePath,
+      home: freshHome,
+    });
+    assert.equal(result.ok, false, 'captureFailure must be refused on fresh home');
+    assert.match(
+      result.error,
+      /disabled/i,
+      'capture must refuse with clear message indicating evolution is disabled'
+    );
+  });
+
   test('kill switch: isEvolveDisabled, disableEvolve, and enableEvolve manage marker file', () => {
-    assert.equal(isEvolveDisabled({ home: fakeHome }), false, 'initially enabled');
+    const testHome = path.join(tmpDir, 'marker-home');
+    assert.equal(isEvolveDisabled({ home: testHome }), true, 'initially disabled on fresh home');
 
-    const marker = disableEvolve({ home: fakeHome });
+    const enabled = enableEvolve({ home: testHome });
+    assert.equal(enabled, true, 'enableEvolve returns true when marker written');
+    assert.ok(fs.existsSync(path.join(testHome, '.aos', 'evolve', 'ENABLED')), 'ENABLED marker file must be created');
+    assert.equal(isEvolveDisabled({ home: testHome }), false, 'enabled after enableEvolve');
+
+    const marker = disableEvolve({ home: testHome });
     assert.ok(fs.existsSync(marker), 'DISABLED marker file must be created');
-    assert.equal(isEvolveDisabled({ home: fakeHome }), true, 'disabled after disableEvolve');
+    assert.equal(fs.existsSync(path.join(testHome, '.aos', 'evolve', 'ENABLED')), false, 'ENABLED marker must be unlinked on disable');
+    assert.equal(isEvolveDisabled({ home: testHome }), true, 'disabled after disableEvolve');
 
-    const removed = enableEvolve({ home: fakeHome });
-    assert.equal(removed, true, 'enableEvolve returns true when marker removed');
-    assert.equal(fs.existsSync(marker), false, 'marker file must be gone');
-    assert.equal(isEvolveDisabled({ home: fakeHome }), false, 'enabled after enableEvolve');
+    const reEnabled = enableEvolve({ home: testHome });
+    assert.equal(reEnabled, true, 'enableEvolve returns true when re-enabling');
+    assert.equal(fs.existsSync(marker), false, 'DISABLED marker file must be gone');
+    assert.ok(fs.existsSync(path.join(testHome, '.aos', 'evolve', 'ENABLED')), 'ENABLED marker file must be created');
+    assert.equal(isEvolveDisabled({ home: testHome }), false, 'enabled after enableEvolve');
+  });
+
+  test('B1: CLI enable warns clearly when AOS_EVOLVE=off environment variable is active', async () => {
+    let stdoutBuf = '';
+    const origStdout = process.stdout.write;
+    const oldEnv = process.env.AOS_EVOLVE;
+    process.stdout.write = (s) => { stdoutBuf += s; return true; };
+    try {
+      process.env.AOS_EVOLVE = 'off';
+      const code = await cliMain(['enable'], {
+        stdin: { isTTY: true },
+        stdout: { isTTY: true, write: () => true },
+        ask: async () => 'ENABLE',
+        env: {},
+      });
+      assert.equal(code, 0);
+      assert.ok(stdoutBuf.includes('AOS_EVOLVE=off'), 'enable must clearly state that AOS_EVOLVE=off still disables it');
+    } finally {
+      process.stdout.write = origStdout;
+      if (oldEnv !== undefined) process.env.AOS_EVOLVE = oldEnv;
+      else delete process.env.AOS_EVOLVE;
+    }
+  });
+
+  test('B2: first capture on a fresh machine creates ~/.aos/evolve with mode 0700 before taking lock', () => {
+    const uncreatedHome = path.join(tmpDir, 'uncreated-machine-home');
+    const evolveDir = path.join(uncreatedHome, '.aos', 'evolve');
+    const storePath = path.join(evolveDir, 'failure.json');
+
+    assert.equal(fs.existsSync(evolveDir), false, 'dir must not exist initially');
+
+    // Enable evolve for this home first
+    enableEvolve({ home: uncreatedHome });
+    assert.ok(fs.existsSync(evolveDir));
+
+    // Remove the dir again to test acquireStoreLock directly on uncreated directory
+    fs.rmSync(evolveDir, { recursive: true, force: true });
+    assert.equal(fs.existsSync(evolveDir), false);
+
+    const lock = acquireStoreLock(storePath, { baseDir: evolveDir });
+    assert.ok(fs.existsSync(evolveDir), 'acquireStoreLock must create ~/.aos/evolve before taking lock');
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(evolveDir);
+      assert.equal(stat.mode & 0o777, 0o700, 'evolve dir must have 0700 permissions');
+    }
+    lock.release();
+
+    // Now test captureFailure when storePath parent dir does not exist
+    fs.rmSync(evolveDir, { recursive: true, force: true });
+    // Write ENABLED marker so it is not refused by kill switch
+    fs.mkdirSync(evolveDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(evolveDir, 'ENABLED'), 'Enabled\n', { mode: 0o600 });
+    if (fs.existsSync(storePath)) fs.unlinkSync(storePath);
+
+    const result = captureFailure({
+      error: 'First capture on fresh machine error',
+      skill: 'clean-code',
+      storagePath: storePath,
+      home: uncreatedHome,
+    });
+    assert.ok(result.ok, `first capture must succeed: ${result.error}`);
+    assert.ok(fs.existsSync(storePath), 'failure.json must be created');
   });
 
   test('kill switch: respects environment variable AOS_EVOLVE=off', () => {
@@ -309,6 +399,41 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     });
     assert.ok(fs.existsSync(lockFile));
     lock.release();
+  });
+
+  test('Should fix: acquireStoreLock release only unlinks if lock file still holds our pid', () => {
+    const lock = acquireStoreLock(testStorePath, { baseDir: path.dirname(testStorePath) });
+    const lockFile = `${testStorePath}.lock`;
+    assert.ok(fs.existsSync(lockFile));
+
+    // Simulate another process stealing the lock and overwriting PID
+    fs.writeFileSync(lockFile, '999999\n123456\n', 'utf8');
+
+    // Calling release on our lock should NOT delete the lock held by PID 999999
+    lock.release();
+    assert.ok(fs.existsSync(lockFile), 'lockfile must not be unlinked when PID does not match');
+
+    // Clean up
+    fs.unlinkSync(lockFile);
+  });
+
+  test('Should fix: acquireStoreLock steals stale locks via rename, not unlink-then-retry', () => {
+    const lockFile = `${testStorePath}.lock`;
+    fs.writeFileSync(lockFile, '88888\n', 'utf8');
+
+    // Set mtime to 10 seconds ago
+    const past = new Date(Date.now() - 10000);
+    fs.utimesSync(lockFile, past, past);
+
+    // acquireStoreLock should detect stale lock, atomically rename, and acquire
+    const lock = acquireStoreLock(testStorePath, {
+      baseDir: path.dirname(testStorePath),
+      staleTimeoutMs: 1000,
+      maxWaitMs: 500,
+    });
+    assert.ok(fs.existsSync(lockFile));
+    lock.release();
+    assert.ok(!fs.existsSync(lockFile));
   });
 
   test('NF-10: confirmEnable enforces interactive TTY and blocks automated harness execution', async () => {

@@ -1176,7 +1176,7 @@ node aos-project-doctor.mjs . --json
 
 ## aos-evolve
 
-Harness evolution engine: record failure signatures, inspect kill switch status, and manage offline evolution prep. Hard Safety Boundary B2 (deny-list & path confinement) currently guards failure storage paths in WP2; candidate diff verification is scheduled for WP5.
+Harness evolution engine: record failure signatures, inspect kill switch status, and manage offline evolution prep (B2 store-only until WP5).
 
 - **When to use:** Record redacted task failure signatures for evolution analysis or check evolution kill switch status.
 - **Agent safety:** safe to call. capture writes sanitized failure records to ~/.aos/evolve/failure.json; disable/enable toggles kill switch; --help is side-effect free.
