@@ -6650,10 +6650,12 @@ function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
 
 // The npm dist-tag a version was published under (same rule as release-please.yml):
 // a prerelease goes to its own channel (5.0.0-beta.3 -> beta), everything else to latest.
-// A channel tag rather than the exact version, so `aos update` reaches the newest release.
+// Only tags npm actually publishes are used: any other prerelease id (pre, z-builds, local
+// builds) falls back to latest, because `npx pkg@<unpublished-tag>` fails with ETARGET.
+const AOS_PUBLISHED_CHANNELS = new Set(['alpha', 'beta', 'rc']);
 function aosDistTag(version) {
     const m = /^[^-]+-([A-Za-z]+)/.exec(String(version));
-    return m ? m[1] : 'latest';
+    return m && AOS_PUBLISHED_CHANNELS.has(m[1]) ? m[1] : 'latest';
 }
 
 // One line telling the user how to put ~/.local/bin on PATH, or null when it already is.
