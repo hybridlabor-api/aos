@@ -217,6 +217,12 @@ export async function main(args = process.argv.slice(2)) {
       return 1;
     }
 
+    if (result.membPromise) {
+      try {
+        await result.membPromise;
+      } catch {}
+    }
+
     if (asJson) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     } else {

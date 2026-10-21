@@ -15,6 +15,7 @@ import {
   acquireStoreLock,
   withStoreLock,
   confirmEnable,
+  tryRecordToMemB,
 } from '../lib/evolve/capture.mjs';
 import { main as cliMain } from '../bin/aos-evolve.mjs';
 
@@ -347,5 +348,46 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
       env: {},
     });
     assert.equal(goodConfirmResult.ok, true);
+  });
+
+  test('NF-8: circular error objects are safely serialized without throwing TypeError', () => {
+    const circularObj = { message: 'Circular test error' };
+    circularObj.self = circularObj;
+
+    const sig = computeErrorSig(circularObj);
+    assert.ok(typeof sig === 'string' && sig.length === 32, 'Must compute signature for circular object');
+
+    const result = captureFailure({
+      error: circularObj,
+      skill: 'clean-code',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+    assert.equal(result.ok, true, 'captureFailure must succeed with circular error');
+    assert.ok(result.record.redacted_excerpt.includes('[Circular]'));
+  });
+
+  test('NF-8: loadFailures gracefully ignores null and non-object entries in store', () => {
+    fs.writeFileSync(testStorePath, JSON.stringify([null, 42, 'string', null, { id: 'valid-1', skill: 'clean-code', error_sig: 'sig123' }]), 'utf8');
+
+    const loaded = loadFailures(testStorePath);
+    assert.equal(loaded.length, 1, 'Only valid objects must be loaded');
+    assert.equal(loaded[0].id, 'valid-1');
+
+    // captureFailure must not throw TypeError when deduplicating against store containing nulls
+    const res = captureFailure({
+      error: 'test error',
+      skill: 'clean-code',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+    assert.equal(res.ok, true);
+  });
+
+  test('NF-4: tryRecordToMemB cleanly skips when memB module is absent without throwing', async () => {
+    const fakeRecord = { id: 'fail-123', skill: 'clean-code', error_sig: 'abc', redacted_excerpt: 'err' };
+    const recorded = await tryRecordToMemB(fakeRecord);
+    // Since skills/global_config/memb-skill/lib/memb.mjs is absent, must cleanly return false
+    assert.equal(recorded, false);
   });
 });

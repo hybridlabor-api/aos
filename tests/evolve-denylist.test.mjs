@@ -125,6 +125,15 @@ describe('AOS Evolve Deny-List & Production Path Guard (Hard Safety Boundary B2)
     assert.equal(isDenied('bin/aos-acp-client.mjs', REPO_ROOT), true);
     assert.equal(isDenied('lib/cli-specs/agents.mjs', REPO_ROOT), true);
     assert.equal(isDenied('.aos/briefs/test.md', REPO_ROOT), true);
+
+    // NF-6 newly protected core paths
+    assert.equal(isDenied('.claude/workflows/deploy.yml', REPO_ROOT), true);
+    assert.equal(isDenied('.claude/agents/architect.md', REPO_ROOT), true);
+    assert.equal(isDenied('.agents/graph.md', REPO_ROOT), true);
+    assert.equal(isDenied('.agents/nodes.json', REPO_ROOT), true);
+    assert.equal(isDenied('lib/a2a-permissions.mjs', REPO_ROOT), true);
+    assert.equal(isDenied('lib/a2a-spawn.mjs', REPO_ROOT), true);
+    assert.equal(isDenied('docs/gate-profile.md', REPO_ROOT), true);
   });
 
   test('production matcher isDenied permits non-core skill body files', () => {
@@ -167,6 +176,20 @@ describe('AOS Evolve Deny-List & Production Path Guard (Hard Safety Boundary B2)
       assert.equal(isDenied('RULES.MD', REPO_ROOT), true);
       assert.equal(isDenied('Package.JSON', REPO_ROOT), true);
     }
+  });
+
+  test('NF-5: home guard protects resolved and unresolved home directory paths', () => {
+    const rawHome = os.homedir();
+    assert.equal(isDenied(path.join(rawHome, '.claude', 'settings.json'), REPO_ROOT), true);
+    assert.equal(isDenied(path.join(rawHome, '.agents', 'custom.md'), REPO_ROOT), true);
+    assert.equal(isDenied(path.join(rawHome, '.aos', 'gate', 'config.json'), REPO_ROOT), true);
+
+    try {
+      const realHome = fs.realpathSync(rawHome);
+      assert.equal(isDenied(path.join(realHome, '.claude', 'settings.json'), REPO_ROOT), true);
+      assert.equal(isDenied(path.join(realHome, '.agents', 'custom.md'), REPO_ROOT), true);
+      assert.equal(isDenied(path.join(realHome, '.aos', 'gate', 'config.json'), REPO_ROOT), true);
+    } catch {}
   });
 
   test('matchesPattern handles exact, wildcard, and recursive globs', () => {
