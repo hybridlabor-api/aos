@@ -23,7 +23,7 @@ const logErr = (m) => {
   } catch { /* nowhere to log */ }
 };
 process.on("uncaughtException", (e) => { logErr(`uncaught: ${e?.stack || e}`); process.exitCode = 0; });
-process.on("unhandledRejection", (e) => { logErr(`unhandled: ${e?.stack || e}`); process.exit(0); });
+process.on("unhandledRejection", (e) => { logErr(`unhandled: ${e?.stack || e}`); process.exitCode = 0; });
 
 let input = {};
 try {
