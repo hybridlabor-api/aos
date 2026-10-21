@@ -71,13 +71,29 @@ function upstreamNames(dir) {
 // failed, that exited early or did not answer MCP initialize in 60 s (3 tries) stays "unknown" until the next start: nothing
 // retries it, and `1mcp mcp restart` needs an admin login AOS never sets up. The reason is in 1mcp's own log line.
 const NEVER_CONNECTED = new Set(['unknown', 'disconnected', 'error']);
-export function redactLog(text) {
+export function redactLine(text) {
     return String(text)
         .replace(/\b(gh[pousr]_|github_pat_|sk-|AIza)[\w-]{8,}/g, '***')
         .replace(/\bBearer\s+[\w.~+/=-]+/gi, 'Bearer ***')
+        .replace(/\bBasic\s+[A-Za-z0-9+/=_-]{6,}/g, 'Basic ***')
         .replace(/\/\/[^\s/@:]+:[^\s/@]+@/g, '//***@')
-        .replace(/([?&;]|\b)((?:[\w-]*(?:token|key|secret|passw(?:or)?d|pat|auth|credential)[\w-]*))=[^&\s"';]+/gi, '$1$2=***')
-        .replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+        .replace(/("(?:[\w-]*(?:token|api_?key|secret|passw(?:or)?d|credential)[\w-]*)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi, '$1"***"')
+        .replace(/([?&;]|\b)((?:[\w-]*(?:token|key|secret|passw(?:or)?d|pat|auth|credential)[\w-]*))=[^&\s"';]+/gi, '$1$2=***');
+}
+export function redactLog(text) {
+    return redactLine(text).replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+}
+// Redacts whole lines before they reach the log; a partial trailing line waits for its newline.
+export function lineRedactor(write) {
+    let rest = '';
+    const feed = (chunk) => {
+        const parts = (rest + chunk.toString()).split('\n');
+        rest = parts.pop();
+        if (rest.length > 65536) { parts.push(rest); rest = ''; }
+        if (parts.length) write(parts.map(redactLine).join('\n') + '\n');
+    };
+    feed.flush = () => { if (rest) { write(redactLine(rest) + '\n'); rest = ''; } };
+    return feed;
 }
 export function connectFailures(dir) {
     const out = new Map();
@@ -279,9 +295,10 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
             return schedule();
         }
         if (child && child.pid) try { fs.writeFileSync(path.join(dir, 'upstream.pid'), String(child.pid), { mode: 0o600 }); } catch { /* best effort */ }
-        for (const out of [child.stdout, child.stderr]) if (out && out.on) out.on('data', (c) => logFile.write(c));
+        const feeds = [];
+        for (const out of [child.stdout, child.stderr]) if (out && out.on) { const feed = lineRedactor((s) => logFile.write(s)); feeds.push(feed); out.on('data', feed); }
         child.on('error', (e) => { log(`aos-gateway: cannot start 1mcp: ${e.code || e.message}`); schedule(); });
-        child.on('exit', schedule);
+        child.on('exit', () => { feeds.forEach((f) => f.flush()); schedule(); });
     };
     start();
 

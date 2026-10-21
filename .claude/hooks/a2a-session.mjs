@@ -3,7 +3,7 @@
 //   node a2a-session.mjs                      -> Claude Code  (sidecar --mode live, drained by the a2a-inbox hook)
 //   node a2a-session.mjs --harness codex      -> Codex        (sidecar --mode codex --thread <session_id>; prints the
 //                                                              session's own peer name as SessionStart additionalContext)
-import { readFileSync, mkdirSync, appendFileSync } from "node:fs";
+import { readFileSync, mkdirSync, appendFileSync, statSync, renameSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +19,9 @@ const logErr = (m) => {
   try {
     const d = join(homedir(), ".aos", "logs");
     mkdirSync(d, { recursive: true, mode: 0o700 });
-    appendFileSync(join(d, "a2a-session.log"), `${new Date().toISOString()} ${harness}${finish ? " finish" : ""} ${String(m).replace(/\s+/g, " ").slice(0, 500)}\n`, { mode: 0o600 });
+    const f = join(d, "a2a-session.log");
+    try { if (statSync(f).size > 5 << 20) renameSync(f, `${f}.1`); } catch { /* none yet */ }
+    appendFileSync(f, `${new Date().toISOString()} ${harness}${finish ? " finish" : ""} ${String(m).replace(/\s+/g, " ").slice(0, 500)}\n`, { mode: 0o600 });
   } catch { /* nowhere to log */ }
 };
 process.on("uncaughtException", (e) => { logErr(`uncaught: ${e?.stack || e}`); process.exitCode = 0; });
@@ -28,7 +30,7 @@ process.on("unhandledRejection", (e) => { logErr(`unhandled: ${e?.stack || e}`);
 let input = {};
 try {
   input = JSON.parse(finish ? process.env.AOS_A2A_HOOK_INPUT || "{}" : readFileSync(0, "utf8"));
-} catch (e) { if (!finish) logErr(`stdin: ${e.message}`); }
+} catch { if (!finish) logErr("stdin: not valid JSON"); } // never log e.message: JSON.parse quotes a snippet of the payload
 const hookPpid = finish && Number(process.env.AOS_A2A_HOOK_PPID) > 1 ? Number(process.env.AOS_A2A_HOOK_PPID) : process.ppid;
 // Windows resolves the harness pid with a PowerShell walk (cold start, seconds): that part runs detached after the hook
 // has replied, so the hook itself stays far under Codex's 10 s limit. AOS_A2A_HOOK_DEFER=1 forces this path in tests.
