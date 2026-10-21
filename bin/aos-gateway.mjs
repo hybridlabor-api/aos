@@ -183,7 +183,7 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
                 if (TOKEN_RE.test(token)) {
                     const { gatewaySizeMetrics } = await import('../lib/gateway/doctor.js');
                     const metrics = await gatewaySizeMetrics({ port, token });
-                    if (metrics) {
+                    if (metrics && metrics.ok) {
                         toolCount = metrics.toolCount;
                         nodeCount = metrics.nodeCount;
                         sizeWarning = metrics.warning;
@@ -192,7 +192,19 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
             }
         } catch { /* metrics unavailable */ }
     }
-    return { running, pid: running ? readPid(dir) : null, lazyLoading, restartPending, asyncLoading, asyncRestartPending, port, upstreamsScope: 'global', upstreams, toolCount, nodeCount, sizeWarning, ...(inUse ? { error: problem } : {}) };
+    return {
+        running,
+        pid: running ? readPid(dir) : null,
+        lazyLoading,
+        restartPending,
+        asyncLoading,
+        asyncRestartPending,
+        port,
+        upstreamsScope: 'global',
+        upstreams,
+        ...(toolCount !== null ? { toolCount, nodeCount, sizeWarning } : {}),
+        ...(inUse ? { error: problem } : {}),
+    };
 }
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;

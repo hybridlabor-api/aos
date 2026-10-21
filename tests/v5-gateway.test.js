@@ -789,6 +789,7 @@ describe('pkg-gateway', () => {
 describe('status JSON', () => {
     let status; let gw; let dir; const servers = [];
     const fake = async (handler) => { const s = http.createServer(handler); servers.push(s); return [s, await listen(s)]; };
+    const makeFw = async (opts) => { const fw = createForwarder(opts); await fw.listen(); servers.push(fw.server); return fw; };
 
     test('setup', async () => {
         gw = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
@@ -800,8 +801,7 @@ describe('status JSON', () => {
 
     test('running gateway with healthy 1mcp', async () => {
         const [, inner] = await fake((req, res) => { res.writeHead(req.url === '/health' ? 200 : 404); res.end('{}'); });
-        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         const port = fw.server.address().port;
         const s = await status({ dir, port, upstreamPort: inner });
         assert.deepEqual(s, { running: true, pid: process.pid, lazyLoading: null, restartPending: false, asyncLoading: false, asyncRestartPending: false, port, upstreamsScope: 'global', upstreams: [{ name: 'a', ok: true }, { name: 'b', ok: true }] });
@@ -811,8 +811,7 @@ describe('status JSON', () => {
     test('1mcp 503 with a failing upstream is degraded, not down', async () => {
         const body = JSON.stringify({ servers: { details: [{ name: 'a', healthy: true }, { name: 'b', healthy: false, lastError: 'spawn ENOENT' }] } });
         const [, inner] = await fake((req, res) => { res.writeHead(req.url === '/health' ? 503 : 404); res.end(body); });
-        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
         assert.equal(s.running, true);
         assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'spawn ENOENT' }]);
@@ -824,8 +823,7 @@ describe('status JSON', () => {
 
     test('1mcp 503 without a parseable body is degraded-unknown, not down', async () => {
         const [, inner] = await fake((req, res) => { res.writeHead(503); res.end('nope'); });
-        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
         assert.ok(s.running && s.upstreams.every((u) => u.degraded && !u.ok));
         await fw.close();
@@ -834,8 +832,7 @@ describe('status JSON', () => {
     test('/api/v1/servers drives per-upstream status (#178)', async () => {
         const api = JSON.stringify({ kind: 'servers', servers: [{ server: 'a', status: 'connected', available: true }, { server: 'b', status: 'error', available: false }] });
         const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? api : '{}'); });
-        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
         assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'upstream error: ' + gw.neverConnected('b', new Map()) }]);
         await fw.close();
@@ -845,8 +842,7 @@ describe('status JSON', () => {
         fs.writeFileSync(path.join(dir, 'gateway.log'), '2026-10-21T00:00:00.000Z [ERROR] message="Failed to connect to b: spawn deja ENOENT"\n');
         const api = JSON.stringify({ kind: 'servers', servers: [{ server: 'a', status: 'loading', available: false }, { server: 'b', status: 'unknown', available: false }] });
         const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? api : '{}'); });
-        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
         fs.rmSync(path.join(dir, 'gateway.log'));
         assert.equal(s.upstreams[0].busy, true);
@@ -872,8 +868,7 @@ describe('status JSON', () => {
 
     test('1mcp listing 0 servers while servers are configured is never ready (#178)', async () => {
         const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? '{"kind":"servers","servers":[]}' : '{"status":"ready"}'); });
-        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
         assert.ok(s.upstreams.every((u) => !u.ok && !u.degraded && /lists 0 servers while 2 are configured/.test(u.error)));
         const v = await pkg.verify({ home: dir, sleep: async () => {}, statusFn: async () => ({ ...s, port: cfg.GATEWAY_PORT }) }, { tries: 2 });
@@ -882,8 +877,7 @@ describe('status JSON', () => {
     });
 
     test('running gateway, 1mcp down', async () => {
-        const fw = createForwarder({ port: 0, upstreamPort: 1, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: 1, token: 'x'.repeat(64) });
         const dead = await freePort();
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: dead });
         assert.equal(s.running, true);
