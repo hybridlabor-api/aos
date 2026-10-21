@@ -45,7 +45,8 @@
     "skill": {
       "type": "string",
       "minLength": 1,
-      "description": "Target skill directory name."
+      "description": "Target skill directory name.",
+      "pattern": "^[a-z0-9_-]+$"
     },
     "harness": {
       "type": "string",
@@ -57,7 +58,13 @@
     },
     "kind": {
       "type": "string",
-      "enum": ["test", "build", "review", "advisor-repeat", "user"],
+      "enum": [
+        "test",
+        "build",
+        "review",
+        "advisor-repeat",
+        "user"
+      ],
       "description": "Source category of failure."
     },
     "error_sig": {

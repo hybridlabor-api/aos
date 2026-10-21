@@ -40,6 +40,45 @@ Options:
   -h, --help          Show this help message and exit
 `;
 
+function readBoundedStdin(maxBytes) {
+  return new Promise((resolve, reject) => {
+    let bytesRead = 0;
+    const chunks = [];
+
+    function cleanup() {
+      process.stdin.removeListener('data', onData);
+      process.stdin.removeListener('end', onEnd);
+      process.stdin.removeListener('error', onError);
+    }
+
+    function onData(chunk) {
+      bytesRead += chunk.length;
+      if (bytesRead > maxBytes) {
+        process.stdin.pause();
+        cleanup();
+        reject(new Error(`Stdin input exceeds ${maxBytes / 1024} KiB size limit`));
+        return;
+      }
+      chunks.push(chunk);
+    }
+
+    function onEnd() {
+      cleanup();
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    }
+
+    function onError(err) {
+      cleanup();
+      reject(err);
+    }
+
+    process.stdin.on('data', onData);
+    process.stdin.on('end', onEnd);
+    process.stdin.on('error', onError);
+    process.stdin.resume();
+  });
+}
+
 export async function main(args = process.argv.slice(2)) {
   if (args.length === 0 || args.includes('-h') || args.includes('--help') || args[0] === 'help') {
     process.stdout.write(HELP_TEXT);
@@ -70,7 +109,13 @@ export async function main(args = process.argv.slice(2)) {
       process.stderr.write(`Error: ${err.message}\n`);
       return 1;
     }
-    const failures = loadFailures(storePath);
+    let failures;
+    try {
+      failures = loadFailures(storePath);
+    } catch (err) {
+      process.stderr.write(`Error: ${err.message}\n`);
+      return 1;
+    }
 
     if (args.includes('--json')) {
       process.stdout.write(JSON.stringify({
@@ -130,13 +175,10 @@ export async function main(args = process.argv.slice(2)) {
       }
     } else if (fileArg === '-' || (!errorArg && !process.stdin.isTTY)) {
       try {
-        errorData = fs.readFileSync(0, 'utf8');
-        if (Buffer.byteLength(errorData, 'utf8') > MAX_INPUT_BYTES) {
-          process.stderr.write(`Error: Stdin input exceeds 64 KiB size limit\n`);
-          return 1;
-        }
-      } catch {
-        errorData = '';
+        errorData = await readBoundedStdin(MAX_INPUT_BYTES);
+      } catch (err) {
+        process.stderr.write(`Error: ${err.message}\n`);
+        return 1;
       }
     }
 

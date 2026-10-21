@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { isDenied, assertNotDenied, matchesPattern, loadDenyList } from '../lib/evolve/deny.mjs';
 
@@ -25,43 +26,76 @@ describe('AOS Evolve Deny-List & Production Path Guard (Hard Safety Boundary B2)
     assert.ok(rootContent.paths.length > 25);
   });
 
-  test('anti-shrink verification: all entries in pinned fixture are present in deny-list.json (review finding 11)', () => {
-    const rootData = JSON.parse(fs.readFileSync(rootDenyListPath, 'utf8'));
+  test('equality test: deny-list.json and evolve/deny-list.json are strictly identical', () => {
+    const rootRaw = fs.readFileSync(rootDenyListPath, 'utf8');
+    const evolveRaw = fs.readFileSync(evolveDenyListPath, 'utf8');
+    assert.equal(rootRaw, evolveRaw, 'deny-list.json and evolve/deny-list.json must be identical byte-for-byte');
+
+    const rootPaths = loadDenyList(rootDenyListPath);
+    const evolvePaths = loadDenyList(evolveDenyListPath);
+    assert.deepEqual(rootPaths, evolvePaths, 'parsed paths from both deny lists must match');
+  });
+
+  test('loadDenyList fails closed on missing or corrupt file', () => {
+    assert.throws(
+      () => loadDenyList(path.join(REPO_ROOT, 'nonexistent-deny-list.json')),
+      /Deny-list file not found/,
+      'must throw error when deny-list file does not exist'
+    );
+
+    const tmpCorrupt = path.join(os.tmpdir(), `corrupt-denylist-${Date.now()}.json`);
+    fs.writeFileSync(tmpCorrupt, '{ invalid json: [', 'utf8');
+    try {
+      assert.throws(
+        () => loadDenyList(tmpCorrupt),
+        /Failed to parse deny-list/,
+        'must throw error on invalid JSON'
+      );
+    } finally {
+      try { fs.unlinkSync(tmpCorrupt); } catch {}
+    }
+  });
+
+  test('anti-shrink verification: loadDenyList contains all entries in pinned fixture', () => {
+    const rootPaths = loadDenyList(rootDenyListPath);
     const fixtureData = JSON.parse(fs.readFileSync(pinnedFixturePath, 'utf8'));
 
-    const currentPaths = new Set(rootData.paths);
-
+    const currentSet = new Set(rootPaths);
     for (const requiredPath of fixtureData.minimumPaths) {
       assert.ok(
-        currentPaths.has(requiredPath),
+        currentSet.has(requiredPath),
         `Deny-list anti-shrink violation: pinned path '${requiredPath}' was removed or altered in deny-list.json`
       );
     }
   });
 
-  test('anti-shrink mutation test: removing any entry from fixture causes check to fail', () => {
+  test('anti-shrink mutation test: removing pinned entries directly flips production isDenied/assertNotDenied', () => {
     const fixtureData = JSON.parse(fs.readFileSync(pinnedFixturePath, 'utf8'));
+    const samples = [
+      { pattern: 'AGENTS.md', target: 'AGENTS.md' },
+      { pattern: 'RULES.md', target: 'RULES.md' },
+      { pattern: 'CLAUDE.md', target: 'CLAUDE.md' },
+      { pattern: 'installer.js', target: 'installer.js' },
+      { pattern: 'package.json', target: 'package.json' },
+      { pattern: 'deny-list.json', target: 'deny-list.json' },
+      { pattern: '.claude/hooks/**', target: '.claude/hooks/go-gate.mjs' },
+    ];
 
-    function verifyAntiShrink(candidatePaths, requiredPaths) {
-      const set = new Set(candidatePaths);
-      for (const p of requiredPaths) {
-        if (!set.has(p)) {
-          throw new Error(`Anti-shrink check failed: missing '${p}'`);
-        }
-      }
-      return true;
-    }
-
-    // Verify valid passes
-    assert.equal(verifyAntiShrink(fixtureData.minimumPaths, fixtureData.minimumPaths), true);
-
-    // Mutate by removing each entry one by one and assert failure
-    for (const sample of ['AGENTS.md', '.claude/hooks/**', 'installer.js', 'package.json', 'evolve/pins.json', 'deny-list.json']) {
-      const mutated = fixtureData.minimumPaths.filter((p) => p !== sample);
+    for (const { pattern, target } of samples) {
+      // With full list, the path must be denied
+      assert.equal(isDenied(target, REPO_ROOT, fixtureData.minimumPaths), true);
       assert.throws(
-        () => verifyAntiShrink(mutated, fixtureData.minimumPaths),
-        /Anti-shrink check failed/,
-        `Removal of '${sample}' must be detected and rejected`
+        () => assertNotDenied(target, REPO_ROOT, fixtureData.minimumPaths),
+        /Access denied/
+      );
+
+      // Mutate list by removing the required entry
+      const mutatedList = fixtureData.minimumPaths.filter((p) => p !== pattern);
+      // The path should now become permitted under mutatedList
+      const allowedAfterRemoval = !isDenied(target, REPO_ROOT, mutatedList);
+      assert.ok(
+        allowedAfterRemoval,
+        `Target '${target}' must become permitted when '${pattern}' is removed from deny patterns`
       );
     }
   });
@@ -82,6 +116,15 @@ describe('AOS Evolve Deny-List & Production Path Guard (Hard Safety Boundary B2)
     assert.equal(isDenied('evolve/pins.json', REPO_ROOT), true);
     assert.equal(isDenied('scripts/build-cli-reference.mjs', REPO_ROOT), true);
     assert.equal(isDenied('tests/evolve-schema.test.mjs', REPO_ROOT), true);
+
+    // Newly added protected core paths
+    assert.equal(isDenied('lib/router/route.mjs', REPO_ROOT), true);
+    assert.equal(isDenied('config/router.json', REPO_ROOT), true);
+    assert.equal(isDenied('lib/sandbox.mjs', REPO_ROOT), true);
+    assert.equal(isDenied('bin/aos-acp.mjs', REPO_ROOT), true);
+    assert.equal(isDenied('bin/aos-acp-client.mjs', REPO_ROOT), true);
+    assert.equal(isDenied('lib/cli-specs/agents.mjs', REPO_ROOT), true);
+    assert.equal(isDenied('.aos/briefs/test.md', REPO_ROOT), true);
   });
 
   test('production matcher isDenied permits non-core skill body files', () => {
@@ -99,11 +142,40 @@ describe('AOS Evolve Deny-List & Production Path Guard (Hard Safety Boundary B2)
     );
   });
 
+  test('symlink and non-existent child traversal is resolved and blocked', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-symlink-test-'));
+    const linkPath = path.join(REPO_ROOT, 'tmp-test-symlink-dir');
+    try {
+      fs.symlinkSync(tmpDir, linkPath, 'dir');
+      // Target does not exist, but parent is a symlink pointing outside REPO_ROOT
+      const nonExistentDeepTarget = path.join(linkPath, 'nested', 'deep', 'file.txt');
+      assert.equal(isDenied(nonExistentDeepTarget, REPO_ROOT), true);
+      assert.throws(
+        () => assertNotDenied(nonExistentDeepTarget, REPO_ROOT),
+        /Access denied/
+      );
+    } finally {
+      try { fs.unlinkSync(linkPath); } catch {}
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  test('case-insensitivity on darwin and win32 protects home paths and deny patterns', () => {
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      assert.equal(isDenied('agents.md', REPO_ROOT), true);
+      assert.equal(isDenied('Agents.MD', REPO_ROOT), true);
+      assert.equal(isDenied('RULES.MD', REPO_ROOT), true);
+      assert.equal(isDenied('Package.JSON', REPO_ROOT), true);
+    }
+  });
+
   test('matchesPattern handles exact, wildcard, and recursive globs', () => {
     assert.equal(matchesPattern('.claude/hooks/go-gate.mjs', '.claude/hooks/**'), true);
     assert.equal(matchesPattern('.claude/hooks/sub/nested.js', '.claude/hooks/**'), true);
     assert.equal(matchesPattern('tests/go-gate-test.js', 'tests/*go-gate*.*'), true);
     assert.equal(matchesPattern('AGENTS.md', 'AGENTS.md'), true);
     assert.equal(matchesPattern('skills/foo/SKILL.md', 'AGENTS.md'), false);
+    assert.equal(matchesPattern('bin/aos-acp.mjs', 'bin/aos-acp*.mjs'), true);
+    assert.equal(matchesPattern('bin/aos-acp-client.mjs', 'bin/aos-acp*.mjs'), true);
   });
 });

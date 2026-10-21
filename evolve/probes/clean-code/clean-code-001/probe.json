@@ -10,11 +10,12 @@
   "timeout_s": 60,
   "max_tokens": 10000,
   "checker": "check.mjs",
-  "checker_sha256": "ed09d8b78258ce40b1eac58bc05c0ad801b6db528048183b82a6df3fcf5b8679",
   "expected": "expected.json",
-  "expected_sha256": "bbbb56f923c1e48bf55b1628b9a2fcdf3a8f34ad7dfd32cbf18169c086aeadc7",
   "origin": {
     "kind": "handwritten"
   },
-  "tags": ["target", "refactoring"]
+  "tags": [
+    "target",
+    "refactoring"
+  ]
 }

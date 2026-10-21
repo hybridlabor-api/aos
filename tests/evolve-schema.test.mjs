@@ -83,6 +83,18 @@ describe('AOS Evolve Schemas (WP1)', () => {
       assert.equal(res.valid, false);
       assert.ok(res.errors.some((e) => e.includes("unredacted absolute user path with '/Users/'")));
     });
+
+    test('rejects path traversal or invalid characters in skill slug', () => {
+      const bad1 = { ...validFailure, skill: '../../escaped-skill' };
+      const res1 = validateSchema('failure', bad1);
+      assert.equal(res1.valid, false);
+      assert.ok(res1.errors.some((e) => e.includes('does not match pattern')));
+
+      const bad2 = { ...validFailure, skill: 'Invalid Skill Name!' };
+      const res2 = validateSchema('failure', bad2);
+      assert.equal(res2.valid, false);
+      assert.ok(res2.errors.some((e) => e.includes('does not match pattern')));
+    });
   });
 
   describe('probe.schema.json', () => {
@@ -103,16 +115,12 @@ describe('AOS Evolve Schemas (WP1)', () => {
       assert.equal(res.valid, true, `Validation failed: ${res.errors.join(', ')}`);
     });
 
-    test('accepts valid probe with checksums and origin', () => {
+    test('accepts valid probe with optional fields, origin, and tags', () => {
       const full = {
         ...validProbe,
-        checker_sha256: 'a'.repeat(64),
         expected: 'expected.json',
-        expected_sha256: 'b'.repeat(64),
-        checksums: {
-          'check.mjs': 'a'.repeat(64),
-          'expected.json': 'b'.repeat(64),
-        },
+        harness: 'agy',
+        role: 'builder',
         origin: { kind: 'handwritten' },
         tags: ['target', 'sanitization'],
       };
@@ -120,11 +128,21 @@ describe('AOS Evolve Schemas (WP1)', () => {
       assert.equal(res.valid, true, `Validation failed: ${res.errors.join(', ')}`);
     });
 
-    test('rejects invalid sha256 pattern in checksum', () => {
-      const bad = { ...validProbe, checker_sha256: 'not-a-sha256' };
-      const res = validateSchema('probe', bad);
-      assert.equal(res.valid, false);
-      assert.ok(res.errors.some((e) => e.includes('does not match pattern')));
+    test('rejects probe containing duplicate pins or checksum properties in probe.json', () => {
+      const bad1 = { ...validProbe, checker_sha256: 'a'.repeat(64) };
+      const res1 = validateSchema('probe', bad1);
+      assert.equal(res1.valid, false);
+      assert.ok(res1.errors.some((e) => e.includes("unexpected property 'checker_sha256'")));
+
+      const bad2 = { ...validProbe, expected_sha256: 'b'.repeat(64) };
+      const res2 = validateSchema('probe', bad2);
+      assert.equal(res2.valid, false);
+      assert.ok(res2.errors.some((e) => e.includes("unexpected property 'expected_sha256'")));
+
+      const bad3 = { ...validProbe, checksums: { 'check.mjs': 'a'.repeat(64) } };
+      const res3 = validateSchema('probe', bad3);
+      assert.equal(res3.valid, false);
+      assert.ok(res3.errors.some((e) => e.includes("unexpected property 'checksums'")));
     });
 
     test('rejects non-positive timeout or repeats', () => {

@@ -218,4 +218,55 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
       process.stdout.write = origWrite;
     }
   });
+  test('N2: loadFailures throws on corrupt JSON and prevents data loss overwrite', () => {
+    fs.writeFileSync(testStorePath, '{ broken json ...', 'utf8');
+
+    assert.throws(
+      () => loadFailures(testStorePath),
+      /Failed to parse failures store/,
+      'must throw on invalid JSON instead of returning empty array'
+    );
+
+    const res = captureFailure({
+      error: 'New failure',
+      skill: 'clean-code',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+    assert.equal(res.ok, false);
+    assert.match(res.error, /Failed to parse failures store/);
+    assert.equal(fs.readFileSync(testStorePath, 'utf8'), '{ broken json ...', 'corrupt store must not be overwritten');
+  });
+
+  test('N3: saveFailures atomic write uses wx flag to prevent symlink following', () => {
+    const failures = [{ id: 'test-1', skill: 'clean-code' }];
+    saveFailures(failures, testStorePath);
+    assert.ok(fs.existsSync(testStorePath));
+
+    // Try saveFailures targeting a denied path
+    assert.throws(
+      () => saveFailures(failures, '/etc/passwd'),
+      /Access denied/,
+      'saveFailures must block writes outside allowed base directory'
+    );
+  });
+  test('CLI main: capture fails when stdin input exceeds 64 KiB cap', async () => {
+    let stderrData = '';
+    const origWrite = process.stderr.write;
+    process.stderr.write = (chunk) => {
+      stderrData += chunk;
+      return true;
+    };
+
+    try {
+      // Simulate large input via file Arg
+      const hugeFile = path.join(tmpDir, 'huge.json');
+      fs.writeFileSync(hugeFile, 'X'.repeat(65 * 1024), 'utf8');
+      const code = await cliMain(['capture', hugeFile, '--skill', 'clean-code']);
+      assert.equal(code, 1);
+      assert.ok(stderrData.includes('exceeds 64 KiB size limit'));
+    } finally {
+      process.stderr.write = origWrite;
+    }
+  });
 });

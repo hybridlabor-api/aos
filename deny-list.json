@@ -36,6 +36,12 @@
     "evolve/pins.json",
     "deny-list.json",
     "evolve/deny-list.json",
-    "package.json"
+    "package.json",
+    "lib/router/**",
+    "config/router.json",
+    "lib/sandbox.mjs",
+    "bin/aos-acp*.mjs",
+    "lib/cli-specs/**",
+    ".aos/**"
   ]
 }

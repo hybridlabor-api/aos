@@ -150,4 +150,65 @@ MIIEowIBAAKCAQEA0Y1+abcdefghijklmnopqrstuvwxyz1234567890
     const result = redact(safeText);
     assert.equal(result, safeText);
   });
+  test("redacts unquoted secrets and keys (YAML, CLI, logs)", () => {
+    const yaml1 = "password: hunter2";
+    const yaml2 = "apiKey: abcdefgh123456";
+    const res1 = redact(yaml1);
+    const res2 = redact(yaml2);
+
+    assert.ok(!res1.includes("hunter2"));
+    assert.ok(res1.includes("password: ***REDACTED***"));
+    assert.ok(!res2.includes("abcdefgh123456"));
+    assert.ok(res2.includes("apiKey: ***REDACTED***"));
+  });
+
+  test("redacts object assignments with dot notation", () => {
+    const js1 = "config.password = \"secretPass123\"";
+    const js2 = "app.settings.apiKey = 'xyz789'";
+    const js3 = "user.token = unquotedTokenVal";
+
+    const res1 = redact(js1);
+    const res2 = redact(js2);
+    const res3 = redact(js3);
+
+    assert.ok(!res1.includes("secretPass123"));
+    assert.ok(res1.includes("config.password = \"***REDACTED***\""));
+    assert.ok(!res2.includes("xyz789"));
+    assert.ok(res2.includes("app.settings.apiKey = '***REDACTED***'"));
+    assert.ok(!res3.includes("unquotedTokenVal"));
+    assert.ok(res3.includes("user.token = ***REDACTED***"));
+  });
+
+  test("redacts complex URL credentials with special characters in secret", () => {
+    const pgComplex = "postgres://app:" + "p@ss/word" + "@db";
+    const resPg = redact(pgComplex);
+
+    assert.ok(!resPg.includes("p@ss/word"));
+    assert.ok(!resPg.includes("app:"));
+    assert.equal(resPg, "postgres://[REDACTED_AUTH]" + "@db");
+
+    const pgWithPortAndPath = "postgres://app:" + "p@ss/word" + "@db:5432/mydb";
+    const resWithPort = redact(pgWithPortAndPath);
+    assert.equal(resWithPort, "postgres://[REDACTED_AUTH]" + "@db:5432/mydb");
+  });
+
+  test("avoids false positives: author and authority are preserved while auth and authToken are redacted", () => {
+    const input1 = "author: \"Tim Rennings\"";
+    const input2 = "author: hunter2";
+    const input3 = "config.author = \"Alice\"";
+    const input4 = "authority: \"admin\"";
+
+    assert.equal(redact(input1), input1, "author with quoted string must not be redacted");
+    assert.equal(redact(input2), input2, "author with unquoted string must not be redacted");
+    assert.equal(redact(input3), input3, "config.author must not be redacted");
+    assert.equal(redact(input4), input4, "authority must not be redacted");
+
+    const auth1 = "auth: \"secretToken\"";
+    const auth2 = "authToken: \"secretToken\"";
+    const auth3 = "AUTH_SECRET=secret123";
+
+    assert.ok(!redact(auth1).includes("secretToken"));
+    assert.ok(!redact(auth2).includes("secretToken"));
+    assert.ok(!redact(auth3).includes("secret123"));
+  });
 });

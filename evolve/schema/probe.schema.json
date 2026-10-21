@@ -68,36 +68,23 @@
       "pattern": "^[a-zA-Z0-9._-]+\\.(mjs|js|sh)$",
       "description": "Basename of test checker executable (e.g. check.mjs)."
     },
-    "checker_sha256": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$",
-      "description": "Pinned SHA-256 checksum of the checker script."
-    },
     "expected": {
       "type": "string",
       "pattern": "^[a-zA-Z0-9._-]+\\.(json|txt|mjs|js)$",
       "description": "Basename of expected output golden file (e.g. expected.json)."
     },
-    "expected_sha256": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$",
-      "description": "Pinned SHA-256 checksum of the expected output file."
-    },
-    "checksums": {
-      "type": "object",
-      "description": "Map of relative file paths to pinned SHA-256 checksums.",
-      "additionalProperties": {
-        "type": "string",
-        "pattern": "^[a-f0-9]{64}$"
-      }
-    },
     "origin": {
       "type": "object",
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["failure", "handwritten"]
+          "enum": [
+            "failure",
+            "handwritten"
+          ]
         },
         "failure_id": {
           "type": "string"

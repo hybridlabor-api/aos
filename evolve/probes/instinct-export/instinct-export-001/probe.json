@@ -10,11 +10,12 @@
   "timeout_s": 60,
   "max_tokens": 10000,
   "checker": "check.mjs",
-  "checker_sha256": "7c41ad263f8889590672c8496cd2308c7a767e367aa917d169ecc5d0e1b30e8c",
   "expected": "expected.json",
-  "expected_sha256": "e19393de28996d94d26e539000cf10f2f6280c18067ef4ca56924201953a850c",
   "origin": {
     "kind": "handwritten"
   },
-  "tags": ["target", "sanitization"]
+  "tags": [
+    "target",
+    "sanitization"
+  ]
 }
