@@ -154,6 +154,17 @@ test("parentPid death unregisters within 12s", async (t) => {
   s.stop();
 });
 
+// Codex (shared host): an owner pid that is already gone must not stop the sidecar; only the idle reaper ends it.
+test("a codex sidecar with an exited parentPid stays up (owner watch skipped)", async () => {
+  const child = spawn(process.execPath, ["-e", "0"]);
+  await new Promise((r) => child.once("exit", r));
+  const s = await sidecar.startSidecar({ name: "s-codex-dead", harness: "codex", profile: profile(), parentPid: child.pid });
+  try {
+    await new Promise((r) => setTimeout(r, 6500));
+    assert.ok(reg.list().some((e) => e.name === "s-codex-dead"), "codex sidecar must survive a dead owner pid");
+  } finally { s.stop(); }
+});
+
 test("AOS_A2A_SIDECAR=off rejects", async () => {
   process.env.AOS_A2A_SIDECAR = "off";
   try {

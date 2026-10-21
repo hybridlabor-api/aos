@@ -6,8 +6,16 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
-const { newestDistTag } = require('../installer.js');
+const { newestDistTag, aosDistTag } = require('../installer.js');
 const view = (tags) => () => JSON.stringify(tags);
+
+test('aosDistTag maps published channels to their tag and everything else to latest', () => {
+    assert.strictEqual(aosDistTag('5.4.0-beta.1'), 'beta');
+    assert.strictEqual(aosDistTag('5.4.0-rc.2'), 'rc');
+    assert.strictEqual(aosDistTag('5.4.0'), 'latest');
+    assert.strictEqual(aosDistTag('5.4.0-pre.z202610211621'), 'latest');
+    assert.doesNotMatch(aosDistTag('5.4.0-pre.z202610211621'), /pre/);
+});
 
 test('newestDistTag returns the newest tag that is ahead of the local version', () => {
     assert.deepStrictEqual(newestDistTag('p', '1.0.0', view({ latest: '1.2.0', next: '1.1.0' })), { tag: 'latest', version: '1.2.0' });
