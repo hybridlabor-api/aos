@@ -211,4 +211,68 @@ MIIEowIBAAKCAQEA0Y1+abcdefghijklmnopqrstuvwxyz1234567890
     assert.ok(!redact(auth2).includes("secretToken"));
     assert.ok(!redact(auth3).includes("secret123"));
   });
+
+  test("NF-3: redacts multi-word Authorization header values without leaking trailing tokens", () => {
+    const input1 = "Header: Authorization: token abc123def456";
+    const input2 = "Authorization: Token secretToken789XYZ";
+    const input3 = "Authorization: ApiKey secret_api_key_value_here";
+    const input4 = "authorization: CustomAuthScheme param1 param2";
+
+    const res1 = redact(input1);
+    const res2 = redact(input2);
+    const res3 = redact(input3);
+    const res4 = redact(input4);
+
+    assert.ok(!res1.includes("abc123def456"), "token credential after first word must be redacted");
+    assert.ok(res1.includes("Authorization: token ***REDACTED***"));
+
+    assert.ok(!res2.includes("secretToken789XYZ"));
+    assert.ok(res2.includes("Authorization: Token ***REDACTED***"));
+
+    assert.ok(!res3.includes("secret_api_key_value_here"));
+    assert.ok(res3.includes("Authorization: ApiKey ***REDACTED***"));
+
+    assert.ok(!res4.includes("param1"));
+    assert.ok(!res4.includes("param2"));
+  });
+
+  test("NF-3: redacts CLI arguments (--password x and -pX)", () => {
+    const cli1 = "node runner.js --password hunter2 --user admin";
+    const cli2 = "deploy.sh --password \"hunter2-secret\" --env prod";
+    const cli3 = "mysql -uroot -pSECRET -h 127.0.0.1";
+    const cli4 = "db-dump -u admin -p\"SuperSecretPass!\" mydb";
+    const cli5 = "docker run -p8080:8080 -p3000 app:latest";
+
+    const res1 = redact(cli1);
+    const res2 = redact(cli2);
+    const res3 = redact(cli3);
+    const res4 = redact(cli4);
+    const res5 = redact(cli5);
+
+    assert.ok(!res1.includes("hunter2"));
+    assert.ok(res1.includes("--password ***REDACTED***"));
+
+    assert.ok(!res2.includes("hunter2-secret"));
+    assert.ok(res2.includes('--password "***REDACTED***"'));
+
+    assert.ok(!res3.includes("SECRET"));
+    assert.ok(res3.includes("-p***REDACTED***"));
+
+    assert.ok(!res4.includes("SuperSecretPass!"));
+    assert.ok(res4.includes('-p"***REDACTED***"'));
+
+    // Port mappings must remain untouched
+    assert.ok(res5.includes("-p8080:8080"), "Port mapping must not be falsely redacted");
+    assert.ok(res5.includes("-p3000"), "Single port mapping must not be falsely redacted");
+  });
+
+  test("NF-3: redacts bare JWT tokens without Bearer prefix", () => {
+    const rawJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    const input = `JWT validation failure: received token ${rawJwt} from client`;
+
+    const result = redact(input);
+    assert.ok(!result.includes(rawJwt), "bare JWT must be removed");
+    assert.ok(!result.includes("SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"));
+    assert.ok(result.includes("***REDACTED***"));
+  });
 });
