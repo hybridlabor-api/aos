@@ -24,12 +24,21 @@ const short = (d) => {
     return out.length > 160 ? out.slice(0, 157).trimEnd() + '...' : out;
 };
 
+// Same walk as scripts/build-plugin-manifest.mjs: every directory under skills/ that holds a SKILL.md.
+function walkSkills(dir, output = []) {
+    for (const item of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, item.name);
+        if (item.isDirectory()) walkSkills(full, output);
+        else if (item.name === 'SKILL.md') output.push(dirname(full));
+    }
+    return output;
+}
+
 function sources() {
-    const manifest = JSON.parse(readFileSync(join(ROOT, 'plugins/bdb-aos/.claude-plugin/plugin.json'), 'utf8'));
     const skills = [], playbooks = [];
-    for (const rel of manifest.skills) {
-        const text = readFileSync(join(ROOT, 'plugins/bdb-aos', rel, 'SKILL.md'), 'utf8');
-        const name = basename(rel);
+    for (const dir of walkSkills(join(ROOT, 'skills')).sort()) {
+        const text = readFileSync(join(dir, 'SKILL.md'), 'utf8');
+        const name = basename(dir);
         const row = { name, desc: front(text, 'description'), category: front(text, 'category') || 'library' };
         (name.startsWith('pb-') ? playbooks : skills).push(row);
     }
