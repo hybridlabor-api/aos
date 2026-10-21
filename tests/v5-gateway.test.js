@@ -775,11 +775,12 @@ describe('pkg-gateway', () => {
 });
 
 describe('status JSON', () => {
-    let status; let dir; const servers = [];
+    let status; let gw; let dir; const servers = [];
     const fake = async (handler) => { const s = http.createServer(handler); servers.push(s); return [s, await listen(s)]; };
 
     test('setup', async () => {
-        status = (await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href)).gatewayStatus;
+        gw = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        status = gw.gatewayStatus;
         dir = tmp();
         fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: { a: {}, b: {} } }));
         fs.writeFileSync(path.join(dir, 'gateway.pid'), String(process.pid));
@@ -824,8 +825,29 @@ describe('status JSON', () => {
         const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         await fw.listen();
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
-        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'upstream error' }]);
+        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'upstream error: ' + gw.neverConnected('b', new Map()) }]);
         await fw.close();
+    });
+
+    test('an upstream 1mcp never connected names the reason from its log; a loading one is busy, not failed', async () => {
+        fs.writeFileSync(path.join(dir, 'gateway.log'), '2026-10-21T00:00:00.000Z [ERROR] message="Failed to connect to b: spawn deja ENOENT"\n');
+        const api = JSON.stringify({ kind: 'servers', servers: [{ server: 'a', status: 'loading', available: false }, { server: 'b', status: 'unknown', available: false }] });
+        const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? api : '{}'); });
+        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        await fw.listen();
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        fs.rmSync(path.join(dir, 'gateway.log'));
+        assert.equal(s.upstreams[0].busy, true);
+        assert.match(s.upstreams[0].error, /still starting/);
+        assert.equal(s.upstreams[1].degraded, true);
+        assert.match(s.upstreams[1].error, /not connected since the gateway started \(1mcp log: spawn deja ENOENT\).*aos-gateway restart/);
+        await fw.close();
+    });
+
+    test('run: 1mcp\'s mcp restart recovery is replaced by one AOS can act on', () => {
+        const hint = gw.runHint('server_unavailable: Server deja is unknown. Recovery: 1mcp mcp restart deja');
+        assert.match(hint, /needs an admin login.*aos-gateway status.*aos-gateway restart/);
+        assert.equal(gw.runHint('{"ok":true}'), null);
     });
 
     test('1mcp listing 0 servers while servers are configured is never ready (#178)', async () => {

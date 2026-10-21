@@ -67,6 +67,33 @@ function upstreamNames(dir) {
     try { return Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers || {}); } catch { return []; }
 }
 
+// 1mcp 0.38.2 connects every upstream at startup (lazy loading only changes how tools are exposed). A server whose spawn
+// failed, that exited early or did not answer MCP initialize in 60 s (3 tries) stays "unknown" until the next start: nothing
+// retries it, and `1mcp mcp restart` needs an admin login AOS never sets up. The reason is in 1mcp's own log line.
+const NEVER_CONNECTED = new Set(['unknown', 'disconnected', 'error']);
+export function connectFailures(dir) {
+    const out = new Map();
+    let text = '';
+    try {
+        const fd = fs.openSync(path.join(dir, 'gateway.log'), 'r');
+        try {
+            const size = fs.fstatSync(fd).size, len = Math.min(size, 1 << 20), buf = Buffer.alloc(len);
+            fs.readSync(fd, buf, 0, len, size - len);
+            text = buf.toString('utf8');
+        } finally { fs.closeSync(fd); }
+    } catch { /* no log */ }
+    for (const m of text.matchAll(/\[ERROR\] message="Failed to connect to ([\w-]+): ([^"]*)"/g)) out.set(m[1], m[2]);
+    return out;
+}
+export const neverConnected = (name, failures) =>
+    `not connected since the gateway started (${failures.get(name) ? `1mcp log: ${failures.get(name)}` : 'spawn failed, early exit or no MCP answer within 60 s; see gateway.log'}). Fix the cause, then run: aos-gateway restart`;
+
+// 1mcp's recovery command for a dead server is `1mcp mcp restart`, which needs an admin session AOS never creates.
+export function runHint(output) {
+  const m = /Recovery: 1mcp mcp restart (\S+)/.exec(String(output));
+  return m ? `aos-gateway: "1mcp mcp restart ${m[1]}" needs an admin login that AOS does not set up. Run \`aos-gateway status\` to see why ${m[1]} is not connected, fix the cause, then \`aos-gateway restart\`.` : null;
+}
+
 // 1mcp's /health is the path the S1 spike polled (200 = up). Per-upstream health is UNVERIFIED: every
 // upstream reports the state of 1mcp as a whole until a per-server endpoint is confirmed.
 export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT }) {
@@ -91,6 +118,8 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         if (Array.isArray(apiServers)) for (const e of apiServers) if (e && typeof e.server === 'string') listed.set(e.server, e);
     }
     const configured = upstreamNames(dir);
+    let failureMap = null;
+    const failures = () => failureMap || (failureMap = connectFailures(dir));
     const upstreams = configured.map((name) => {
         if (problem) return { name, ok: false, error: problem };
         if (Array.isArray(apiServers)) {
@@ -98,7 +127,9 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
             if (e && e.available === true) return { name, ok: true };
             // Nothing listed at all is not "degraded": verify must not call that gateway ready.
             if (listed.size === 0) return { name, ok: false, error: `1mcp lists 0 servers while ${configured.length} are configured` };
-            return { name, ok: false, degraded: true, error: e ? `upstream ${e.status || 'not connected'}` : '1mcp does not list this server' };
+            if (!e) return { name, ok: false, degraded: true, error: '1mcp does not list this server' };
+            if (['pending', 'loading', 'initializing'].includes(e.status)) return { name, ok: false, busy: true, error: `upstream ${e.status}: 1mcp is still starting it (cold npx/uv starts take a minute); check again shortly` };
+            return { name, ok: false, degraded: true, error: `upstream ${e.status || 'not connected'}${NEVER_CONNECTED.has(e.status) ? `: ${neverConnected(name, failures())}` : ''}` };
         }
         // 1mcp answers 503 once at most half of its upstreams are connected, but the body still lists each one:
         // a reachable 1mcp with failing upstreams is degraded (warn), not down.
@@ -347,7 +378,16 @@ async function main() {
         if (ai >= 0) try { JSON.parse(rest[ai + 1]); } catch { console.error('aos-gateway run: --args must be a JSON object string'); process.exit(2); }
         let entry;
         try { entry = oneMcpEntry(dir); } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
-        const r = spawnSync(process.execPath, [entry, cmd, ...rest, '-u', `http://127.0.0.1:${UPSTREAM_PORT}/mcp`], { stdio: 'inherit', shell: false, windowsHide: true });
+        const go = (args) => spawnSync(process.execPath, [entry, ...args, '-u', `http://127.0.0.1:${UPSTREAM_PORT}/mcp`], { stdio: ['inherit', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 1 << 26, shell: false, windowsHide: true });
+        const text = (x) => `${x.stdout || ''}${x.stderr || ''}`;
+        let r = go([cmd, ...rest]);
+        // A server 1mcp is still starting: wait for it (1mcp's own wait command), then run once more.
+        const w = cmd === 'run' && /server_loading[\s\S]*?Recovery: 1mcp wait (\S+)/.exec(text(r));
+        if (w) { go(['wait', w[1]]); r = go([cmd, ...rest]); }
+        process.stdout.write(r.stdout || '');
+        process.stderr.write(r.stderr || '');
+        const hint = runHint(text(r));
+        if (hint) console.error(hint);
         process.exit(r.status ?? 1);
     }
     if (cmd === 'adopt') {
