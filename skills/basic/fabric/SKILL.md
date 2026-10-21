@@ -16,7 +16,7 @@ category: bdb-core
 | `fabric-graph` | An approved plan should be built and correctness beats speed: durable `production_artifacts/state.json`, Reviewer repair loop, automated quality gate, human escalation. | `fabric-graph` |
 | `fabric-multigraph` | A small throwaway fan-out (2-4 nodes, nothing persistent) in any project. | `fabric-multigraph` |
 | `fabric-teamwork` | The brief is still vague and needs 9-step prompt crafting before delegation to a team. | `fabric-teamwork` |
-| `fabric-swarm` | Many similar workers on one pool of items. Arrives in 5.4.1; routes to `fabric-multigraph` meanwhile. | `fabric-swarm` |
+| `fabric-swarm` | Many similar workers taking items from one shared pool (`production_artifacts/swarm.json`, 4 workers, cap 6). | `fabric-swarm` |
 | `fabric-loop` | A repeating cycle until a condition holds (CI green, review rounds). Arrives in 5.4.1; routes to `loop-templates` meanwhile. | `fabric-loop` |
 
 ## Choosing
@@ -27,7 +27,15 @@ category: bdb-core
 4. Repeat-until-done: `fabric-loop`. Many near-identical slices: `fabric-swarm`.
 5. A small task needs no mode at all: do it yourself.
 
-Flags such as `--skill=<name>`, `--profile=` and `--workstreams` are handled by `fabric-graph`; pass the goal text through verbatim.
+Pass the goal text through verbatim; flags are described below.
+
+## Flags and building blocks
+
+- `--skill=<name>`: all modes; run the named skill's contract inside the chosen mode.
+- `--profile=<name>`: domain profile from `.agents/profiles/<name>.json`; handled by `fabric-graph`. An unknown profile escalates.
+- `--workstreams`: `fabric-graph` only; the Architect plans 1-6 dynamic workstreams (target 4, cap 6). Off by default.
+- Teams: `aos-team list`, `aos-team show <id>`, `aos-team new <id> [--from-playbook <name>]`; add `--json` for machine output. Team JSON lives in `~/.aos/teams` or `.aos/teams` (project wins); shipped teams are in `lib/roles/teams`.
+- Roles: a registry of role JSON files (types plan, approve, build, review, gate, specialist). Precedence: project `.aos/roles` over user `~/.aos/roles` over shipped. Role flags beyond the registry: unverified.
 
 **Agents never invoke each other.** The dispatcher (the main session or the workflow script) decides every next step. Independent sub-tasks go to subagents; only work whose members must react to each other needs a team.
 

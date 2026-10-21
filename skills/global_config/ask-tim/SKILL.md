@@ -32,7 +32,8 @@ For a bigger or fuzzier idea, `/bdbrainstorm` runs the same interview inside a m
 - **`/fabric-graph`** — when you need the durable `state.json`, a Reviewer repair loop with a no-progress guard, an automated quality gate, and escalation to a human. Mission-critical or multi-session work. Runs headless.
 - **`/fabric-multigraph`** — a throwaway 2–4 node fan-out for one-off parallel work. Nothing persistent left behind.
 - **`/fabric-teamwork`** — a vague brief that needs 9-step prompt crafting before delegation to a team.
-- **`/fabric-swarm`, `/fabric-loop`** — documented, arrive in 5.4.1; they route to `/fabric-multigraph` and `loop-templates` until then.
+- **`/fabric-swarm`** — N similar workers take items from one shared pool.
+- **`/fabric-loop`** — documented, arrives in 5.4.1; routes to `loop-templates` until then.
 - **Two-file edit?** No pipeline. Just do it.
 
 **3. Review the plan before it is built.** At the Architect→TechLead gate, `aos-plan-canvas open production_artifacts/00_execution_plan.md` opens the plan in a browser where you point at what should change instead of retyping it. Mandatory at the end of `/bdbrainstorm` and `/bdbmediastorm`; optional in the linear run (`skills/basic/fabric-graph/linear.md`); deliberately not forced in `/fabric-graph`, which runs headless.

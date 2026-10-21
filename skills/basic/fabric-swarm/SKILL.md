@@ -1,16 +1,44 @@
 ---
 name: fabric-swarm
 description: >-
-  Fabric mode for many similar workers claiming items from one shared pool.
-  Arrives in 5.4.1. Until then this skill routes to fabric-multigraph. Use when
-  the user asks for a swarm or for many parallel workers on one list of items.
+  Fabric mode for N similar workers taking items from one shared pool. Use for
+  one list of many near-identical items (files, tickets, pages), one worker each.
 category: bdb-core
 ---
 
-# `/fabric-swarm` — arrives in 5.4.1
+# `/fabric-swarm` — many similar workers, one shared pool
 
-This mode is documented, not implemented yet. It will run N similar workers that claim items from one shared list.
+**When:** one list of many near-identical items (files, tickets, pages) that each fit one worker. If items depend on each other, use `fabric-graph` instead.
 
-**Until 5.4.1:** use `fabric-multigraph` and split the list into 2-4 slices, one per worker. Say in one line that `fabric-swarm` is not available yet and that you routed to `fabric-multigraph`.
+**Agents never invoke each other.** The dispatcher (the main session) decides every next step. Workers only return a result.
 
-Do not improvise a swarm dispatcher, a shared claim file or a worker pool in the meantime. Agents never invoke each other; the dispatcher decides every next step.
+## Pool file
+
+`production_artifacts/swarm.json`, written ONLY by the dispatcher:
+
+```json
+{ "goal": "", "worker_brief": "", "max_workers": 4,
+  "items": [ { "id": "", "input": "", "status": "open|claimed|done|failed", "worker": "", "attempts": 0, "result": "" } ] }
+```
+
+- Workers never write it; they return their result to the dispatcher.
+- The claim: the dispatcher marks an item `claimed` for a worker before starting it, so no item runs twice. A resumed session continues from the file.
+
+## Width
+
+Default 4 workers at a time, hard cap 6 (same as workstreams). Harness or user limits may lower it. Each worker is a subagent with the same `worker_brief` plus exactly one item.
+
+## Loop
+
+1. Fill free slots with the next `open` item (mark it `claimed`, set `worker`, bump `attempts`).
+2. On a result: mark `done` with a one-line `result`.
+3. On a failure: retry once (`attempts` at most 2), then mark `failed`.
+4. When no item is `open` or `claimed`, run one review pass over all results (a reviewer subagent reads the results against the `worker_brief`) and report done/failed counts.
+
+## Stop
+
+All items `done` or `failed`, or the user stops it, or usage reaches 95 % via `stay-within-limits` (pause and keep the file).
+
+## Safety
+
+Workers get no push, merge or publish. A swarm run never counts as a GO. Destructive or external writes stay behind the go-gate. Models per role come from the router or `.aos/pipeline.json`, never from this skill.

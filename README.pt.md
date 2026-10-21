@@ -177,7 +177,7 @@ Para fluxos guiados nestes domínios, ver [Playbooks](#playbooks).
 - [**`/fabric-graph`**](skills/basic/fabric-graph/SKILL.md) - dispatcher graph com `state.json` durável, repair loop do Reviewer, quality gate e escalada
   - O dispatcher invoca os subagents [`architect`](agents/architect.md), [`techlead`](agents/techlead.md), [`godmode-ui-ux`](agents/godmode-ui-ux.md), [`godmode-engineering`](agents/godmode-engineering.md), [`godmode-media-eventtech`](agents/godmode-media-eventtech.md), [`reviewer`](agents/reviewer.md) e [`godmode-shipping`](agents/godmode-shipping.md); nunca se chamam entre si
 - [**`/fabric-multigraph`**](skills/basic/fabric-multigraph/SKILL.md) - fan-out descartável de 2-4 nós para qualquer projeto, nada persistente fica para trás
-- [**`/fabric-teamwork`**](skills/basic/fabric-teamwork/SKILL.md) - elaboração de prompts e delegação a uma equipa; `/fabric-swarm` e `/fabric-loop` estão documentados e chegam na 5.4.1
+- [**`/fabric-teamwork`**](skills/basic/fabric-teamwork/SKILL.md) - elaboração de prompts e delegação a uma equipa; `/fabric-swarm` executa vários workers semelhantes sobre um pool partilhado; `/fabric-loop` está documentado e chega na 5.4.1
 - [**`/plan`**](commands/plan.md) - redigir, renderizar numa canvas do navegador, anotar, aguardar aprovação, depois entregar
   - [**`plan-canvas`**](skills/global_config/plan-canvas/SKILL.md) - canvas local onde anota elementos, conversa e aprova ou pede alterações
   - [**`plan-arbiter`**](skills/global_config/plan-arbiter/SKILL.md) - comparar planos concorrentes de vários agentes e produzir um plano recomendado
@@ -446,7 +446,8 @@ flowchart LR
 | `/fabric-graph` | O graph completo: `state.json` durável, repair loop do Reviewer, quality gate automatizado, escalada humana. | Trabalho de features onde a correção importa mais que a velocidade e quer um trilho de auditoria. |
 | `/fabric-multigraph` | Fan-out descartável de 2-4 nós. Nada persistente. Tiers de modelo por papel; usa Antigravity, OpenCode ou Codex se instalados, subagents do Claude Code caso contrário. | Um "cria alguns workers" pontual em qualquer projeto. |
 | `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. | A vague brief that needs sharpening before a team gets it. |
-| `/fabric-swarm`, `/fabric-loop` | Documented, arrive in 5.4.1. Route to `/fabric-multigraph` and `loop-templates` meanwhile. | Many similar workers; repeat until a condition holds. |
+| `/fabric-swarm` | N similar workers take items from one shared pool (`production_artifacts/swarm.json`). | Many near-identical items, one worker each. |
+| `/fabric-loop` | Documented, arrives in 5.4.1. Routes to `loop-templates` meanwhile. | Repeat until a condition holds. |
 
 ### Os modos lado a lado
 
@@ -1240,7 +1241,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 | `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
 | `fabric-loop` | Repeat-until-done mode. Arrives in 5.4.1; routes to loop-templates meanwhile. |
 | `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
-| `fabric-swarm` | Many similar workers on one pool of items. Arrives in 5.4.1; routes to fabric-multigraph meanwhile. |
+| `fabric-swarm` | N similar workers take items from one shared pool (`swarm.json`). |
 | `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `stay-within-limits` | Respect 5-hour and weekly usage limits by checking usage between waves and pausing near the cap. |
 | `subagent-setup` | Configure and synchronize multi-harness subagents with optional per-harness model overrides. |

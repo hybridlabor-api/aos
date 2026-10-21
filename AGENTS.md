@@ -235,7 +235,8 @@ The fabric family — see each skill for the full contract:
 | `/fabric-graph` | Dispatcher graph: durable `state.json`, Reviewer repair loop with a no-progress guard, automated quality gate, human escalation. Contract in `.agents/graph.md`, registry in `.agents/nodes.json`. Flags `--skill=`, `--profile=`, `--workstreams`. The only full pipeline; a straight-line run without state is described in `skills/basic/fabric-graph/linear.md`. |
 | `/fabric-multigraph` | Throwaway 2-4 node fan-out. Nothing persistent left behind. |
 | `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. |
-| `/fabric-swarm`, `/fabric-loop` | Documented, arrive in 5.4.1; route to `fabric-multigraph` and `loop-templates` meanwhile. |
+| `/fabric-swarm` | N similar workers take items from one shared pool (`production_artifacts/swarm.json`). |
+| `/fabric-loop` | Documented, arrives in 5.4.1; routes to `loop-templates` meanwhile. |
 
 The rule that applies to every mode: **agents never invoke each other.** A
 dispatcher — the main session, or the workflow script — decides every next
