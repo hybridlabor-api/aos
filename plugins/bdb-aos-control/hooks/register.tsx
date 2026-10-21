@@ -472,7 +472,8 @@ async function loadFleet($: EngineInterface) {
   const entries = await $.fs.list(dir)
   const sessions: FleetSession[] = []
   for (const entry of entries) {
-    if (entry.kind !== 'file' || !entry.name.endsWith('.json')) continue
+    // mtime first: ended sessions pile up as files and reading them all every tick stalls the pane
+    if (entry.kind !== 'file' || !entry.name.endsWith('.json') || now - entry.mtimeMs >= STALE_MS) continue
     try {
       const s: FleetSession = JSON.parse(await $.fs.read(`${dir}/${entry.name}`))
       if (!s.ended && now - s.updatedAt < STALE_MS) sessions.push(s)
@@ -1019,7 +1020,7 @@ export const register: Register = on => {
     $.clock.every(30_000, () => void loadGate($).catch(() => undefined))
     $.clock.every(30_000, () => void loadProfile($).catch(() => undefined))
     $.clock.every(30_000, () => void loadServices($).catch(() => undefined))
-    $.clock.every(5_000, () => void loadFleet($))
+    $.clock.every(5_000, () => void loadFleet($).catch(() => undefined))
     $.clock.every(5_000, () => void loadPipeline($).catch(() => undefined))
     $.clock.every(5_000, () => void loadGit($).catch(() => undefined))
     $.clock.every(700, () => void update($, frame_, f => f + 1).catch(() => undefined))
