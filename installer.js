@@ -1632,6 +1632,7 @@ function buildRouterPreferences(mainHarness, selectedTargets, preset = 'default'
         reviewer: orderTargets(planningFirst, selectedTargets),
         builder: orderTargets(buildFirst, selectedTargets),
         scout: orderTargets(buildFirst, selectedTargets),
+        advisor: orderTargets(planningFirst, selectedTargets),
     };
 }
 
@@ -5673,6 +5674,7 @@ const READ_ONLY_AGENT_SLUGS = new Set([
     'reviewer',
     'reviewer-1',
     'reviewer-2',
+    'advisor',
     'security-reviewer',
     'database-reviewer',
     'silent-failure-hunter',

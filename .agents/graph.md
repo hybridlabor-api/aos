@@ -266,6 +266,16 @@ of them. The dispatcher or the user may call one directly, outside this graph;
 `reviewer-1`/`reviewer-2` are independent second opinions, not replacements for
 the Reviewer node.
 
+## Advisor checkpoints (optional, auxiliary)
+
+The read-only `advisor` agent (subagent, the `/advisor` skill's contract) is such
+an auxiliary agent. The dispatcher may call it at exactly three points: before a
+plan or schema is locked, when the same test or build error occurs a second time,
+and before "done" (pre-flight diff review). This is an optional, auxiliary step,
+not a graph node: it has no edges and changes neither `REQUIRED_NODE_IDS` nor the
+`state.json` schema. Its verdict is
+advice, never a GO.
+
 ## What this does not change
 
 - The five build-and-ship agent *identities* (`Godmode_UI_UX`,

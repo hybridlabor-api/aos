@@ -36,7 +36,7 @@ describe('Router Table Configuration & Validation', () => {
     assert.strictEqual(table.enforce, false, 'enforce flag must be false in default config');
     assert.deepStrictEqual(
       [...table.roles].sort(),
-      ['architect', 'builder', 'reviewer', 'scout', 'techlead']
+      ['advisor', 'architect', 'builder', 'reviewer', 'scout', 'techlead']
     );
 
     for (const role of KNOWN_ROLES) {
@@ -181,6 +181,7 @@ describe('Route Resolution (routeFor)', () => {
       reviewer: { target: 'claude', model: null },
       builder: { target: 'opencode-go', model: 'glm-5.3-flash' },
       scout: { target: 'opencode-go', model: 'glm-5.3-flash' },
+      advisor: { target: 'claude', model: null },
     };
 
     for (const [role, expected] of Object.entries(rolesExpected)) {
