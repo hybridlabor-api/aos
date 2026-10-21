@@ -236,7 +236,7 @@ The fabric family — see each skill for the full contract:
 | `/fabric-multigraph` | Throwaway 2-4 node fan-out. Nothing persistent left behind. |
 | `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. |
 | `/fabric-swarm` | N similar workers take items from one shared pool (`production_artifacts/swarm.json`). |
-| `/fabric-loop` | Documented, arrives in 5.4.1; routes to `loop-templates` meanwhile. |
+| `/fabric-loop` | Repeats a graph run until an exit check is green, bounded by round limits. |
 
 The rule that applies to every mode: **agents never invoke each other.** A
 dispatcher — the main session, or the workflow script — decides every next

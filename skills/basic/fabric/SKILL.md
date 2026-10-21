@@ -17,14 +17,14 @@ category: bdb-core
 | `fabric-multigraph` | A small throwaway fan-out (2-4 nodes, nothing persistent) in any project. | `fabric-multigraph` |
 | `fabric-teamwork` | The brief is still vague and needs 9-step prompt crafting before delegation to a team. | `fabric-teamwork` |
 | `fabric-swarm` | Many similar workers taking items from one shared pool (`production_artifacts/swarm.json`, 4 workers, cap 6). | `fabric-swarm` |
-| `fabric-loop` | A repeating cycle until a condition holds (CI green, review rounds). Arrives in 5.4.1; routes to `loop-templates` meanwhile. | `fabric-loop` |
+| `fabric-loop` | A repeating cycle until an exit check is green (CI green, review rounds), bounded by round limits. | `fabric-loop` |
 
 ## Choosing
 
 1. The task needs resumable state, a review loop or a quality gate before anything ships: `fabric-graph`.
 2. The task splits into a few independent slices and nothing has to survive the session: `fabric-multigraph`.
 3. The goal is unclear and a team will receive it: `fabric-teamwork` first, then one of the above.
-4. Repeat-until-done: `fabric-loop`. Many near-identical slices: `fabric-swarm`.
+4. Repeat-until-done with an exit check and round limits: `fabric-loop`. Many near-identical slices: `fabric-swarm`.
 5. A small task needs no mode at all: do it yourself.
 
 Pass the goal text through verbatim; flags are described below.

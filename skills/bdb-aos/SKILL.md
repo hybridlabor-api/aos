@@ -28,7 +28,7 @@ The fabric family. `fabric` picks the mode; the modes differ in how much machine
 | `fabric-multigraph` | Throwaway 2–4 node fan-out, nothing persistent left behind. |
 | `fabric-teamwork` | 9-step prompt crafting and delegation to a team. |
 | `fabric-swarm` | N similar workers take items from one shared pool. |
-| `fabric-loop` | Documented; arrives in 5.4.1 and routes to `loop-templates` meanwhile. |
+| `fabric-loop` | Repeats a graph run until an exit check is green, bounded by round limits. |
 
 **Agents never invoke each other.** A dispatcher — the main session or the
 workflow script — decides every next step. Routing lives in the graph contract,
