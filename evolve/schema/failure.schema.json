@@ -67,7 +67,8 @@
     },
     "redacted_excerpt": {
       "type": "string",
-      "description": "Sanitized error excerpt with home paths and secrets stripped."
+      "maxLength": 65536,
+      "description": "Sanitized error excerpt with home paths and secrets stripped (capped at 64 KiB)."
     },
     "trail_node": {
       "type": "string",

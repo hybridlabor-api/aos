@@ -113,6 +113,7 @@ Never call `aos-uninstall`, `aos-gate`, `aos-cli` unprompted: they are for the h
 - `aos-cli` - A human wants a terminal chat with AOS. Not meant for agents to call.
 - `aos-setup-doctor` - Used by the aos-setup skill before installing. For an installed system use `aos doctor`.
 - `aos-project-doctor` - After or before /aos-project-init, to see what is missing in a project.
+- `aos-evolve` - Record redacted task failure signatures for evolution analysis or check evolution kill switch status.
 <!-- aos:cli-reference:end -->
 
 ---

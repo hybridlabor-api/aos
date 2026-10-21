@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/hybridlabor-api/aos/evolve/schema/probe.schema.json",
-  "title": "AOS Evolve Probe Definition",
-  "description": "Deterministic test probe definition for validating skill improvements.",
+  "title": "AOS Evolve Benchmark Probe Definition",
+  "description": "Deterministic test probe definition for validating skills in isolated sandbox runs.",
   "type": "object",
   "required": [
     "version",
@@ -24,7 +24,7 @@
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9_-]+$",
-      "description": "Unique probe identifier."
+      "description": "Unique benchmark probe ID."
     },
     "skill": {
       "type": "string",
@@ -65,7 +65,8 @@
     },
     "checker": {
       "type": "string",
-      "description": "Relative filename of test checker executable (e.g. check.mjs)."
+      "pattern": "^[a-zA-Z0-9._-]+\\.(mjs|js|sh)$",
+      "description": "Basename of test checker executable (e.g. check.mjs)."
     },
     "checker_sha256": {
       "type": "string",
@@ -74,7 +75,8 @@
     },
     "expected": {
       "type": "string",
-      "description": "Relative filename of expected output golden file (e.g. expected.json)."
+      "pattern": "^[a-zA-Z0-9._-]+\\.(json|txt|mjs|js)$",
+      "description": "Basename of expected output golden file (e.g. expected.json)."
     },
     "expected_sha256": {
       "type": "string",
@@ -105,8 +107,10 @@
     },
     "tags": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Evaluation tags (e.g. target, heldout)."
+      "items": {
+        "type": "string"
+      },
+      "description": "Categorization tags (e.g. target, heldout)."
     }
   },
   "additionalProperties": false

@@ -11,6 +11,8 @@ import {
   resolveFailureStorePath,
 } from '../lib/evolve/capture.mjs';
 
+const MAX_INPUT_BYTES = 64 * 1024; // 64 KiB input cap
+
 const HELP_TEXT = `aos-evolve - Offline autonomous harness evolution engine (Harness² Prep)
 
 Usage:
@@ -33,7 +35,7 @@ Options:
   --harness <name>    Execution harness: claude | agy | opencode | codex (default: agy)
   --role <role>       Active agent role (default: builder)
   --dry-run           Compute redaction and signature without writing to store
-  --storage <path>    Custom failure.json destination file
+  --storage <path>    Custom failure.json destination file (must resolve inside ~/.aos/evolve/)
   --json              Format output as JSON
   -h, --help          Show this help message and exit
 `;
@@ -61,7 +63,13 @@ export async function main(args = process.argv.slice(2)) {
   if (cmd === 'status') {
     const disabled = isEvolveDisabled();
     const storagePath = getArgValue(args, '--storage');
-    const storePath = resolveFailureStorePath(storagePath);
+    let storePath;
+    try {
+      storePath = resolveFailureStorePath(storagePath);
+    } catch (err) {
+      process.stderr.write(`Error: ${err.message}\n`);
+      return 1;
+    }
     const failures = loadFailures(storePath);
 
     if (args.includes('--json')) {
@@ -100,12 +108,16 @@ export async function main(args = process.argv.slice(2)) {
     let errorData = errorArg;
     let skill = skillArg;
 
-    // Check if second argument is a file path
     const fileArg = args[1] && !args[1].startsWith('-') ? args[1] : null;
 
     if (fileArg && fileArg !== '-') {
       if (!fs.existsSync(fileArg)) {
         process.stderr.write(`Error: Input file not found: ${fileArg}\n`);
+        return 1;
+      }
+      const stat = fs.statSync(fileArg);
+      if (stat.size > MAX_INPUT_BYTES) {
+        process.stderr.write(`Error: Input file exceeds 64 KiB size limit (${stat.size} bytes)\n`);
         return 1;
       }
       const raw = fs.readFileSync(fileArg, 'utf8');
@@ -117,9 +129,12 @@ export async function main(args = process.argv.slice(2)) {
         errorData = raw;
       }
     } else if (fileArg === '-' || (!errorArg && !process.stdin.isTTY)) {
-      // Read stdin
       try {
         errorData = fs.readFileSync(0, 'utf8');
+        if (Buffer.byteLength(errorData, 'utf8') > MAX_INPUT_BYTES) {
+          process.stderr.write(`Error: Stdin input exceeds 64 KiB size limit\n`);
+          return 1;
+        }
       } catch {
         errorData = '';
       }
@@ -175,7 +190,6 @@ function getArgValue(args, flag) {
   return match ? match.slice(prefix.length) : null;
 }
 
-// Run if called as CLI entry point
 const isDirectEntry = process.argv[1] && (
   process.argv[1].endsWith('bin/aos-evolve.mjs') ||
   process.argv[1].endsWith('bin/aos-evolve')

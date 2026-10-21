@@ -35,6 +35,7 @@ Every AOS CLI answers `--help`, `-h` and `help` without side effects (exit 0). `
 | `aos-cli` | A human wants a terminal chat with AOS. Not meant for agents to call. | `aos-cli --continue` |
 | `aos-setup-doctor` | Used by the aos-setup skill before installing. For an installed system use `aos doctor`. | `node aos-doctor.mjs --json` |
 | `aos-project-doctor` | After or before /aos-project-init, to see what is missing in a project. | `node aos-project-doctor.mjs . --json` |
+| `aos-evolve` | Record redacted task failure signatures for evolution analysis or check evolution kill switch status. | `aos-evolve status` |
 
 ## aos
 
@@ -1171,4 +1172,54 @@ node aos-project-doctor.mjs [dir] [--json]
 
 ```sh
 node aos-project-doctor.mjs . --json
+```
+
+## aos-evolve
+
+Harness evolution engine: record failure signatures, inspect kill switch status, and manage offline evolution prep.
+
+- **When to use:** Record redacted task failure signatures for evolution analysis or check evolution kill switch status.
+- **Agent safety:** safe to call. capture writes sanitized failure records to ~/.aos/evolve/failure.json; disable/enable toggles kill switch; --help is side-effect free.
+- **Entry:** `bin/aos-evolve.mjs`
+
+```text
+aos-evolve capture <failure.json | --error "..."> [--skill <name>] [options]
+aos-evolve status [--json]
+aos-evolve disable
+aos-evolve enable
+```
+
+| Command | Usage | What it does |
+|---|---|---|
+| `capture` | `aos-evolve capture <failure.json> [--skill <name>]` | Capture and redact failure into failure.json. |
+| `status` | `aos-evolve status [--json]` | Display evolution engine status and failure count. |
+| `disable` | `aos-evolve disable` | Activate kill switch to disable evolution loop. |
+| `enable` | `aos-evolve enable` | Remove kill switch to re-enable evolution loop. |
+
+| Option | What it does |
+|---|---|
+| `--skill` | Target skill directory name. |
+| `--error` | Raw error message or transcript excerpt to capture. |
+| `--kind` | Failure kind: test \| build \| review \| advisor-repeat \| user. |
+| `--harness` | Execution harness: claude \| agy \| opencode \| codex. |
+| `--role` | Active agent role. |
+| `--dry-run` | Compute redaction and signature without writing to store. |
+| `--storage` | Custom failure.json destination file. |
+| `--json` | Format output as JSON. |
+| `-h, --help` | Show help message. |
+
+| Environment | What it does |
+|---|---|
+| `AOS_EVOLVE` | Set to off to disable evolution loop globally. |
+
+| Exit code | Meaning |
+|---|---|
+| 0 | command succeeded |
+| 1 | validation failed, error missing, or disabled via kill switch |
+
+**JSON:** --json outputs structured record or status.
+
+```sh
+aos-evolve status
+aos-evolve capture failure.json --skill clean-code
 ```

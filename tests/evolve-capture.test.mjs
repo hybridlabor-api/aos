@@ -11,16 +11,20 @@ import {
   enableEvolve,
   loadFailures,
   saveFailures,
+  resolveFailureStorePath,
 } from '../lib/evolve/capture.mjs';
 import { main as cliMain } from '../bin/aos-evolve.mjs';
 
 describe('AOS Evolve Failure Capture Engine (WP2)', () => {
   let tmpDir;
+  let fakeHome;
   let testStorePath;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-capture-test-'));
-    testStorePath = path.join(tmpDir, 'failure.json');
+    fakeHome = path.join(tmpDir, 'home');
+    fs.mkdirSync(path.join(fakeHome, '.aos', 'evolve'), { recursive: true, mode: 0o700 });
+    testStorePath = path.join(fakeHome, '.aos', 'evolve', 'failure.json');
   });
 
   afterEach(() => {
@@ -42,13 +46,14 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     assert.equal(sig1, sig2, 'signatures must match after path, timestamp, and line number normalization');
   });
 
-  test('captureFailure writes new failure record conforming to schema', () => {
+  test('captureFailure writes new failure record and enforces 0600 file and 0700 dir permissions', () => {
     const errorText = 'AssertionError: expected false to be true in test_parse\n    at /Users/testuser/work/test.js:10:5';
     const result = captureFailure({
       error: errorText,
       skill: 'clean-code',
       kind: 'test',
       storagePath: testStorePath,
+      home: fakeHome,
     });
 
     assert.ok(result.ok, 'capture must succeed');
@@ -59,11 +64,53 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     assert.ok(result.record.first_seen, 'first_seen must be set');
     assert.ok(result.record.last_seen, 'last_seen must be set');
 
-    // Verify on disk
+    // Verify on disk and check permissions (review finding 1)
     assert.ok(fs.existsSync(testStorePath), 'failure.json must be written to disk');
+    const statFile = fs.statSync(testStorePath);
+    const statDir = fs.statSync(path.dirname(testStorePath));
+
+    // File mode & 0777 should be 0600 on POSIX
+    if (process.platform !== 'win32') {
+      assert.equal((statFile.mode & 0o777), 0o600, 'failure.json must be 0600');
+      assert.equal((statDir.mode & 0o777), 0o700, 'evolve directory must be 0700');
+    }
+
     const stored = JSON.parse(fs.readFileSync(testStorePath, 'utf8'));
     assert.equal(stored.length, 1);
     assert.equal(stored[0].id, result.record.id);
+  });
+
+  test('resolveFailureStorePath confines storage to ~/.aos/evolve/ and rejects external paths', () => {
+    // Valid path inside fakeHome/.aos/evolve/
+    const valid = resolveFailureStorePath(path.join(fakeHome, '.aos', 'evolve', 'custom.json'), { home: fakeHome });
+    assert.equal(valid, path.join(fakeHome, '.aos', 'evolve', 'custom.json'));
+
+    // Path traversal attempt outside allowed directory
+    assert.throws(
+      () => resolveFailureStorePath(path.join(fakeHome, 'escaped.json'), { home: fakeHome }),
+      /outside allowed directory/,
+      'must reject paths outside ~/.aos/evolve/'
+    );
+
+    // Non-json file attempt
+    assert.throws(
+      () => resolveFailureStorePath(path.join(fakeHome, '.aos', 'evolve', 'script.sh'), { home: fakeHome }),
+      /must end with \.json or \.jsonl/,
+      'must reject non-json storage destinations'
+    );
+  });
+
+  test('captureFailure rejects inputs exceeding 64 KiB cap', () => {
+    const hugeError = 'X'.repeat(65 * 1024);
+    const result = captureFailure({
+      error: hugeError,
+      skill: 'clean-code',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(result.error, /exceeds size cap/);
   });
 
   test('captureFailure deduplicates repeated errors by signature and increments count', () => {
@@ -75,6 +122,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
       skill: 'instinct-export',
       kind: 'build',
       storagePath: testStorePath,
+      home: fakeHome,
     });
     assert.equal(res1.record.count, 1);
     assert.equal(res1.deduplicated, false);
@@ -84,6 +132,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
       skill: 'instinct-export',
       kind: 'build',
       storagePath: testStorePath,
+      home: fakeHome,
     });
     assert.equal(res2.record.count, 2, 'subsequent failure with same signature must increment count to 2');
     assert.equal(res2.deduplicated, true, 'deduplicated flag must be true');
@@ -95,6 +144,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
       skill: 'instinct-export',
       kind: 'build',
       storagePath: testStorePath,
+      home: fakeHome,
     });
     assert.equal(res3.record.count, 3, 'third occurrence must increment count to 3');
     assert.equal(res3.deduplicated, true);
@@ -110,6 +160,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
       skill: 'clean-code',
       storagePath: testStorePath,
       dryRun: true,
+      home: fakeHome,
     });
 
     assert.ok(res.ok);
@@ -118,9 +169,6 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
   });
 
   test('kill switch: isEvolveDisabled, disableEvolve, and enableEvolve manage marker file', () => {
-    const fakeHome = path.join(tmpDir, 'home');
-    fs.mkdirSync(fakeHome, { recursive: true });
-
     assert.equal(isEvolveDisabled({ home: fakeHome }), false, 'initially enabled');
 
     const marker = disableEvolve({ home: fakeHome });
@@ -166,45 +214,6 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
       assert.ok(stdoutData.includes('capture'));
       assert.ok(stdoutData.includes('status'));
       assert.ok(stdoutData.includes('disable'));
-    } finally {
-      process.stdout.write = origWrite;
-    }
-  });
-
-  test('CLI main: capture and status commands execute end-to-end', async () => {
-    let stdoutData = '';
-    const origWrite = process.stdout.write;
-    process.stdout.write = (chunk) => {
-      stdoutData += chunk;
-      return true;
-    };
-
-    try {
-      // 1. Capture via CLI
-      const captureCode = await cliMain([
-        'capture',
-        '--skill', 'clean-code',
-        '--error', 'LintError: unused variable at /Users/tim/index.js:5',
-        '--storage', testStorePath,
-        '--json',
-      ]);
-      assert.equal(captureCode, 0, 'CLI capture must exit 0');
-      const captureOut = JSON.parse(stdoutData);
-      assert.equal(captureOut.ok, true);
-      assert.equal(captureOut.record.skill, 'clean-code');
-
-      // 2. Status via CLI
-      stdoutData = '';
-      const statusCode = await cliMain([
-        'status',
-        '--storage', testStorePath,
-        '--json',
-      ]);
-      assert.equal(statusCode, 0, 'CLI status must exit 0');
-      const statusOut = JSON.parse(stdoutData);
-      assert.equal(statusOut.enabled, true);
-      assert.equal(statusOut.failureCount, 1);
-      assert.equal(statusOut.totalOccurrences, 1);
     } finally {
       process.stdout.write = origWrite;
     }

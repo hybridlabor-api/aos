@@ -32,12 +32,63 @@ describe('AOS Evolve Redaction Engine (WP2)', () => {
     assert.ok(winRedacted.includes('~\\AppData\\Local\\Temp\\run.log'), 'windows path converted to ~ relative');
   });
 
-  test('redacts OpenAI / Anthropic API keys (sk-...)', () => {
-    const input = 'Encountered 401 with authorization key sk-ant-api03-abcdef1234567890abcdef1234567890';
+  test('redacts OpenAI / Anthropic API keys (sk-... and sk_live_...)', () => {
+    const input1 = 'Encountered 401 with authorization key sk-ant-api03-abcdef1234567890abcdef1234567890';
+    const input2 = 'Stripe key found: sk_live_51Abcdef1234567890abcdef123456';
+    const res1 = redact(input1);
+    const res2 = redact(input2);
+
+    assert.ok(!res1.includes('sk-ant-api03-abcdef1234567890abcdef1234567890'));
+    assert.ok(res1.includes('***REDACTED***'));
+    assert.ok(!res2.includes('sk_live_51Abcdef1234567890abcdef123456'));
+    assert.ok(res2.includes('***REDACTED***'));
+  });
+
+  test('redacts Google Cloud API keys (AIza...)', () => {
+    const input = 'Request failed: key AIzaSyD1234567890abcdefghijklmnopqrstuv';
     const result = redact(input);
 
-    assert.ok(!result.includes('sk-ant-api03-abcdef1234567890abcdef1234567890'));
+    assert.ok(!result.includes('AIzaSyD1234567890abcdefghijklmnopqrstuv'));
     assert.ok(result.includes('***REDACTED***'));
+  });
+
+  test('redacts URL embedded credentials (scheme://user:pass@host)', () => {
+    const httpUrl = 'Failed to fetch from https://admin:SuperSecretPass123@api.example.com/v1/data';
+    const pgUrl = 'Database connection error: postgres://postgres_user:my_db_password_999@localhost:5432/production';
+
+    const resHttp = redact(httpUrl);
+    const resPg = redact(pgUrl);
+
+    assert.ok(!resHttp.includes('admin:SuperSecretPass123'));
+    assert.ok(resHttp.includes('https://[REDACTED_AUTH]@api.example.com'));
+
+    assert.ok(!resPg.includes('postgres_user:my_db_password_999'));
+    assert.ok(resPg.includes('postgres://[REDACTED_AUTH]@localhost:5432'));
+  });
+
+  test('redacts JSON-quoted secrets and keys', () => {
+    const jsonStr = 'Payload: {"apiKey":"abcdefgh12", "secretToken": "secret_val_99", "password":"myPassword!"}';
+    const result = redact(jsonStr);
+
+    assert.ok(!result.includes('abcdefgh12'), 'apiKey value must be redacted');
+    assert.ok(!result.includes('secret_val_99'), 'secretToken value must be redacted');
+    assert.ok(!result.includes('myPassword!'), 'password value must be redacted');
+    assert.ok(result.includes('"apiKey": "***REDACTED***"'));
+  });
+
+  test('redacts short .env format values', () => {
+    const envData = `API_KEY=foo
+SECRET=123
+AUTH_TOKEN=bar
+PASS=xyz`;
+    const result = redact(envData);
+
+    assert.ok(!result.includes('foo'));
+    assert.ok(!result.includes('123'));
+    assert.ok(!result.includes('bar'));
+    assert.ok(!result.includes('xyz'));
+    assert.ok(result.includes('API_KEY=***REDACTED***'));
+    assert.ok(result.includes('SECRET=***REDACTED***'));
   });
 
   test('redacts GitHub Personal Access Tokens (ghp_... and github_pat_...)', () => {
@@ -75,16 +126,6 @@ describe('AOS Evolve Redaction Engine (WP2)', () => {
 
     assert.ok(!resBasic.includes('dXNlcm5hbWU6cGFzc3dvcmQxMjM='));
     assert.ok(resBasic.includes('Basic ***REDACTED***'));
-  });
-
-  test('redacts environment variable secret assignments', () => {
-    const envString = 'Setting environment: API_KEY=my_super_secret_value_12345 and SECRET_TOKEN="secret_token_val_9999"';
-    const result = redact(envString);
-
-    assert.ok(!result.includes('my_super_secret_value_12345'));
-    assert.ok(!result.includes('secret_token_val_9999'));
-    assert.ok(result.includes('API_KEY=***REDACTED***'));
-    assert.ok(result.includes('SECRET_TOKEN=***REDACTED***'));
   });
 
   test('redacts PEM private key blocks', () => {

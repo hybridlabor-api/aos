@@ -62,6 +62,7 @@ Generated from `lib/cli-specs` (`node scripts/build-cli-reference.mjs`); full re
 | `aos-memb-ingest` | Normally never by hand. Use `aos memory` to configure paths and time. | `aos-memb-ingest --dry-run` |
 | `aos-setup-doctor` | Used by the aos-setup skill before installing. For an installed system use `aos doctor`. | `node aos-doctor.mjs --json` |
 | `aos-project-doctor` | After or before /aos-project-init, to see what is missing in a project. | `node aos-project-doctor.mjs . --json` |
+| `aos-evolve` | Record redacted task failure signatures for evolution analysis or check evolution kill switch status. | `aos-evolve status` |
 
 Probe with `aos help --all --json`; `<cli> --help` never has side effects.
 <!-- aos:cli-table:end -->

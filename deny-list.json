@@ -3,6 +3,8 @@
   "description": "Immutable core paths protected against evolution and tampering (Hard Safety Boundary B2)",
   "paths": [
     ".claude/hooks/**",
+    ".claude/settings.json",
+    "config/claude-hooks.json",
     "bin/aos-gate.mjs",
     "bin/aos-gate*.mjs",
     "bin/aos-gogate.mjs",
@@ -12,6 +14,8 @@
     "lib/destructive-rules.js",
     "config/allow-presets.json",
     "tests/*go-gate*.*",
+    "tests/**",
+    "scripts/**",
     "AGENTS.md",
     "RULES.md",
     "CLAUDE.md",
@@ -29,7 +33,9 @@
     "bin/aos-evolve.mjs",
     "lib/evolve/**",
     "evolve/**",
+    "evolve/pins.json",
     "deny-list.json",
+    "evolve/deny-list.json",
     "package.json"
   ]
 }
