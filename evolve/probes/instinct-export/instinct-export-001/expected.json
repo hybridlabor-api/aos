@@ -1,0 +1,7 @@
+{
+  "id": "inst-101",
+  "trigger": "deploy",
+  "action": "log",
+  "has_secret": false,
+  "has_user_path": false
+}

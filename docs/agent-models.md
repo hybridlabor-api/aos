@@ -94,3 +94,13 @@ Recommendation: set the strongest model available per harness for `advisor`. Shi
 This block is the role entry; in `pipeline.json` it sits under the top-level `"pipeline"` key. The keys are the harness names `resolveAgentConfig` receives from the installer. No entry means the advisor inherits the session model.
 
 The advisor is not a graph node and its output is never a GO.
+
+### Failure capture at call point 2
+
+At call point 2 (the second identical test or build error) the dispatcher also records the failure with Harness² capture:
+
+```
+aos-evolve capture --error "<error text>" --skill <skill in use>
+```
+
+The error text is redacted inside capture; never pass secrets. The advisor agent has no shell, so the dispatcher runs the command. `--skill` is required; if the skill is unknown the capture is skipped. When evolve is off (`AOS_EVOLVE=off` or a disabled store) the command exits non-zero and the dispatcher skips it silently.

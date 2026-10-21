@@ -1,0 +1,7 @@
+{
+  "id": "inst-101",
+  "trigger": "deploy",
+  "action": "log",
+  "source_path": "/Users/timrennings/dev/test-project",
+  "auth_token": "sk-123456789012345678901234"
+}

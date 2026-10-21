@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "instinct-export-001",
+  "skill": "instinct-export",
+  "task": "Export and sanitize instincts without leaking private home paths or secrets.",
+  "harness": "agy",
+  "role": "builder",
+  "seed": 1337,
+  "repeats": 3,
+  "timeout_s": 60,
+  "max_tokens": 10000,
+  "checker": "check.mjs",
+  "expected": "expected.json",
+  "origin": {
+    "kind": "handwritten"
+  },
+  "tags": [
+    "target",
+    "sanitization"
+  ]
+}

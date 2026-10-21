@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/aos/evolve/schema/provenance.schema.json",
+  "title": "AOS Evolve Provenance Record",
+  "description": "Full audit trail and provenance record attached to accepted evolution patches.",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "failure_id",
+    "probe_ids",
+    "baseline_run_id",
+    "candidate_run_id",
+    "base_sha",
+    "diff_hash",
+    "model_roles",
+    "seeds",
+    "tokens_spent",
+    "runs_spent",
+    "proposer_identity",
+    "reviewer_identity"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema format version, currently 1."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Unique provenance record identifier."
+    },
+    "failure_id": {
+      "type": "string",
+      "description": "Triggering failure record ID."
+    },
+    "probe_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Probe IDs evaluated during the cycle."
+    },
+    "baseline_run_id": {
+      "type": "string",
+      "description": "Run ID for the baseline evaluation."
+    },
+    "candidate_run_id": {
+      "type": "string",
+      "description": "Run ID for the candidate evaluation."
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{7,40}$",
+      "description": "Base git commit SHA."
+    },
+    "diff_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 hash of accepted diff."
+    },
+    "model_roles": {
+      "type": "object",
+      "required": ["proposer", "reviewer", "prober"],
+      "properties": {
+        "proposer": { "type": "string" },
+        "reviewer": { "type": "string" },
+        "prober": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "seeds": {
+      "type": "array",
+      "items": { "type": "integer" },
+      "description": "Evaluation seeds recorded for repeatability."
+    },
+    "tokens_spent": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total token expenditure across propose and probe steps."
+    },
+    "runs_spent": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of probe runs executed."
+    },
+    "proposer_identity": {
+      "type": "object",
+      "required": ["role", "harness"],
+      "properties": {
+        "role": { "type": "string" },
+        "harness": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "reviewer_identity": {
+      "type": "object",
+      "required": ["role", "harness"],
+      "properties": {
+        "role": { "type": "string" },
+        "harness": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO 8601 creation timestamp."
+    }
+  },
+  "additionalProperties": false
+}

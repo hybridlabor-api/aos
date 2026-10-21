@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/aos/evolve/schema/candidate.schema.json",
+  "title": "AOS Evolve Candidate Patch",
+  "description": "Candidate skill improvement proposed for probing and evaluation.",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "skill",
+    "base_sha",
+    "diff_hash",
+    "files",
+    "proposer",
+    "failure_id",
+    "probe_ids",
+    "attempt"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema format version, currently 1."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Unique candidate identifier."
+    },
+    "skill": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target skill modified by this candidate."
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{7,40}$",
+      "description": "Base git commit SHA."
+    },
+    "diff_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 hash of the git diff."
+    },
+    "files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "List of relative file paths touched by this candidate."
+    },
+    "diff": {
+      "type": "string",
+      "description": "Unified diff patch content."
+    },
+    "proposer": {
+      "type": "object",
+      "required": ["role", "harness"],
+      "properties": {
+        "role": { "type": "string" },
+        "harness": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "failure_id": {
+      "type": "string",
+      "description": "Failure record ID that prompted this candidate."
+    },
+    "probe_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Target probe IDs used to evaluate this candidate."
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Candidate attempt index within the evolution cycle."
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO 8601 creation timestamp."
+    }
+  },
+  "additionalProperties": false
+}
