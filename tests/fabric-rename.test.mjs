@@ -56,6 +56,19 @@ describe('fabric rename', () => {
     }
   });
 
+  test('the installer reads workflow and command files that exist', () => {
+    const src = fs.readFileSync(path.join(root, 'installer.js'), 'utf8');
+    const m = /path\.join\(srcDir, '\.agents', 'workflows', '([^']+)'\)/.exec(src);
+    assert.ok(m, 'installer reads an .agents/workflows file');
+    assert.ok(fs.existsSync(path.join(root, '.agents', 'workflows', m[1])), m[1]);
+  });
+
+  test('retiring skills keeps store-installed copies', () => {
+    const src = fs.readFileSync(path.join(root, 'installer.js'), 'utf8');
+    const body = src.slice(src.indexOf('function pruneRemovedSkills'));
+    assert.match(body.slice(0, body.indexOf('\n}\n')), /keep: storeProtectedDirs\(homeDir\)/);
+  });
+
   test('the dispatchers are renamed', () => {
     for (const f of ['fabric-dispatch.mjs', 'fabric-teamwork-dispatch.mjs']) {
       assert.ok(fs.existsSync(path.join(root, '.claude', 'workflows', f)), f);

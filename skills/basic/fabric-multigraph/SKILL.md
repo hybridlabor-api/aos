@@ -12,7 +12,7 @@ description: >-
 category: bdb-core
 ---
 
-# ⚡ Light Graph — disposable multi-agent fan-out
+# ⚡ fabric-multigraph — disposable multi-agent fan-out
 
 `/fabric-graph`'s dispatcher graph is a permanent, project-scoped contract: seven
 fixed BDB roles, a `state.json` schema, a repair loop, a Stop-hook gate. That's

@@ -1206,6 +1206,7 @@ function pruneRemovedSkills(manifest) {
         roots: globalSkillDestRoots(),
         backupDir: path.join(homeDir, '.agents', 'backups', `retired-skills-${timestamp}`),
         log,
+        keep: storeProtectedDirs(homeDir),
     });
     pruneRetiredFiles({
         home: homeDir,
@@ -5778,7 +5779,7 @@ function injectHarnessRules() {
             }
         }, '/fabric-graph and /fabric-teamwork fall back to their prose protocols.');
 
-        const fabricWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'fabric.md');
+        const fabricWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'fabric-graph.md');
         const sources = installStep('read the global rule sources', () => ({
             globalRules: fs.readFileSync(rulesMdSrc, 'utf8'),
             fabricContent: fs.existsSync(fabricWorkflowSrc) ? fs.readFileSync(fabricWorkflowSrc, 'utf8') : '',

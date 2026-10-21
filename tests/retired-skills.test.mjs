@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { pruneRetiredSkills, pruneRetiredFiles, RETIRED_FILES, RETIRED_SKILLS } = require('../lib/retired-skills.js');
+const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs, RETIRED_FILES, RETIRED_SKILLS } = require('../lib/retired-skills.js');
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 describe('pruneRetiredSkills', () => {
@@ -84,6 +84,23 @@ describe('pruneRetiredSkills', () => {
     const manifest = { [path.join(home, '.agents/skills/visual-edit/../keepme/SKILL.md')]: { sha256: sha('keep') } };
     pruneRetiredSkills({ home, manifest, roots: [path.join(home, '.agents', 'skills')], backupDir: path.join(home, 'bk4') });
     assert.ok(fs.existsSync(keep));
+  });
+});
+
+describe('pruneRetiredSkills keep', () => {
+  test('a store-installed copy of a retired name survives, others go', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-retired-keep-'));
+    try {
+      const mk = (rel) => { const a = path.join(home, rel); fs.mkdirSync(path.dirname(a), { recursive: true }); fs.writeFileSync(a, 'x'); return a; };
+      const stored = mk('.agents/skills/visual-plan/SKILL.md');
+      const other = mk('.claude/skills/visual-plan/SKILL.md');
+      fs.mkdirSync(path.join(home, '.aos', 'store'), { recursive: true });
+      fs.writeFileSync(path.join(home, '.aos', 'store', 'installs.jsonl'), JSON.stringify({ kind: 'skill', name: 'visual-plan', targets: [stored] }) + '\n');
+      const manifest = { [stored]: { sha256: sha('x') }, [other]: { sha256: sha('x') } };
+      pruneRetiredSkills({ home, manifest, roots: [path.join(home, '.agents', 'skills'), path.join(home, '.claude', 'skills')], backupDir: path.join(home, 'bk'), keep: storeProtectedDirs(home) });
+      assert.ok(fs.existsSync(stored));
+      assert.ok(!fs.existsSync(other));
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
   });
 });
 
