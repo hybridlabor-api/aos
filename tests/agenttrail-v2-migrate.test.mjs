@@ -208,6 +208,8 @@ describe('the relay posts to the maps', () => {
   let port;
   let legacyPort;
   let legacyStub;
+  let relayHome;
+  let emptyHome;
 
   before(async () => {
     port = await freePort();
@@ -222,13 +224,18 @@ describe('the relay posts to the maps', () => {
     while (!(await canBind(legacyPort))) legacyPort += 1;
     legacyStub = http.createServer((req, res) => { received.push({ url: req.url, legacy: true }); res.writeHead(204).end() });
     legacyStub.listen(legacyPort, '127.0.0.1');
+    // the way agenttrail announces a running map (lib/endpoints-lite.mjs): ~/.aos/endpoints.json with a live pid
+    relayHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-relay-home-'));
+    fs.mkdirSync(path.join(relayHome, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(relayHome, '.aos', 'endpoints.json'), JSON.stringify({ schema: 1, agenttrail: [{ repo, url: `http://127.0.0.1:${legacyPort}`, port: legacyPort, pid: process.pid }] }));
+    emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-relay-empty-'));
   });
 
   after(() => { legacyStub.close(); server.close() });
 
   const relay = (env = {}) => run(relayBin, ['--agent', 'claude'], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 's-relay', cwd: repo, tool_name: 'Edit', tool_input: {} }),
-    env: { AGENTTRAIL_PORT: String(port), ...env },
+    env: { AGENTTRAIL_PORT: String(port), HOME: relayHome, ...env },
     timeout: 20000,
   });
 
@@ -250,12 +257,20 @@ describe('the relay posts to the maps', () => {
     assert.equal(received.some((x) => x.legacy), false, `legacy port was contacted: ${JSON.stringify(received)}`);
   });
 
-  test('without AGENTTRAIL_PORT the per-repo map range receives the event', async () => {
+  test('without AGENTTRAIL_PORT an announced map receives the event', async () => {
     received.length = 0;
     const r = await relay({ AGENTTRAIL_PORT: '' });
     assert.equal(r.status, 0, r.stderr);
     await new Promise((x) => setTimeout(x, 500));
     assert.equal(received.some((x) => x.legacy), true, JSON.stringify(received));
+  });
+
+  test('without AGENTTRAIL_PORT and without an announced map nothing is contacted', async () => {
+    received.length = 0;
+    const r = await relay({ AGENTTRAIL_PORT: '', HOME: emptyHome });
+    assert.equal(r.status, 0, r.stderr);
+    await new Promise((x) => setTimeout(x, 500));
+    assert.deepEqual(received, []);
   });
 
   test('AGENTTRAIL_LEGACY=1 brings the legacy range back for one release', async () => {

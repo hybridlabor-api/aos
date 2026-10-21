@@ -100,10 +100,11 @@ test('failures are silent, exit 0, and fast', () => {
 
 test('registration: settings.json entry, installer merge is idempotent and keeps foreign hooks', () => {
   const repo = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'claude-hooks.json'), 'utf8'));
+  // trail-autostart is a module of the PreToolUse dispatcher entry; the dispatcher applies it to Agent|Task only.
   const entry = repo.hooks.PreToolUse.find((e) => e.hooks.some((h) => h.command.includes('trail-autostart.mjs')));
-  assert.equal(entry.matcher, 'Agent|Task');
-  assert.equal(entry.hooks[0].timeout, 3);
-  assert.ok(repo.hooks.PreToolUse.some((e) => e.hooks.some((h) => h.command.includes('go-gate.mjs'))));
+  assert.ok(entry.hooks[0].command.includes('aos-hooks.mjs'));
+  assert.ok(entry.hooks[0].timeout >= 3);
+  assert.ok(entry.hooks[0].command.includes('go-gate.mjs'));
 
   const installer = require(path.join(ROOT, 'installer.js'));
   for (const projectLocal of [false, true]) {
@@ -114,6 +115,6 @@ test('registration: settings.json entry, installer merge is idempotent and keeps
     const cmds = JSON.parse(fs.readFileSync(settings, 'utf8')).hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command));
     assert.equal(cmds.filter((c) => c.includes('trail-autostart.mjs')).length, 1);
     assert.ok(cmds.includes('node /mine.mjs'));
-    assert.ok(cmds.some((c) => c.includes('trail-autostart.mjs') && c.includes('$HOME/.claude/hooks/')));
+    assert.ok(cmds.some((c) => c.includes('trail-autostart.mjs') && (projectLocal ? c.includes('${CLAUDE_PROJECT_DIR}/.claude/hooks/') : c.includes('$HOME/.claude/hooks/'))));
   }
 });

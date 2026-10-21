@@ -277,9 +277,13 @@ test('R1: one hook list; the shipped Claude template is covered exactly once', (
     assert.strictEqual(new Set(p.HOOK_SCRIPTS).size, p.HOOK_SCRIPTS.length, 'no script in two lists');
     assert.ok(p.CLAUDE_MERGE_HOOKS.every((n) => p.HOOK_SCRIPTS.includes(n)));
 
+    // The template wires scripts directly (`.claude/hooks/x.mjs`) and names the dispatcher's modules as arguments.
     const template = fs.readFileSync(path.join(__dirname, '..', 'config', 'claude-hooks.json'), 'utf8');
-    const named = [...new Set([...template.matchAll(/\.claude\/hooks\/([\w-]+\.mjs)/g)].map((m) => m[1]))];
+    const direct = [...template.matchAll(/\.claude\/hooks\/([\w-]+\.mjs)/g)].map((m) => m[1]);
+    const modules = [...template.matchAll(/aos-hooks\.mjs\\?" \w+ ((?:[\w-]+\.mjs ?)+)/g)].flatMap((m) => m[1].trim().split(' '));
+    const named = [...new Set([...direct, ...modules])];
     assert.ok(named.length >= 10, 'the template names the hooks');
+    assert.ok(direct.includes('aos-hooks.mjs') && direct.includes('memb-session-save.mjs'));
     for (const n of named) {
         assert.strictEqual(lists.filter((l) => l.includes(n)).length, 1, `${n} is in exactly one list`);
         assert.ok(p.CLAUDE_MERGE_HOOKS.includes(n), `${n} is owned by the Claude merge`);
