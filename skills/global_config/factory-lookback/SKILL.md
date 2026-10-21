@@ -52,7 +52,7 @@ disprove each proposed explanation.
 
 ## Change and verify
 
-Recommend only by default. Prepare a fix locally only when `workflows.lookback.implement` allows it and the user asked for it in this conversation; publishing needs the user's GO. A recurring pattern is evidence for
+Recommend only by default. Prepare a fix locally only when `workflows.lookback.implement` allows it and the user asked for it in this conversation; publishing needs the action policy to allow it while the go-gate is off, otherwise the user's GO. A recurring pattern is evidence for
 investigation, not automatic permission to edit code or take an external
 action. Keep reply, issue closure, PR approval, merge, deployment, and
 notification under their own configured policies.
@@ -86,7 +86,8 @@ pattern does not exist.
   ask the user; never create it or guess sources.
 - Nothing in the config can open the AOS GO gate. `git push`, `gh pr merge`,
   `gh release create` and every external write (reply, comment, approval, close,
-  status change, notification) need the user's literal GO for that exact action.
+  status change, notification) need the action policy to allow it while the
+  go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
 - Connectors are whatever the host already exposes. Do not install or register

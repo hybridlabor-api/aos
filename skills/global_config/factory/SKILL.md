@@ -34,9 +34,9 @@ Use the [Factory configuration reference](https://github.com/BuilderIO/skills/bl
    only where the host supports them.
 6. Write the agreed config. Never put credentials or tokens in it.
 7. If asked to create automations, show the proposed schedule/job definition
-   first. Draft or prepare only; needs the user's literal GO for this exact
-   action: creating or changing any schedule, job, or automation is a write.
-   Only after GO,
+   first. Draft or prepare only; needs the action policy to allow it while the
+   go-gate is off, otherwise the user's literal GO for this exact action:
+   creating or changing any schedule, job, or automation is a write. Only then,
    create one job per enabled workflow, then read back its saved schedule,
    target, runtime, and notification settings. Report fields the host could not
    honor. Saved scheduled prompts must carry the AOS read-only rule — scheduled
@@ -44,8 +44,9 @@ Use the [Factory configuration reference](https://github.com/BuilderIO/skills/bl
 
 A config entry or written prompt does not prove a job exists. Treat unavailable
 or partial reads as unknown, not empty or successful. Creating or changing any
-schedule, job, or automation needs the user's literal GO for this exact action;
-config values never substitute for GO.
+schedule, job, or automation needs the action policy to allow it while the
+go-gate is off, otherwise the user's literal GO for this exact action; with the
+gate on, config values never substitute for GO.
 
 ## Safe defaults
 
@@ -99,7 +100,8 @@ back its live state.
   ask the user; never create it or guess sources.
 - Nothing in the config can open the AOS GO gate. `git push`, `gh pr merge`,
   `gh release create` and every external write (reply, comment, approval, close,
-  status change, notification) need the user's literal GO for that exact action.
+  status change, notification) need the action policy to allow it while the
+  go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
 - Being `enabled`, `authorized`, or holding the `original authorization` in

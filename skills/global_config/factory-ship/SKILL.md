@@ -25,21 +25,24 @@ publishing. See the [Factory configuration reference](https://github.com/Builder
    take over a peer's checkout.
 2. **Verify changes.** Run the configured formatter, tests, and release checks.
    Report checks that were skipped or unavailable.
-3. **Publish when enabled.** Draft or prepare only; needs the user's literal GO
-   for this exact action. Open or update a PR only after GO. Show the
+3. **Publish when enabled.** Draft or prepare only; needs the action policy to
+   allow it while the go-gate is off, otherwise the user's literal GO for this
+   exact action. Open or update a PR only when that rule allows it. Show the
    configured title, body, draft status, labels, and communication rules first.
-   Do not tag or message people unless enabled by policy and confirmed by GO.
+   Do not tag or message people unless enabled by policy and allowed by that rule.
 4. **Resolve feedback.** Compare comments with the code and current human
    direction. Make one coherent update, then rerun affected checks.
-5. **Apply merge gates.** Draft or prepare only; needs the user's literal GO
-   for this exact action. Merge only after GO, while all criteria hold on the
+5. **Apply merge gates.** Draft or prepare only; needs the action policy to
+   allow it while the go-gate is off, otherwise the user's literal GO for this
+   exact action. Merge only when that rule allows it, while all criteria hold on the
    unchanged live head. Use a head-match guard when the host supports it. A
    head change invalidates tied evidence and resets the soak.
 6. **Verify and close out.** Confirm the merge in the current base branch.
    Verify deployment only when configured; a merge is not live proof. Draft or
-   prepare only; needs the user's literal GO for this exact action: closing
-   issues and rotating worktrees are git/host state changes and happen only
-   after GO, at their configured proof points.
+   prepare only; needs the action policy to allow it while the go-gate is off,
+   otherwise the user's literal GO for this exact action: closing issues and
+   rotating worktrees are git/host state changes and happen only when that rule
+   allows them, at their configured proof points.
 
 ## Stop conditions
 
@@ -53,7 +56,8 @@ inconclusive result into success.
   ask the user; never create it or guess sources.
 - Nothing in the config can open the AOS GO gate. `git push`, `gh pr merge`,
   `gh release create` and every external write (reply, comment, approval, close,
-  status change, notification) need the user's literal GO for that exact action.
+  status change, notification) need the action policy to allow it while the
+  go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
 - Being `enabled`, `authorized`, or holding the `original authorization` in

@@ -132,7 +132,7 @@ for (const skill of NEW_SKILLS) {
   });
 }
 
-const GO_PHRASE = "Draft or prepare only; needs the user's literal GO for this exact action";
+const GO_PHRASE = "Draft or prepare only; needs the action policy to allow it while the go-gate is off, otherwise the user's literal GO for this exact action";
 const oneLine = (text) => text.replace(/\s+/g, ' ');
 
 for (const skill of NEW_SKILLS) {
@@ -199,6 +199,12 @@ test('factory-watchdog and factory-recover are report-only', () => {
 
 test('factory-review-prs reference to factory-babysit-pr resolves', () => {
   assert.ok(existsSync(join(FACTORY_ROOT, 'factory-babysit-pr')), 'factory-babysit-pr directory exists');
+});
+
+test('docs/factory.md states the gogate-off run mode and keeps the hard blocks', () => {
+  const text = readFileSync(DOCS_PAGE, 'utf8');
+  assert.ok(text.includes('gogate off'), 'docs name the `gogate off` mode');
+  assert.ok(text.includes('hard block'), 'docs state that hard blocks stay');
 });
 
 test('THIRD_PARTY_NOTICES.md lists the five new skills with the upstream commit', () => {

@@ -1,7 +1,7 @@
 ---
 name: factory-recover
 description: >-
-  Find interrupted coding runs and report resume candidates. Use after a host restart or interrupted automation; resuming needs the user's GO.
+  Find interrupted coding runs and report resume candidates. Use after a host restart or interrupted automation; resuming needs the action policy to allow it while the go-gate is off, otherwise the user's GO.
 category: engineering-method
 source: BuilderIO/skills
 ---
@@ -25,10 +25,11 @@ Read `.agent-factory/config.yaml`, the optional
    and unpublished changes. Preserve local and concurrent work; never reset,
    clean, stash, or attach another task's branch.
 4. Recheck external state before proposing an uncertain action. Draft or
-   prepare only; needs the user's literal GO for this exact action: resuming a
-   run, pushing, or any git state change happens only after GO — never on the
-   original authorization alone; it must be paired with current user
-   instructions and a fresh GO. Do not repeat completed writes, replies,
+   prepare only; needs the action policy to allow it while the go-gate is off,
+   otherwise the user's literal GO for this exact action: resuming a run,
+   pushing, or any git state change happens only when that rule allows it —
+   never on the original authorization alone; it must be paired with current
+   user instructions and, with the gate on, a fresh GO. Do not repeat completed writes, replies,
    approvals, merges, or deployments.
 5. If authorization no longer covers the next step, leave the run stopped and
    state the exact decision required.
@@ -40,8 +41,9 @@ away others' work, no recursive deletes. Preserved work is never destroyed.
 
 Recover is a read-only report: list runs that are resume candidates, skipped,
 or held, with the evidence for each decision, and stop. Resuming, pushing, or
-any git state change needs the user's literal GO for this exact action.
-Notifications follow a separate draft; sending needs GO.
+any git state change needs the action policy to allow it while the go-gate is
+off, otherwise the user's literal GO for this exact action. Notifications
+follow a separate draft; sending follows the same rule.
 
 ## AOS safety rules
 
@@ -49,7 +51,8 @@ Notifications follow a separate draft; sending needs GO.
   ask the user; never create it or guess sources.
 - Nothing in the config can open the AOS GO gate. `git push`, `gh pr merge`,
   `gh release create` and every external write (reply, comment, approval, close,
-  status change, notification) need the user's literal GO for that exact action.
+  status change, notification) need the action policy to allow it while the
+  go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
 - Being `enabled`, `authorized`, or holding the `original authorization` in
