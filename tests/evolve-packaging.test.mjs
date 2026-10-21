@@ -103,12 +103,16 @@ describe('AOS Evolve Packaging & Trust Roots (Blocking 1-3: NF-0, NF-1, NF-2)', 
 
   test('NF-0 packaging: npm pack --dry-run --json includes evolve/ and deny-list.json in tarball', () => {
     const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    const r = spawnSync(npmCmd, ['pack', '--dry-run', '--json'], {
+    // The --json file listing of this package is several MB; the default
+    // spawnSync maxBuffer (1 MB) kills the child with ENOBUFS and status null.
+    const r = spawnSync(npmCmd, ['pack', '--dry-run', '--json', '--ignore-scripts'], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       timeout: 120000,
+      maxBuffer: 64 * 1024 * 1024,
       env: { ...process.env, npm_config_ignore_scripts: 'true' },
     });
+    assert.equal(r.error, undefined, `npm pack could not run: ${r.error && r.error.message}`);
     assert.equal(r.status, 0, `npm pack failed: ${r.stderr || r.stdout}`);
     const packInfo = JSON.parse(r.stdout);
     const files = (packInfo[0]?.files || []).map((f) => f.path);
