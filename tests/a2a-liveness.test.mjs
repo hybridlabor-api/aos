@@ -5,7 +5,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  usableOwnerPid, ownerGone, idleExpired, idleLimitMs, usesIdleReaper, touchSeen, seenAt, DEFAULT_IDLE_MIN,
+  usableOwnerPid, ownerGone, ownerReused, sweepsSiblings, idleExpired, idleLimitMs, usesIdleReaper, touchSeen, seenAt, DEFAULT_IDLE_MIN,
 } from "../lib/a2a-liveness.mjs";
 
 test("owner pid: pid 1 and garbage are not an owner", () => {
@@ -58,4 +58,19 @@ test("seen touch: the mtime records the owner's last sign of life", () => {
   assert.equal(seenAt(dir, "agy-x"), t);
   touchSeen(dir, "agy-x", t + 60_000);
   assert.equal(seenAt(dir, "agy-x"), t + 60_000);
+});
+
+// B4: an owner pid reused by a process that started after the sidecar registered is a different process.
+test("ownerReused: a pid whose process started after registration (plus slack) is reused; unknown start is not", () => {
+  const registered = 1_000_000;
+  assert.equal(ownerReused(registered - 60_000, registered), false, "owner started before the sidecar");
+  assert.equal(ownerReused(registered + 1_000, registered), false, "inside the 2 s slack");
+  assert.equal(ownerReused(registered + 10_000, registered), true, "started later: pid was reused");
+  assert.equal(ownerReused(NaN, registered), false, "no ps / unknown: keep the sidecar");
+});
+
+// B1 rule: only claude runs one process per session.
+test("sweepsSiblings: only claude", () => {
+  assert.equal(sweepsSiblings("claude"), true);
+  for (const h of ["codex", "agy", "opencode", "live"]) assert.equal(sweepsSiblings(h), false, h);
 });

@@ -173,9 +173,16 @@ test("resolveHarnessPid: win32 skips the shell wrapper and returns the harness p
   assert.equal(resolveHarnessPid(400, { platform: "win32", chain }), 200);
 });
 
-test("resolveHarnessPid: falls back to ppid on query failure, empty or shell-only output; POSIX never queries", () => {
+test("resolveHarnessPid: falls back to ppid on query failure, empty or shell-only output", () => {
   assert.equal(resolveHarnessPid(400, { platform: "win32", chain: () => { throw new Error("timeout"); } }), 400);
   assert.equal(resolveHarnessPid(400, { platform: "win32", chain: () => "" }), 400);
   assert.equal(resolveHarnessPid(400, { platform: "win32", chain: () => "400,cmd.exe" }), 400);
-  assert.equal(resolveHarnessPid(400, { platform: "linux", chain: () => { throw new Error("must not be called"); } }), 400);
+  assert.equal(resolveHarnessPid(400, { platform: "linux", chain: () => { throw new Error("ps missing"); } }), 400);
+  assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,sh\n" }), 400);
+});
+
+test("resolveHarnessPid: POSIX skips a shell wrapper (sh, zsh, login -zsh) and returns the harness pid", () => {
+  assert.equal(resolveHarnessPid(400, { platform: "linux", chain: () => "400,sh\n300,claude\n100,systemd\n" }), 300);
+  assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,-zsh\n300,node\n" }), 300);
+  assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,node\n" }), 400, "a non-shell ppid is already the harness");
 });
