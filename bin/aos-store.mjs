@@ -231,14 +231,23 @@ async function main() {
     return;
   }
   if (command === 'install') {
-    const pack = optionValue('--pack');
-    if (pack !== undefined) {
-      if (!pack) throw new Error('--pack needs a value: aos store install --pack <name>');
-      await installPackCommand(pack);
+    const packs = args.flatMap((arg, i) => {
+      if (arg === '--pack') return [args[i + 1]].filter(Boolean);
+      if (arg.startsWith('--pack=')) return [arg.slice(7)].filter(Boolean);
+      return [];
+    });
+    if (args.includes('--pack') && !packs.length) throw new Error('--pack needs a value: aos store install --pack <name>');
+    if (packs.length) {
+      for (const pack of packs) {
+        await installPackCommand(pack);
+      }
       return;
     }
-    if (!positional[1]) throw new Error('Install requires a store item name.');
-    await install(positional[1]);
+    const names = positional.slice(1);
+    if (!names.length) throw new Error('Install requires a store item name.');
+    for (const name of names) {
+      await install(name);
+    }
     return;
   }
   if (command === 'remove') {

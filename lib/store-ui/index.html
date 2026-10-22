@@ -7,7 +7,7 @@
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:13.5px/1.5 var(--sans);overflow-x:hidden}
 button,input,select{font:inherit;color:inherit}
 .container{width:min(calc(100% - 2rem),80rem);margin:0 auto}
-main{padding:1.2rem 0 5rem}
+main{padding:1.2rem 0 6.5rem}
 .kicker{margin:0 0 .8rem;color:var(--green);font:600 .7rem var(--aos-font-mono);letter-spacing:.14em;text-transform:uppercase}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;min-height:var(--aos-top-h);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:.65rem;font:700 .8rem var(--aos-font-mono);letter-spacing:.14em;text-transform:uppercase}
@@ -111,6 +111,19 @@ dialog pre,.insp-body pre,#ins-dry pre{border:0;border-radius:8px;box-shadow:ins
 .warnbox{border:0;border-radius:8px;background:color-mix(in srgb,var(--bad) 8%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--bad) 35%,transparent)}
 #inspector{background:var(--aos-surface);border-left:1px solid var(--aos-line);box-shadow:-28px 0 70px -28px #000;transition:transform var(--aos-motion-settle) var(--aos-ease-camera)}
 .insp-dry{border-color:var(--aos-line)}
+#stack-bar{position:fixed;bottom:0;left:0;right:0;z-index:25;background:var(--aos-surface);border-top:1px solid var(--aos-line);box-shadow:0 -8px 24px rgba(0,0,0,.2);padding:.6rem 1rem;display:none;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem}
+#stack-bar.visible{display:flex}
+.stack-info{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.stack-count{font:600 .85rem var(--sans);color:var(--ink);white-space:nowrap}
+.stack-cmd-box{display:flex;align-items:center;gap:.4rem;flex:1 1 14rem;min-width:0}
+.stack-cmd{flex:1;min-width:0;font:500 .74rem var(--aos-font-mono);background:var(--aos-surface-2);color:var(--ink);padding:.35rem .6rem;border-radius:6px;border:1px solid var(--line);overflow-x:auto;white-space:nowrap;user-select:all}
+.stack-acts{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap}
+.stack-check{display:inline-flex;align-items:center;gap:.35rem;font:500 .72rem var(--aos-font-mono);color:var(--muted);cursor:pointer;user-select:none}
+.stack-check:hover{color:var(--ink)}
+.stack-check input[type=checkbox]{width:1rem;height:1rem;accent-color:var(--green);cursor:pointer;margin:0}
+.stack-check input[type=checkbox]:focus-visible{outline:2px solid var(--aos-accent);outline-offset:2px}
+.card-acts{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap}
+@media(max-width:560px){#stack-bar{padding:.5rem .75rem;gap:.5rem}.stack-cmd-box{width:100%;order:3}.stack-info{flex:1}}
 </style></head><body>
 <div class="container"><main id="app"></main></div>
 <aside id="inspector" role="dialog" aria-modal="true" aria-label="Item inspector" inert>
@@ -119,10 +132,11 @@ dialog pre,.insp-body pre,#ins-dry pre{border:0;border-radius:8px;box-shadow:ins
   <div class="insp-body" id="ins-body"></div>
   <div class="insp-dry"><div id="ins-dry-row"><button class="button" id="ins-dry-btn" data-a="dry-run">Dry run</button> <span class="cmdnote">Shows what would be written. Installs nothing.</span></div><div id="ins-dry" aria-live="polite"></div></div>
 </aside>
+<div id="stack-bar" role="region" aria-label="Stack builder" aria-live="polite"></div>
 <dialog id="dlg"></dialog>
 <script>
 const TOKEN='__TOKEN__';
-const S={tab:'skill',sub:'discover',scope:'global',q:'',cat:'',src:'',data:null,busy:null,detail:{},inspect:null,seq:0,dseq:0};
+const S={tab:'skill',sub:'discover',scope:'global',q:'',cat:'',src:'',data:null,busy:null,detail:{},inspect:null,seq:0,dseq:0,stack:new Map()};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const key=i=>i.kind+':'+i.name;
 const find=k=>S.data.items.find(i=>key(i)===k);
@@ -133,7 +147,7 @@ const count=(f,v)=>base().filter(i=>f(i)===v).length;
 const chip=(a,v,label,n)=>`<button class="chip" aria-pressed="${S[a]===v}" data-a="${a}" data-v="${esc(v)}">${esc(label)}<b>${n}</b></button>`;
 const el=(t,text,cls)=>{const n=document.createElement(t);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n};
 function strip(){const all=S.data.items;return `<div class="strip"><div><strong>${all.length}</strong><small>total</small></div>${uniq(i=>i.source).map(s=>`<div><strong>${all.filter(i=>i.source===s).length}</strong><small>${esc(s)}</small></div>`).join('')}</div>`}
-function tabs(){const n=base(),ic=n.filter(i=>i.installed).length,k=x=>S.data.items.filter(i=>i.kind===x).length;return `<div class="tabs">${chip('tab','skill','Skills',k('skill'))}${chip('tab','agent','Agents',k('agent'))}${chip('tab','playbook','Playbooks',S.data.playbooks.length)}${S.tab==='playbook'?'':`<span style="width:1rem"></span>${chip('sub','installed','Installed',ic)}${chip('sub','discover','Discover',n.length-ic)}`}</div>`}
+function tabs(){const n=base(),ic=n.filter(i=>i.installed).length,k=x=>S.data.items.filter(i=>i.kind===x).length,pk=S.data?.packs?.length||0;return `<div class="tabs">${chip('tab','skill','Skills',k('skill'))}${chip('tab','agent','Agents',k('agent'))}${chip('tab','pack','Packs',pk)}${chip('tab','playbook','Playbooks',S.data.playbooks.length)}${['playbook','pack'].includes(S.tab)?'':`<span style="width:1rem"></span>${chip('sub','installed','Installed',ic)}${chip('sub','discover','Discover',n.length-ic)}`}</div>`}
 const scopeToggle=()=>`<div class="scope"><span class="kicker" style="margin:0">Scope</span>${chip('scope','global','Global','')}${chip('scope','project','Project','')}</div>`;
 function act(i){
   if(i.core) return '<span class="state">AOS Core</span>';
@@ -145,6 +159,7 @@ function act(i){
 const laneOf=n=>{const k=n.toLowerCase();let h=0x811c9dc5;for(let i=0;i<k.length;i++)h=Math.imul(h^k.charCodeAt(i),0x01000193)>>>0;return h%6};
 function card(i){
   const k=key(i);
+  const isChecked=S.stack.has(k);
   const badges=(i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'')
     +(i.hasHooks?'<span class="badge">hooks</span>':'')
     +(i.execBridge?'<span class="badge warn">exec bridge</span>':'')
@@ -152,7 +167,14 @@ function card(i){
     +(i.license?`<span class="badge">${esc(i.license)}</span>`:'')
     +(i.thirdParty?'<span class="badge">third-party</span>':'');
   const dry=i.core?'':`<button class="button secondary" data-a="dry" data-v="${esc(k)}">Dry run</button>`;
-  return `<article class="card"${i.kind==='agent'?` data-lane="${laneOf(i.name)}"`:''}><button class="card-body" data-a="open" data-v="${esc(k)}"><span class="card-name">${esc(i.name)}</span><span class="card-meta"><span class="tag">${esc(i.kind)}</span><span class="tag">${esc(i.category)}</span><span class="src">${esc(i.source)}</span></span><span class="card-desc">${esc(i.description)}</span><span class="card-meta">${badges}</span></button><div class="card-foot">${act(i)}${dry}</div></article>`;
+  const check=i.core?'':`<label class="stack-check"><input type="checkbox" class="check-box" data-a="check" data-kind="${esc(i.kind)}" data-name="${esc(i.name)}" ${isChecked?'checked':''} aria-label="Select ${esc(i.name)} for stack"> <span>Stack</span></label>`;
+  return `<article class="card"${i.kind==='agent'?` data-lane="${laneOf(i.name)}"`:''}><button class="card-body" data-a="open" data-v="${esc(k)}"><span class="card-name">${esc(i.name)}</span><span class="card-meta"><span class="tag">${esc(i.kind)}</span><span class="tag">${esc(i.category)}</span><span class="src">${esc(i.source)}</span></span><span class="card-desc">${esc(i.description)}</span><span class="card-meta">${badges}</span></button><div class="card-foot">${check}<div class="card-acts">${act(i)}${dry}</div></div></article>`;
+}
+function packCard(p){
+  const k='pack:'+p.name;
+  const isChecked=S.stack.has(k);
+  const dry=`<button class="button secondary" data-a="dry-pack" data-v="${esc(p.name)}">Dry run</button>`;
+  return `<article class="card"><div class="card-body"><span class="card-name">${esc(p.name)}</span><span class="card-meta"><span class="tag">pack</span><span class="tag">${p.skills} skills</span>${p.external?'<span class="tag">external</span>':''}</span><span class="card-desc">${esc(p.description)}</span></div><div class="card-foot"><label class="stack-check"><input type="checkbox" class="check-box" data-a="check" data-kind="pack" data-name="${esc(p.name)}" ${isChecked?'checked':''} aria-label="Select pack ${esc(p.name)} for stack"> <span>Stack</span></label><div class="card-acts">${dry}</div></div></article>`;
 }
 const reqLabel=r=>[...r.skills,...r.agents.map(a=>'agent:'+a),...r.mcps.map(m=>'mcp:'+m),...r.store.map(x=>'store:'+x)].join(', ');
 function pbCard(p){return `<article class="card"><div class="card-body"><span class="card-name">${esc(p.name)}</span><span class="card-meta"><span class="tag">${esc(p.difficulty)}</span><span class="src">${esc(p.est_time)}</span></span><span class="card-desc">${esc(p.description)}</span><span class="card-note">Requires: ${esc(reqLabel(p.requires)||'nothing')}</span></div><div class="card-foot"><span class="state">AOS Core</span></div></article>`}
@@ -160,13 +182,47 @@ function renderPlaybooks(){
   const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,q=S.q.toLowerCase(),l=S.data.playbooks.filter(p=>!q||(p.name+' '+p.description+' '+p.difficulty).toLowerCase().includes(q));
   document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><input class="search" id="q" type="search" placeholder="Search playbooks" value="${esc(S.q)}" aria-label="Search">${tabs()}<p class="cmdnote">Playbooks ship with AOS Core. Start one with /bdb-aos:playbooks.</p></aside><section><p class="kicker">${l.length} of ${S.data.playbooks.length} playbooks</p>${l.length?`<div class="grid">${l.map(pbCard).join('')}</div>`:'<div class="empty">No matches.</div>'}</section></div>`;
   if(fq){const e=document.getElementById('q');e.focus();e.setSelectionRange(pos,pos)}
+  updateStackBar();
+}
+function renderPacks(){
+  const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,q=S.q.toLowerCase(),all=S.data.packs||[],l=all.filter(p=>!q||(p.name+' '+p.description).toLowerCase().includes(q));
+  document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><p class="kicker" style="margin:0">Active scope: ${S.scope==='global'?'Global (harness roots in ~)':'Project ('+esc(S.data.cwd)+')'}</p>${scopeToggle()}<input class="search" id="q" type="search" placeholder="Search packs" value="${esc(S.q)}" aria-label="Search">${tabs()}<p class="cmdnote">Packs group curated skills. Stack them or install with aos store install --pack &lt;name&gt;.</p></aside><section><p class="kicker">${l.length} of ${all.length} packs</p>${strip()}${l.length?`<div class="grid">${l.map(packCard).join('')}</div>`:'<div class="empty">No matches.</div>'}</section></div>`;
+  if(fq){const e=document.getElementById('q');e.focus();e.setSelectionRange(pos,pos)}
+  updateStackBar();
+}
+function buildStackCmd(){
+  const skills=[],packs=[];
+  for(const it of S.stack.values()){
+    if(it.kind==='pack') packs.push(it.name);
+    else skills.push(it.name);
+  }
+  const scopeFlag=S.scope==='project'?' --project':'';
+  const cmds=[];
+  if(skills.length) cmds.push(`aos store install ${skills.join(' ')}${scopeFlag}`);
+  for(const p of packs) cmds.push(`aos store install --pack ${p}${scopeFlag}`);
+  return cmds.join(' && ');
+}
+function updateStackBar(){
+  const bar=document.getElementById('stack-bar');
+  if(!bar)return;
+  const count=S.stack.size;
+  if(count===0){
+    bar.classList.remove('visible');
+    bar.replaceChildren();
+    return;
+  }
+  const cmd=buildStackCmd();
+  bar.innerHTML=`<div class="stack-info"><span class="stack-count"><strong>${count}</strong> ${count===1?'item':'items'} in stack</span></div><div class="stack-cmd-box"><code class="stack-cmd" title="Combined CLI command">${esc(cmd)}</code><button class="button secondary" data-a="copy-stack" aria-label="Copy CLI command">Copy</button></div><div class="stack-acts"><button class="button" data-a="dry-stack">Dry run</button><button class="button secondary" data-a="clear-stack" aria-label="Clear stack selection">Clear</button></div>`;
+  bar.classList.add('visible');
 }
 function render(){
   if(S.tab==='playbook')return renderPlaybooks();
+  if(S.tab==='pack')return renderPacks();
   const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,l=visible();
   document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><p class="kicker" style="margin:0">Active scope: ${S.scope==='global'?'Global (harness roots in ~)':'Project ('+esc(S.data.cwd)+')'}</p>${scopeToggle()}<input class="search" id="q" type="search" placeholder="Search ${S.tab}s" value="${esc(S.q)}" aria-label="Search">${tabs()}<div><p class="kicker">Category</p><div class="chips">${chip('cat','','all',base().length)}${uniq(i=>i.category).map(c=>chip('cat',c,c,count(i=>i.category,c))).join('')}</div></div><div><p class="kicker">Source</p><div class="chips">${chip('src','','all',base().length)}${uniq(i=>i.source).map(s=>chip('src',s,s,count(i=>i.source,s))).join('')}</div></div></aside><section><p class="kicker">${l.length} of ${base().length} ${S.tab}s</p>${strip()}${l.length?`<div class="grid">${l.map(card).join('')}</div>`:`<div class="empty">${S.sub==='installed'?'Nothing installed yet.':'No matches.'}</div>`}</section></div>`;
   if(fq){const q=document.getElementById('q');q.focus();q.setSelectionRange(pos,pos)}
-  arrive()
+  arrive();
+  updateStackBar();
 }
 // Lanes M1: the catalog cards arrive once, when the catalog data first lands; filtering re-renders stay still.
 function arrive(){if(S.arrived)return;const cards=document.querySelectorAll('#app .card');if(!cards.length)return;S.arrived=true;cards.forEach((c,i)=>{c.style.setProperty('--i',String(Math.min(i,8)));c.classList.add('aos-enter')})}
@@ -288,6 +344,15 @@ async function dryRun(k){
   }
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.inspect){e.preventDefault();closeInspector()}});
+document.addEventListener('change',e=>{
+  if(e.target.matches('input[data-a="check"]')){
+    const {kind,name}=e.target.dataset;
+    const k=kind+':'+name;
+    if(e.target.checked) S.stack.set(k,{kind,name});
+    else S.stack.delete(k);
+    updateStackBar();
+  }
+});
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-a]');if(!b||b.disabled)return;const a=b.dataset.a,v=b.dataset.v;
   if(a==='close')return dlg.close();
@@ -297,6 +362,51 @@ document.addEventListener('click',async e=>{
   if(a==='inspect-close')return closeInspector();
   if(a==='dry'){openInspector(v);return dryRun(v)}
   if(a==='dry-run')return dryRun(b.dataset.v);
+  if(a==='copy-stack'){
+    const cmd=buildStackCmd();
+    try{await navigator.clipboard.writeText(cmd)}catch{const ta=document.createElement('textarea');ta.value=cmd;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove()}
+    b.textContent='Copied!';
+    setTimeout(()=>{if(b)b.textContent='Copy'},2000);
+    return;
+  }
+  if(a==='clear-stack'){
+    S.stack.clear();
+    render();
+    return;
+  }
+  if(a==='dry-stack'){
+    b.disabled=true;b.textContent='Running...';
+    try{
+      const items=Array.from(S.stack.values());
+      const res=await fetch('api/preview-batch',{method:'POST',headers:{'content-type':'application/json','x-store-token':TOKEN},body:JSON.stringify({items,scope:S.scope})});
+      const d=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(d.error||('dry-run failed ('+res.status+')'));
+      const cmd=buildStackCmd();
+      const tgts=d.targets||[];
+      dlg.innerHTML=`<h2>Stack Dry Run</h2><p class="kicker">${scopeName()} scope — ${items.length} item(s) in stack — dry run only: nothing was written</p><p class="cmdnote">${tgts.length} target file(s) would be created or updated:</p><pre style="max-height:16rem;overflow:auto">${esc(tgts.length?tgts.join('\n'):'(no file writes needed)')}</pre><p class="cmdnote">To install this stack, run in your terminal:</p><pre style="max-height:6rem;overflow:auto">${esc(cmd)}</pre><div class="acts"><button class="button secondary" data-a="close">Close</button><button class="button" data-a="copy-cmd" data-cmd="${esc(cmd)}">Copy command</button></div>`;
+      dlg.showModal();
+    }catch(err){alert('Stack dry run failed: '+err.message)}
+    finally{b.disabled=false;b.textContent='Dry run'}
+    return;
+  }
+  if(a==='copy-cmd'){
+    const cmd=b.dataset.cmd||'';
+    try{await navigator.clipboard.writeText(cmd)}catch{const ta=document.createElement('textarea');ta.value=cmd;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove()}
+    b.textContent='Copied!';
+    setTimeout(()=>{if(b)b.textContent='Copy command'},2000);
+    return;
+  }
+  if(a==='dry-pack'){
+    b.disabled=true;b.textContent='Checking...';
+    try{
+      const d=await post('api/preview',{name:v,kind:'pack'});
+      const tgts=d.targets||[];
+      dlg.innerHTML=`<h2>Pack ${esc(v)}</h2><p class="kicker">${scopeName()} scope — dry run only: nothing was written</p><p class="cmdnote">${tgts.length} target file(s) would be created or updated:</p><pre style="max-height:16rem;overflow:auto">${esc(tgts.length?tgts.join('\n'):'(no files to write)')}</pre><div class="acts"><button class="button secondary" data-a="close">Close</button></div>`;
+      dlg.showModal();
+    }catch(err){alert('Dry run failed: '+err.message)}
+    finally{b.disabled=false;b.textContent='Dry run'}
+    return;
+  }
   if(a==='tab'){S.tab=v;S.cat='';S.src=''}
   else if(a==='sub'||a==='cat'||a==='src')S[a]=v;
   else if(a==='scope'){S.scope=v;await load()}
