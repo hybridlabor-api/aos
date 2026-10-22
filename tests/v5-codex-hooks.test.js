@@ -26,6 +26,19 @@ test('install writes the hooks to config.toml and creates no hooks.json', () => 
     assert.strictEqual(fs.existsSync(path.join(dir, 'hooks.json')), false);
 });
 
+test('an old startcycle-dispatch.mjs entry outside the block is migrated away; a foreign one with that name stays', () => {
+    const dir = path.join(mk(), '.codex');
+    fs.mkdirSync(dir, { recursive: true });
+    const old = JSON.stringify(`node "${path.join(dir, 'workflows', 'startcycle-dispatch.mjs')}"`);
+    const foreign = JSON.stringify('node "/mine/startcycle-dispatch.mjs"');
+    fs.writeFileSync(path.join(dir, 'config.toml'), `[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = "command"\ncommand = ${old}\n\n[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = "command"\ncommand = ${foreign}\n`);
+    mergeCodexTomlHooks(path.join(dir, 'config.toml'));
+    const toml = fs.readFileSync(path.join(dir, 'config.toml'), 'utf8');
+    assert.ok(!toml.includes(path.join(dir, 'workflows', 'startcycle-dispatch.mjs').replace(/\\/g, '\\\\')), toml);
+    assert.match(toml, /\/mine\/startcycle-dispatch\.mjs/);
+    assert.ok(toml.split('fabric-dispatch.mjs').length - 1 <= 1, 'at most one fabric-dispatch entry: the fresh AOS block');
+});
+
 test('AOS entries in hooks.json are migrated: foreign entries stay, the original is backed up', () => {
     const dir = path.join(mk(), '.codex');
     fs.mkdirSync(dir, { recursive: true });
