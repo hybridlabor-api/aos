@@ -577,12 +577,12 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 'SKILL.md must not claim only Claude Code has hooks');
         });
 
-        test('aos-doctor.mjs expects hook version 8 for memb-inject.mjs', () => {
+        test('aos-doctor.mjs expects hook version 9 for memb-inject.mjs', () => {
             assert.ok(fs.existsSync(DOCTOR_SRC), 'aos-doctor.mjs must exist');
             const doc = fs.readFileSync(DOCTOR_SRC, 'utf8');
 
-            assert.ok(/'memb-inject\.mjs':\s*8\b/.test(doc),
-                'EXPECTED_VERSION in aos-doctor.mjs must specify 8 for memb-inject.mjs');
+            assert.ok(/'memb-inject\.mjs':\s*9\b/.test(doc),
+                'EXPECTED_VERSION in aos-doctor.mjs must specify 9 for memb-inject.mjs');
         });
 
         test('aos-doctor.mjs inspects hook wiring across detected harnesses', () => {
