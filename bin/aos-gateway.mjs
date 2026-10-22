@@ -435,7 +435,9 @@ async function main() {
             for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
-        process.exit(s.running ? 0 : 1);
+        // No process.exit here: on Windows it aborted on a still-closing HTTP socket (libuv async.c assertion, exit 127).
+        process.exitCode = s.running ? 0 : 1;
+        return;
     }
     if (cmd === 'direct' || cmd === 'enable') {
         const home = os.homedir();
