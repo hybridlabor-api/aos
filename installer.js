@@ -635,7 +635,7 @@ function describeJsonParseError(filePath) {
     }
 }
 
-const { stripJsonc } = require('./lib/jsonc');
+const { stripJsonc, removeJsoncArrayEntries } = require('./lib/jsonc');
 
 function readJsoncFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
@@ -6236,10 +6236,27 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 
     if (!pluginInstalled) return data;
 
+    // OpenCode auto-loads plugins/bdb-aos.js. A plugin[] entry for the same file made OpenCode on Windows load it
+    // twice (two plugin_origins), so auto-load is the only mechanism: our entry goes, foreign entries stay.
+    const ourPluginFile = path.resolve(opencodeDir, 'plugins', 'bdb-aos.js');
+    const { pluginFile } = require('./lib/opencode-verify.js');
+    const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+    const isOurPluginEntry = (e) => { const abs = pluginFile(e, targetHome); return !!abs && fold(path.resolve(abs)) === fold(ourPluginFile); };
+
     const ownsWrite = data === null;
     let beforeSerialized = null;
     if (ownsWrite) {
         if (!configPath) return data;
+        // Textual removal first, so the comments in opencode.jsonc survive when nothing else changes.
+        try {
+            const src = readTextFile(configPath);
+            const text = removeJsoncArrayEntries(src, 'plugin', isOurPluginEntry);
+            if (text !== null && text !== src) {
+                backupOnce(configPath, () => { const b = `${configPath}.${timestamp}.bak`; fs.copyFileSync(configPath, b); return b; });
+                fs.writeFileSync(configPath, text, { mode: 0o600 });
+                log.step(`Removed the bdb-aos.js plugin[] entry from ${configPath}: OpenCode auto-loads plugins/bdb-aos.js`);
+            }
+        } catch (e) { logDebug(e, 'opencode plugin[] textual cleanup'); }
         const loaded = loadJsonConfig(configPath);
         if (loaded.state === 'invalid') { warnUnparseable(configPath, 'OpenCode plugin registration', loaded); return null; }
         const existing = loaded.data;
@@ -6249,15 +6266,9 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         data = existing;
     }
 
-    // Register the plugin.
     if (!Array.isArray(data.plugin)) data.plugin = [];
-    const pluginPathNormalized = path.join(opencodeDir, 'plugins', 'bdb-aos.js').replace(/\\/g, '/');
-    const alreadyRegistered = data.plugin.some(p => {
-        const str = typeof p === 'string' ? p : (Array.isArray(p) ? p[0] : '');
-        return str.includes('bdb-aos');
-    });
-    if (!alreadyRegistered) data.plugin.push(pluginPathNormalized);
-    data.plugin = dedupeAosPluginEntries(data.plugin);
+    const pluginPathNormalized = ourPluginFile.replace(/\\/g, '/');
+    data.plugin = dedupeAosPluginEntries(data.plugin.filter((p) => !isOurPluginEntry(p)));
     warnOnDuplicateAosPlugin(data.plugin, pluginPathNormalized);
     appendOptionalOpencodePlugins(data, configPath, optional);
 

@@ -41,8 +41,41 @@
 //      again would just burn turns until the platform cap force-overrides us
 //      with a warning. In that case: allow the stop and let the human see it.
 
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, fstatSync } from "node:fs";
 import { join } from "node:path";
+
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
 
 function allow() {
   process.exit(0);
@@ -53,10 +86,10 @@ function block(reason) {
   process.exit(2);
 }
 
-function main() {
+async function main() {
   let input;
   try {
-    input = JSON.parse(readFileSync(0, "utf8"));
+    input = JSON.parse((await readStdinBounded(2000)) ?? "");
   } catch {
     allow(); // can't read hook input -- fail open, this hook has no opinion without it
     return;
@@ -142,4 +175,4 @@ function main() {
   );
 }
 
-main();
+await main();

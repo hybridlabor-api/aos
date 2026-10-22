@@ -3,7 +3,7 @@
 //   node a2a-session.mjs                      -> Claude Code  (sidecar --mode live, drained by the a2a-inbox hook)
 //   node a2a-session.mjs --harness codex      -> Codex        (sidecar --mode codex --thread <session_id>; prints the
 //                                                              session's own peer name as SessionStart additionalContext)
-import { readFileSync, mkdirSync, appendFileSync, statSync, renameSync } from "node:fs";
+import { mkdirSync, appendFileSync, statSync, renameSync, readFileSync, fstatSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -27,9 +27,42 @@ const logErr = (m) => {
 process.on("uncaughtException", (e) => { logErr(`uncaught: ${e?.stack || e}`); process.exitCode = 0; });
 process.on("unhandledRejection", (e) => { logErr(`unhandled: ${e?.stack || e}`); process.exitCode = 0; });
 
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
+
 let input = {};
 try {
-  input = JSON.parse(finish ? process.env.AOS_A2A_HOOK_INPUT || "{}" : readFileSync(0, "utf8"));
+  input = JSON.parse(finish ? process.env.AOS_A2A_HOOK_INPUT || "{}" : ((await readStdinBounded(1500)) ?? ""));
 } catch { if (!finish) logErr("stdin: not valid JSON"); } // never log e.message: JSON.parse quotes a snippet of the payload
 const hookPpid = finish && Number(process.env.AOS_A2A_HOOK_PPID) > 1 ? Number(process.env.AOS_A2A_HOOK_PPID) : process.ppid;
 // Windows resolves the harness pid with a PowerShell walk (cold start, seconds): that part runs detached after the hook
