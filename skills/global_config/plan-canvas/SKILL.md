@@ -349,6 +349,17 @@ Point at elements in your own dev app and send the notes to the agent, without l
 aos-plan-canvas annotate http://localhost:5173
 ```
 
+Without editing the app, serve it through the proxy (foreground):
+
+```bash
+aos-plan-canvas annotate http://localhost:5173 --proxy [--proxy-port 4600]
+```
+
+- Prints a one-time login URL (`http://127.0.0.1:<port>/__aos/annotate/login?t=...`, valid 10 min). Open it once; the app then runs at `/` with the annotation overlay built in. Ctrl+C stops the proxy.
+- The overlay token lives 30 min and is bound to the proxy origin. Restart `annotate --proxy` to get a new one.
+- Use `--proxy-port` for a fixed port (1024-65535); otherwise a free port is chosen.
+- Apps whose CSP allows only `unsafe-inline` get `self` added instead of a nonce (see docs/annotation-proxy.md).
+
 - Prints `scriptTag` (add it to the app's `index.html`) and a `bookmarklet` (when you cannot edit the page). Press Alt+Shift+A in the app to annotate. In the app the element tool also captures clicks on buttons, links and labels; hold Alt to click through.
 - **Not tested in a real browser.** Alt+Shift+A, strict CSP, Private Network Access preflights and the click capture are covered only by logic tests against a DOM stub and by HTTP tests, never by a real browser run.
 - The `scriptTag` contains the live token and lives in `index.html`. Use a local, untracked injection (dev only) and never commit it; re-run `annotate` to rotate the token if it leaked.

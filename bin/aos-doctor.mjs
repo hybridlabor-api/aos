@@ -350,7 +350,7 @@ function checkHooks() {
   const claudeHooksDir = hc('hooks');
   const gateOff = req('../lib/v5/profile.js').readSettings(HOME, () => {}).gate === 'off';
   if (gateOff) add('hooks', 'go-gate: off (by setting)', true, 'go-gate, go-token, go-grant and graph-gate are not registered; turn on: aos, Settings, Go-gate', '');
-  const EXPECTED_VERSION = { 'memb-inject.mjs': 8 };
+  const EXPECTED_VERSION = { 'memb-inject.mjs': 9 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
     return m ? Number(m[1]) : null;

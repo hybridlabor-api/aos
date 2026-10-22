@@ -233,3 +233,78 @@ test('a stored selection of only retired names stays empty and reports them', ()
     assert.deepEqual(r.retired, ['old_server_gone']);
     assert.equal(selection.validStoredServers(['bad name!']), null, 'malformed names still count as corrupt');
 });
+
+test('parseMediaServers: all, none, list and aliases', () => {
+    assert.deepEqual(selection.parseMediaServers('all'), selection.SERVER_GROUPS.media);
+    assert.deepEqual(selection.parseMediaServers('none'), []);
+    assert.deepEqual(selection.parseMediaServers('grandma3,resolume'), ['bdb_grandma3_mcp', 'bdb_resolume_mcp']);
+    assert.deepEqual(selection.parseMediaServers('bdb_td_backup,ue'), ['bdb_td_backup', 'bdb_unreal_mcp']);
+    assert.deepEqual(selection.parseMediaServers(['td', 'bdb_unreal_mcp']), ['bdb_td_backup', 'bdb_unreal_mcp']);
+    assert.strictEqual(selection.parseMediaServers(undefined), null);
+    assert.strictEqual(selection.parseMediaServers(''), null);
+});
+
+test('mediaServersFor: with/without detection, forced list, and tier gating', () => {
+    const fsDetected = {
+        readdirSync: (d) => (d === '/Applications' ? ['Resolume Arena'] : (() => { throw new Error('ENOENT'); })()),
+        readFileSync: () => JSON.stringify({ tier: '1' }),
+    };
+    const fsEmpty = {
+        readdirSync: () => (() => { throw new Error('ENOENT'); })(),
+        readFileSync: () => JSON.stringify({ tier: '1' }),
+    };
+    const fsBasic = {
+        readdirSync: (d) => (d === '/Applications' ? ['Resolume Arena'] : []),
+        readFileSync: () => JSON.stringify({ tier: '2' }),
+    };
+
+    // With detection on Pro MEDIA
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsDetected }), ['bdb_resolume_mcp']);
+
+    // Without detection on Pro MEDIA (no apps found)
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsEmpty }), []);
+
+    // Forced list on Pro MEDIA (even without apps detected)
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsEmpty, forced: 'grandma3,unreal' }), ['bdb_grandma3_mcp', 'bdb_unreal_mcp']);
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsEmpty, forced: 'all' }), selection.SERVER_GROUPS.media);
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsEmpty, env: { AOS_MEDIA_SERVERS: 'td' } }), ['bdb_td_backup']);
+
+    // Basic tier (tier 2) returns [] regardless of detection or forced list
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsBasic }), []);
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsBasic, forced: 'all' }), []);
+});
+
+test('doctor: selected media server without app is a warning, not a gateway failure', () => {
+    const doctor = require('../lib/gateway/doctor.js');
+    const home = tmp();
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    // User selected grandma3 and resolume in gateway.servers
+    profile.writeSettings(home, { gateway: { servers: ['github', 'bdb_grandma3_mcp', 'bdb_resolume_mcp'] } });
+
+    // Mock detection: only resolume app exists, grandma3 is missing
+    const checks = doctor.gatewayChecks({
+        home,
+        files: [],
+        platform: 'darwin',
+        detectMediaServers: () => ['bdb_resolume_mcp'],
+        status: {
+            running: true,
+            port: 7790,
+            upstreams: [{ name: 'bdb_grandma3_mcp', degraded: true, error: 'connection refused' }],
+        },
+    });
+
+    // grandma3 reported as missing app warning
+    const gmaRow = checks.find((c) => c.name === 'media server bdb_grandma3_mcp');
+    assert.ok(gmaRow, 'media server bdb_grandma3_mcp check must exist');
+    assert.strictEqual(gmaRow.ok, false);
+    assert.strictEqual(gmaRow.detail, 'app not installed');
+    assert.strictEqual(gmaRow.warningOnly, true);
+
+    // resolume has app installed, so no warning for it
+    assert.strictEqual(checks.some((c) => c.name === 'media server bdb_resolume_mcp'), false);
+
+    // gateway upstreams check does NOT fail for grandma3
+    const upstreamsRow = checks.find((c) => c.name === 'gateway upstreams');
+    assert.strictEqual(upstreamsRow, undefined, 'gateway upstreams should not fail for missing media app');
+});

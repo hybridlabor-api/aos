@@ -45,3 +45,11 @@ test('advisor docs describe the call point 2 capture and the silent skip when ev
   assert.match(section, CAPTURE_SHAPE);
   assert.match(section, /AOS_EVOLVE=off/);
 });
+
+test('advisor docs describe the deny-list scope (B2 store-only)', () => {
+  const docs = read('docs', 'agent-models.md');
+  assert.match(docs, /deny-list check applies to store paths only/i);
+  assert.match(docs, /candidate diffs are NOT checked yet/i);
+  assert.match(docs, /planned for 5\.4\.2\+/i);
+});
+
