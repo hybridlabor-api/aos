@@ -166,6 +166,35 @@ if (platformsArgRaw) {
     }
 }
 
+const mediaServersArgRaw = process.argv.find(a => a === '--media-servers' || a.startsWith('--media-servers='));
+let MEDIA_SERVERS_ARG = null;
+if (mediaServersArgRaw) {
+    const rawValue = mediaServersArgRaw.startsWith('--media-servers=')
+        ? mediaServersArgRaw.slice('--media-servers='.length)
+        : (process.argv[process.argv.indexOf('--media-servers') + 1] && !process.argv[process.argv.indexOf('--media-servers') + 1].startsWith('-')
+            ? process.argv[process.argv.indexOf('--media-servers') + 1]
+            : null);
+    if (rawValue === null || rawValue.trim() === '') {
+        console.warn(`${colors.yellow} -> Ignoring '--media-servers' without a value. Use --media-servers=all|<list> or --media-servers=none.${colors.reset}`);
+    } else {
+        MEDIA_SERVERS_ARG = rawValue.trim();
+    }
+}
+const FORCED_MEDIA_SERVERS = MEDIA_SERVERS_ARG || process.env.AOS_MEDIA_SERVERS || null;
+
+const updatesArgRaw = process.argv.find(a => a === '--updates' || a.startsWith('--updates='));
+let UPDATES_ARG = null;
+if (updatesArgRaw) {
+    const rawValue = updatesArgRaw.startsWith('--updates=')
+        ? updatesArgRaw.slice('--updates='.length)
+        : (process.argv[process.argv.indexOf('--updates') + 1] && !process.argv[process.argv.indexOf('--updates') + 1].startsWith('-')
+            ? process.argv[process.argv.indexOf('--updates') + 1]
+            : null);
+    if (rawValue && ['notify', 'auto', 'off'].includes(rawValue.trim().toLowerCase())) {
+        UPDATES_ARG = rawValue.trim().toLowerCase();
+    }
+}
+
 // --profile, --no-hooks, --hooks-only, --without (docs/install-options.md). Parsed once; main() resolves them
 // against the persisted v5 settings before anything installs.
 const v5Profile = require('./lib/v5/profile');
@@ -8634,11 +8663,17 @@ async function main() {
             : PLATFORMS_ARG;
     }
 
+    let selectedMediaServers = null;
+    let updatesChoice = null;
     if (isAutoYes) {
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
         selectedMcps = await promptMcpSelection(tier);
+        const selection = require('./lib/gateway/selection');
+        selectedMediaServers = tier === '1'
+            ? (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : selection.detectMediaServers({ home: homeDir }))
+            : [];
     } else {
-        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, contextProfile: null, router: null };
+        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, selectedMediaServers: null, updates: null, contextProfile: null, router: null };
         const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
@@ -8652,6 +8687,33 @@ async function main() {
             });
             if (t === BACK) return 'back';
             ctx.tier = t;
+        };
+
+        const stepMediaServers = async (direction) => {
+            if (ctx.tier !== '1') return direction === 'back' ? 'back' : undefined;
+            const selection = require('./lib/gateway/selection');
+            const detected = selection.detectMediaServers({ home: homeDir });
+            const initial = ctx.selectedMediaServers !== null
+                ? ctx.selectedMediaServers
+                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : detected);
+            const MEDIA_SERVER_LABELS = {
+                bdb_grandma3_mcp: 'grandMA3 (bdb_grandma3_mcp)',
+                bdb_resolume_mcp: 'Resolume Arena/Avenue (bdb_resolume_mcp)',
+                bdb_td_backup: 'TouchDesigner (bdb_td_backup)',
+                bdb_unreal_mcp: 'Unreal Engine (bdb_unreal_mcp)',
+            };
+            const sel = await multiselectWithBack({
+                message: 'Media MCP servers (detected apps preselected, any can be ticked even without the app):',
+                options: selection.SERVER_GROUPS.media.map((name) => ({
+                    value: name,
+                    label: MEDIA_SERVER_LABELS[name] || name,
+                    hint: detected.includes(name) ? 'app detected' : 'app not detected',
+                })),
+                initialValues: initial,
+                allowEmpty: true,
+            });
+            if (sel === BACK) return 'back';
+            ctx.selectedMediaServers = sel;
         };
 
         const stepPlatforms = async () => {
@@ -8697,9 +8759,9 @@ async function main() {
             }
         };
 
-        const stepCustomPaths = async () => {
-            if (ctx.selectedPlatforms.includes('9')) return;
-            if (!ctx.selectedPlatforms.includes('4')) return;
+        const stepCustomPaths = async (direction) => {
+            if (ctx.selectedPlatforms.includes('9')) return direction === 'back' ? 'back' : undefined;
+            if (!ctx.selectedPlatforms.includes('4')) return direction === 'back' ? 'back' : undefined;
             log.info('Custom Path Configuration:');
             const skillDirRes = await textWithBack({ message: `Target directory for global skills [default: ${path.join(homeDir, '.bdb-skills')}] (< = back):`, placeholder: path.join(homeDir, '.bdb-skills') });
             if (skillDirRes === BACK) return 'back';
@@ -8804,11 +8866,35 @@ async function main() {
             ctx.creds = c;
         };
 
+        const stepUpdates = async (direction) => {
+            if (ctx.selectedPlatforms.includes('9')) return direction === 'back' ? 'back' : undefined;
+            if (v5Profile.hasConfiguredUpdates(homeDir)) return direction === 'back' ? 'back' : undefined;
+            const ans = await v5Profile.resolveUpdateMode({
+                currentSetting: undefined,
+                interactive: true,
+                selectFn: async () => {
+                    const v = await selectWithBack({
+                        message: 'Updates: notify (default) / auto / off',
+                        options: [
+                            { value: 'notify', label: 'notify (banner / line; default)', hint: 'Default' },
+                            { value: 'auto', label: 'auto (opt-in auto update in foreground)' },
+                            { value: 'off', label: 'off (disabled)' },
+                        ],
+                        initialValue: ctx.updates || UPDATES_ARG || 'notify',
+                    });
+                    return v === BACK ? 'back' : v;
+                },
+            });
+            if (ans === 'back') return 'back';
+            ctx.updates = ans;
+        };
+
         const stepReview = async () => {
             const specNow = ctx.selectedPlatforms.filter(p => p !== '0');
             if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push(defaultPlatformValue());
             const lines = [
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
+                ...(ctx.tier === '1' ? [`Media Servers: ${(ctx.selectedMediaServers || []).join(', ') || '(none)'}`] : []),
                 `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...skillPacks.tierPacks(ctx.tier)])].join(', ')}` : 'all skills (no pack selection stored)'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
@@ -8816,6 +8902,7 @@ async function main() {
                 `Context:       ${ctx.contextProfile || 'full'}`,
                 `Router:        ${ctx.router ? `custom (lead: ${ctx.router.mainHarness})` : 'shipped table'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
+                `Updates:       ${ctx.updates || (v5Profile.hasConfiguredUpdates(homeDir) ? v5Profile.readSettings(homeDir, () => {}).updates : 'notify')}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
                 `Dry Run:       ${DRY_RUN ? 'YES - nothing will be written' : 'no'}`
@@ -8833,14 +8920,33 @@ async function main() {
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepContextProfile, stepRouter, stepMcps, stepCredentials, stepReview];
+        const steps = [
+            stepTier,
+            stepMediaServers,
+            stepPlatforms,
+            stepMode,
+            stepCustomPaths,
+            stepMemory,
+            stepContextProfile,
+            stepRouter,
+            stepMcps,
+            stepCredentials,
+            stepUpdates,
+            stepReview,
+        ];
 
         let i = 0;
+        let dir = 'forward';
         while (i < steps.length) {
-            const res = await steps[i]();
+            const res = await steps[i](dir);
             if (res === 'exit') { outro('Cancelled.'); return; }
-            if (res === 'back') i = Math.max(0, i - 1);
-            else i++;
+            if (res === 'back') {
+                dir = 'back';
+                i = Math.max(0, i - 1);
+            } else {
+                dir = 'forward';
+                i++;
+            }
         }
 
         tier = ctx.tier;
@@ -8848,6 +8954,8 @@ async function main() {
         customPaths = ctx.customPaths;
         creds = ctx.creds;
         selectedMcps = ctx.selectedMcps;
+        selectedMediaServers = ctx.selectedMediaServers;
+        updatesChoice = ctx.updates;
         contextProfileChoice = ctx.contextProfile;
         routerChoice = ctx.router;
         wantsUniversal = ctx.selectedPlatforms.includes('0');
@@ -8884,6 +8992,12 @@ async function main() {
         const st = v5Profile.readSettings(homeDir, () => {});
         st.context = contextProfileChoice;
         v5Profile.writeSettings(homeDir, st);
+    }
+    if (!v5Profile.hasConfiguredUpdates(homeDir)) {
+        const chosenUpdate = updatesChoice || UPDATES_ARG || v5Profile.DEFAULT_UPDATES;
+        const st = v5Profile.readSettings(homeDir, () => {});
+        st.updates = chosenUpdate;
+        if (!DRY_RUN) v5Profile.writeSettings(homeDir, st);
     }
     if (!isAutoYes && !DRY_RUN && process.stdout.isTTY && process.stdin.isTTY) {
         const ok = await askConfirm({ message: 'Optional: allow read-only aos status/doctor commands without prompts (adds rules to ~/.claude/settings.json, backup first, undo with `aos allow aos-tools --remove`)?', initialValue: false });
@@ -8990,7 +9104,7 @@ async function main() {
     if (aosCliRequested) installAosCli();
 
     // After every harness MCP config write above: the gateway switches those entries, and a later write would undo it.
-    saveGatewaySelectedServers(tier);
+    saveGatewaySelectedServers(tier, null, homeDir, selectedMediaServers);
     for (const name of await require('./lib/v5/menu').installDefaults(module.exports, { ...v5Options(!isAutoYes), dryRun: DRY_RUN }, installExcluded)) {
         moduleFailures.push({ id: name, name, reason: 'see the step line above and ~/.aos/logs' });
     }
@@ -9015,7 +9129,7 @@ async function main() {
 // (Pro MEDIA adds the media/show-control group) and installed modules (Creator Extension adds
 // the creative group), unioned with what the user already runs today. An explicit choice saved
 // by a prior run or `aos-gateway add/remove` is kept; DRY_RUN writes nothing.
-function saveGatewaySelectedServers(tierValue = tier, installedList = null, home = homeDir) {
+function saveGatewaySelectedServers(tierValue = tier, installedList = null, home = homeDir, mediaChoice = null) {
     if (DRY_RUN) return false;
     try {
         const gwConfig = require('./lib/gateway/config');
@@ -9024,9 +9138,19 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const current = require('./lib/v5/pkg-gateway').currentShippedUpstreams(dir);
         const seen = require('./lib/gateway/doctor').directGatewayNames({ files: mcpSecrets.harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
         const st = v5Profile.readSettings(home, () => {});
+        const mediaServers = tierValue === '1'
+            ? (Array.isArray(mediaChoice)
+                ? mediaChoice
+                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : selection.detectMediaServers({ home })))
+            : false;
+        let baseStored = st.gateway && st.gateway.servers;
+        if (Array.isArray(baseStored) && (Array.isArray(mediaChoice) || FORCED_MEDIA_SERVERS)) {
+            const chosenMedia = Array.isArray(mediaServers) ? mediaServers : [];
+            baseStored = [...baseStored.filter(s => !selection.SERVER_GROUPS.media.includes(s)), ...chosenMedia];
+        }
         const r = selection.resolveGatewayServers({
-            settingServers: st.gateway && st.gateway.servers,
-            media: tierValue === '1' ? selection.detectMediaServers({ home }) : false,
+            settingServers: baseStored,
+            media: mediaServers,
             creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
             keep: [...current, ...seen],
         });
