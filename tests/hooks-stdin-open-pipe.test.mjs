@@ -17,7 +17,7 @@ function runOpenPipe(file, args, payload) {
   delete env.AOS_GATE_DEBUG;
   return new Promise((resolve) => {
     const started = Date.now();
-    const child = spawn(process.execPath, [join(HOOKS, file), ...args], { cwd: home, env, stdio: "pipe", windowsHide: true });
+    const child = spawn(process.execPath, [file.includes("/") ? join(HOOKS, "..", "..", file) : join(HOOKS, file), ...args], { cwd: home, env, stdio: "pipe", windowsHide: true });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => { stdout += d; });
@@ -46,6 +46,9 @@ const CASES = [
   ["aos-session-hint.mjs", [], { hook_event_name: "SessionStart", session_id: "pipe-test" }],
   ["trail-autostart.mjs", [], { tool_name: "Read", session_id: "pipe-test" }],
   ["memb-session-save.mjs", [], (home) => ({ session_id: "pipe-test", transcript_path: join(home, "missing.jsonl") })],
+  // Repo-relative: the Codex UserPromptSubmit workflow and the agy PreInvocation hook read stdin the same way.
+  [".claude/workflows/fabric-dispatch.mjs", [], { hook_event_name: "UserPromptSubmit", prompt: "hello", session_id: "pipe-test" }],
+  ["agy-hooks/a2a-inbox.mjs", [], { invocationNum: 1, conversationId: "pipe-test" }],
 ];
 
 for (const [file, args, payload] of CASES) {
