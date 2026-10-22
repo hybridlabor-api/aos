@@ -635,7 +635,7 @@ function describeJsonParseError(filePath) {
     }
 }
 
-const { stripJsonc, removeJsoncArrayEntries } = require('./lib/jsonc');
+const { stripJsonc } = require('./lib/jsonc');
 
 function readJsoncFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
@@ -6238,25 +6238,22 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 
     // OpenCode auto-loads plugins/bdb-aos.js. A plugin[] entry for the same file made OpenCode on Windows load it
     // twice (two plugin_origins), so auto-load is the only mechanism: our entry goes, foreign entries stay.
+    // Legacy ~/.opencode and %APPDATA%\opencode configs are cleaned too (a stale entry there was the second origin).
     const ourPluginFile = path.resolve(opencodeDir, 'plugins', 'bdb-aos.js');
-    const { pluginFile } = require('./lib/opencode-verify.js');
-    const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-    const isOurPluginEntry = (e) => { const abs = pluginFile(e, targetHome); return !!abs && fold(path.resolve(abs)) === fold(ourPluginFile); };
+    const ov = require('./lib/opencode-verify.js');
+    const isOurPluginEntry = (e) => ov.isAosPluginEntry(e, targetHome) || ov.pluginFile(e, targetHome) === ourPluginFile;
 
     const ownsWrite = data === null;
     let beforeSerialized = null;
+    if (ownsWrite && !configPath) return data;
+    // Textual removal first, so the comments in opencode.jsonc survive when nothing else changes. Never deletes a file.
+    try {
+        const backup = (file) => backupOnce(file, () => { const b = `${file}.${timestamp}.bak`; fs.copyFileSync(file, b); return b; });
+        for (const file of ov.removeAosPluginEntries(targetHome, { extraFiles: configPath ? [configPath] : [], dryRun: DRY_RUN, backup })) {
+            log.step(`Removed the bdb-aos.js plugin[] entry from ${file}: OpenCode auto-loads plugins/bdb-aos.js`);
+        }
+    } catch (e) { logDebug(e, 'opencode plugin[] textual cleanup'); }
     if (ownsWrite) {
-        if (!configPath) return data;
-        // Textual removal first, so the comments in opencode.jsonc survive when nothing else changes.
-        try {
-            const src = readTextFile(configPath);
-            const text = removeJsoncArrayEntries(src, 'plugin', isOurPluginEntry);
-            if (text !== null && text !== src) {
-                backupOnce(configPath, () => { const b = `${configPath}.${timestamp}.bak`; fs.copyFileSync(configPath, b); return b; });
-                fs.writeFileSync(configPath, text, { mode: 0o600 });
-                log.step(`Removed the bdb-aos.js plugin[] entry from ${configPath}: OpenCode auto-loads plugins/bdb-aos.js`);
-            }
-        } catch (e) { logDebug(e, 'opencode plugin[] textual cleanup'); }
         const loaded = loadJsonConfig(configPath);
         if (loaded.state === 'invalid') { warnUnparseable(configPath, 'OpenCode plugin registration', loaded); return null; }
         const existing = loaded.data;

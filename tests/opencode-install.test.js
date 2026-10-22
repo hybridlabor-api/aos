@@ -225,6 +225,20 @@ test('update removes our own bdb-aos.js plugin[] entry (auto-load only); foreign
   assert.ok(fs.existsSync(path.join(cfgDir, 'plugins', 'bdb-aos.js')), 'the auto-loaded plugin file stays');
 });
 
+test('update also drops a stale AOS entry from the legacy ~/.opencode config; the file, its comments and foreign entries stay', () => {
+  const home = tmp();
+  const legacyDir = path.join(home, '.opencode');
+  fs.mkdirSync(legacyDir, { recursive: true });
+  const legacy = path.join(legacyDir, 'opencode.jsonc');
+  const stale = path.join(legacyDir, 'plugins', 'bdb-aos.js').replace(/\\/g, '/');
+  fs.writeFileSync(legacy, `{\n  // legacy note\n  "plugin": [${JSON.stringify(stale)}, "opencode-foo@1.0.0"]\n}\n`);
+  const { out } = install(home);
+  const text = fs.readFileSync(legacy, 'utf8');
+  assert.match(text, /\/\/ legacy note/);
+  assert.deepEqual(JSON.parse(text.replace(/^\s*\/\/.*$/m, '')).plugin, ['opencode-foo@1.0.0']);
+  assert.match(out, /Removed the bdb-aos\.js plugin\[\] entry from .*\.opencode/);
+});
+
 test('a second spelling of the bdb-aos.js path is reported', () => {
   const home = tmp();
   const cfgDir = path.join(home, '.config', 'opencode');

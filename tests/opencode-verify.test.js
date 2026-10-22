@@ -83,6 +83,11 @@ describe('opencode-verify', () => {
         }
         put('.config/opencode/opencode.json', '{}');
         assert.equal(check(cli())['OpenCode plugin registration'].ok, true);
+        put('.opencode/opencode.jsonc', JSON.stringify({ plugin: [`${home}/.opencode/plugins/bdb-aos.js`] }));
+        const legacy = check(cli())['OpenCode plugin registration'];
+        assert.equal(legacy.ok, false, 'a stale entry in the legacy ~/.opencode config is a second origin');
+        assert.match(legacy.detail, /listed in ~\/\.opencode\/opencode\.jsonc/);
+        put('.opencode/opencode.jsonc', '{}');
         put('.config/opencode/opencode.jsonc', JSON.stringify({ plugin: ['/elsewhere/repo/.opencode/plugins/bdb-aos.js'] }));
         const r = check(cli())['OpenCode plugin registration'];
         assert.equal(r.ok, false);
