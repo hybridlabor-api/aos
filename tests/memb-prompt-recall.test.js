@@ -81,11 +81,11 @@ const FACT = 'Hybridlabor Global LLC runs the projects portfolio';
 const FAKE_HITS = (rows) => `#!/bin/sh\ncat >/dev/null\ncat <<'EOF'\n${JSON.stringify(rows)}\nEOF\n`;
 const SEEDED_ROWS = [{ id: 'fact-1', payload: { category: 'godmode', memory: FACT } }];
 
-test('promptRecallMode defaults to semantic, honours settings, ignores unknown values', async () => {
+test('promptRecallMode defaults to fulltext (semantic is opt-in), honours settings, ignores unknown values', async () => {
   const { promptRecallMode } = await load();
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'memb-mode-'));
   try {
-    assert.strictEqual(promptRecallMode(home), 'semantic');
+    assert.strictEqual(promptRecallMode(home), 'fulltext');
     fs.mkdirSync(path.join(home, '.aos'));
     const f = path.join(home, '.aos', 'v5-settings.json');
     fs.writeFileSync(f, JSON.stringify({ memory: { promptRecall: 'fulltext' } }));
@@ -93,6 +93,8 @@ test('promptRecallMode defaults to semantic, honours settings, ignores unknown v
     fs.writeFileSync(f, JSON.stringify({ memory: { promptRecall: 'off' } }));
     assert.strictEqual(promptRecallMode(home), 'off');
     fs.writeFileSync(f, JSON.stringify({ memory: { promptRecall: 'everything' } }));
+    assert.strictEqual(promptRecallMode(home), 'fulltext');
+    fs.writeFileSync(f, JSON.stringify({ memory: { promptRecall: 'semantic' } }));
     assert.strictEqual(promptRecallMode(home), 'semantic');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
@@ -106,27 +108,55 @@ test('isTrivialPrompt skips short prompts and slash commands only', async () => 
   assert.ok(!isTrivialPrompt('what do you know about company X'));
 });
 
-test('semanticRecall keeps only hits at or above the threshold and passes the budget as timeout', async () => {
+test('semanticRecall keeps only hits at or above the threshold and passes the budget', async () => {
   const { semanticRecall, SEMANTIC_BUDGET_MS } = await load();
   let seen;
-  const run = (cmd, args, opts) => {
+  const run = async (cmd, args, opts) => {
     seen = { cmd, args, opts };
     return { status: 0, stdout: JSON.stringify([{ memory: 'strong', score: 0.9 }, { memory: 'weak', score: 0.2 }, { memory: '', score: 0.99 }]) };
   };
-  const hits = semanticRecall({ prompt: 'colors please', python: '/py', helper: '/h.py', memb: '/m', run });
+  const hits = await semanticRecall({ prompt: 'colors please', python: '/py', helper: '/h.py', memb: '/m', user: 'tester', run });
   assert.deepStrictEqual(hits.map((h) => h.memory), ['strong']);
-  assert.strictEqual(seen.opts.timeout, SEMANTIC_BUDGET_MS, 'the hard budget is the spawn timeout');
+  assert.strictEqual(seen.opts.budgetMs, SEMANTIC_BUDGET_MS, 'the hard budget is passed to the runner');
   assert.strictEqual(SEMANTIC_BUDGET_MS, 400);
   assert.strictEqual(seen.opts.input, 'colors please');
+  assert.deepStrictEqual(seen.args.slice(2), ['/m', 'tester'], 'user id is passed to the helper');
 });
 
 test('semanticRecall skips silently on timeout, non-zero exit, bad output or a missing engine', async () => {
   const { semanticRecall } = await load();
   const base = { prompt: 'colors please', python: '/py', helper: '/h.py', memb: '/m' };
-  assert.deepStrictEqual(semanticRecall({ ...base, run: () => ({ status: null, error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }) }) }), []);
-  assert.deepStrictEqual(semanticRecall({ ...base, run: () => ({ status: 1, stdout: '' }) }), []);
-  assert.deepStrictEqual(semanticRecall({ ...base, run: () => ({ status: 0, stdout: 'not json' }) }), []);
-  assert.deepStrictEqual(semanticRecall({ ...base, python: null, run: () => assert.fail('no engine, no spawn') }), []);
+  assert.deepStrictEqual(await semanticRecall({ ...base, run: async () => ({ status: null, timedOut: true }) }), []);
+  assert.deepStrictEqual(await semanticRecall({ ...base, run: async () => ({ status: 1, stdout: '' }) }), []);
+  assert.deepStrictEqual(await semanticRecall({ ...base, run: async () => ({ status: 0, stdout: 'not json' }) }), []);
+  assert.deepStrictEqual(await semanticRecall({ ...base, python: null, run: () => assert.fail('no engine, no spawn') }), []);
+});
+
+test('scopeSemanticHits drops foreign users, foreign projects and unscoped hits', async () => {
+  const { scopeSemanticHits } = await load();
+  const scope = { userIds: ['tester', 'bdb_developer'], projectIds: ['shop'], terms: ['colors'] };
+  const hits = [
+    { memory: 'mine in shop', score: 0.9, user_id: 'tester', project_id: 'shop' },
+    { memory: 'foreign user', score: 0.9, user_id: 'someone-else', project_id: 'shop' },
+    { memory: 'other project', score: 0.9, user_id: 'tester', project_id: 'billing' },
+    { memory: 'no scope at all', score: 0.9 },
+    { memory: 'group godmode identity', score: 0.9, user_id: 'bdb_developer', category: 'godmode' },
+    { memory: 'global, unrelated category', score: 0.9, user_id: 'tester', category: 'mail' },
+  ];
+  assert.deepStrictEqual(scopeSemanticHits(hits, scope).map((h) => h.memory), ['mine in shop', 'group godmode identity']);
+});
+
+test('runBounded resolves at the budget even when a grandchild keeps the pipe open', { skip: !POSIX && 'process groups are POSIX-only' }, async (t) => {
+  const { runBounded } = await load();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'memb-grand-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const script = path.join(dir, 'slow.sh');
+  fs.writeFileSync(script, '#!/bin/sh\ncat >/dev/null\nsleep 30 &\necho done\nexit 0\n', { mode: 0o755 });
+  const started = Date.now();
+  const r = await runBounded(script, [], { input: 'x', budgetMs: 300 });
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 2000, `must not wait for the grandchild (took ${elapsed} ms)`);
+  assert.strictEqual(r.timedOut, true);
 });
 
 test('membSearchTarget finds the venv python and run.py, null when memB is absent', async () => {
@@ -152,27 +182,37 @@ test('SessionStart injects the memB rule exactly once; the off switch removes it
   assert.ok(!offStart.context.includes(RULE_TEXT), 'off: no rule');
 });
 
-test('semantic hits are added, below-threshold hits dropped, duplicates of full-text hits not repeated', { skip: (!DatabaseSync || !POSIX) && 'needs node:sqlite and a POSIX shell' }, (t) => {
+test('semantic hits are added, below-threshold and foreign hits dropped, duplicates of full-text hits not repeated', { skip: (!DatabaseSync || !POSIX) && 'needs node:sqlite and a POSIX shell' }, (t) => {
   const fake = FAKE_HITS([
-    { memory: FACT, score: 0.95 },
-    { memory: 'Brand colors are teal and sand', score: 0.8 },
-    { memory: 'weakly related note', score: 0.1 },
+    { memory: FACT, score: 0.95, user_id: 'tester', category: 'godmode' },
+    { memory: 'Brand colors are teal and sand', score: 0.8, user_id: 'tester', category: 'godmode' },
+    { memory: 'weakly related note', score: 0.1, user_id: 'tester', category: 'godmode' },
+    { memory: 'Foreign user colors secret', score: 0.9, user_id: 'mallory', category: 'godmode' },
   ]);
-  const home = makeHome(t, { fakePython: fake, rows: SEEDED_ROWS });
+  const home = makeHome(t, { fakePython: fake, settings: { memory: { promptRecall: 'semantic' } }, rows: SEEDED_ROWS });
   const res = runHook(home, { hook_event_name: 'UserPromptSubmit', prompt: PROMPT, cwd: home });
   assert.strictEqual(res.status, 0, res.stderr);
   assert.ok(res.context.includes('- Relevant memory: Brand colors are teal and sand'), res.context);
   assert.ok(!res.context.includes('weakly related note'), 'below threshold stays out');
+  assert.ok(!res.context.includes('Foreign user colors secret'), 'foreign user stays out');
   assert.strictEqual(res.context.split(FACT).length - 1, 1, 'dedupe: the full-text hit is not repeated by semantic recall');
 });
 
 test('a slow memB is cut at the budget and the prompt still gets its full-text hits', { skip: (!DatabaseSync || !POSIX) && 'needs node:sqlite and a POSIX shell' }, (t) => {
-  const home = makeHome(t, { fakePython: '#!/bin/sh\ncat >/dev/null\nexec sleep 5\n', rows: SEEDED_ROWS });
+  const home = makeHome(t, { fakePython: '#!/bin/sh\ncat >/dev/null\nexec sleep 5\n', settings: { memory: { promptRecall: 'semantic' } }, rows: SEEDED_ROWS });
   const res = runHook(home, { hook_event_name: 'UserPromptSubmit', prompt: PROMPT, cwd: home });
   assert.strictEqual(res.status, 0, res.stderr);
   assert.ok(res.elapsed < 4000, `hook must not wait for the slow engine (took ${res.elapsed} ms)`);
   assert.ok(!res.context.includes('Relevant memory:'), 'timeout: nothing semantic injected');
   assert.ok(res.context.includes(`Domain memory: ${FACT}`), 'full-text recall still runs');
+});
+
+test('default (no setting) is fulltext: keyword recall only, the engine is never started', { skip: (!DatabaseSync || !POSIX) && 'needs node:sqlite and a POSIX shell' }, (t) => {
+  const fake = FAKE_HITS([{ memory: 'Brand colors are teal and sand', score: 0.8, user_id: 'tester', category: 'godmode' }]);
+  const home = makeHome(t, { fakePython: fake, rows: SEEDED_ROWS });
+  const res = runHook(home, { hook_event_name: 'UserPromptSubmit', prompt: PROMPT, cwd: home });
+  assert.ok(!res.context.includes('Relevant memory:'), 'default: no semantic lines');
+  assert.ok(res.context.includes(`Domain memory: ${FACT}`), 'default: keyword recall on');
 });
 
 test('fulltext keeps keyword recall but never calls the engine; off disables both', { skip: (!DatabaseSync || !POSIX) && 'needs node:sqlite and a POSIX shell' }, (t) => {
@@ -188,7 +228,7 @@ test('fulltext keeps keyword recall but never calls the engine; off disables bot
 });
 
 test('trivial prompts never reach the engine', { skip: (!DatabaseSync || !POSIX) && 'needs node:sqlite and a POSIX shell' }, (t) => {
-  const home = makeHome(t, { fakePython: FAKE_HITS([{ memory: 'Brand colors are teal and sand', score: 0.8 }]), rows: SEEDED_ROWS });
+  const home = makeHome(t, { fakePython: FAKE_HITS([{ memory: 'Brand colors are teal and sand', score: 0.8, user_id: 'tester' }]), settings: { memory: { promptRecall: 'semantic' } }, rows: SEEDED_ROWS });
   const res = runHook(home, { hook_event_name: 'UserPromptSubmit', prompt: '/clear', cwd: home });
   assert.ok(!res.context.includes('Relevant memory:'));
 });

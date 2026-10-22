@@ -23,11 +23,12 @@
  * identity on the first invocation of a conversation (cached per
  * conversationId); later invocations recall FTS hits only.
  *
- * Per-prompt semantic recall (memory.promptRecall = "semantic", the default):
- * each non-trivial prompt also asks memB's own vector + BM25 search through
- * memb-recall.py, under a 400 ms budget, keeps hits above a relevance
- * threshold, and adds at most 5 lines / ~600 tokens. "fulltext" keeps only the
- * keyword recall; "off" disables per-prompt recall entirely.
+ * Per-prompt semantic recall (memory.promptRecall = "semantic", opt-in; the
+ * default is "fulltext"): each non-trivial prompt also asks memB's own vector +
+ * BM25 search through memb-recall.py, under a 400 ms budget, keeps scoped hits
+ * above a relevance threshold, and adds at most 5 lines / ~600 tokens. It needs
+ * a warm memB process; a cold ONNX start exceeds the budget and is skipped.
+ * "fulltext" keeps only the keyword recall; "off" disables per-prompt recall.
  *
  * Fails open: any error exits 0 silently.
  */
@@ -36,7 +37,7 @@ import { readFileSync, existsSync, realpathSync, mkdirSync, writeFileSync } from
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 
 const COLLECTION = 'bdb_agent_memory';
 const DEFAULT_GROUP_IDS = 'bdb_developer';
@@ -44,8 +45,9 @@ const PROJECT_ROW_CAP = 5;
 const ROW_CHARS = 180;
 const failOpen = () => process.exit(0);
 
-// Per-prompt semantic recall limits. The score threshold is a conservative
-// starting point; calibrate it against real memB scores before relying on it.
+// Per-prompt semantic recall limits. memB's search_memory (memB run.py:178, :184)
+// returns dense cosine-style scores in ~0..1, and BM25 scores boosted x1.25 and capped
+// at 1.0 when both legs match. 0.45 is a starting point; no measured calibration exists yet.
 export const PROMPT_RECALL_MODES = ['semantic', 'fulltext', 'off'];
 export const SEMANTIC_BUDGET_MS = 400;
 export const SEMANTIC_MIN_SCORE = 0.45;
@@ -56,13 +58,13 @@ const SEMANTIC_LINE_CHARS = 240;
 // Standing rule, injected once at SessionStart next to the write hint (shared by every harness that reuses this block).
 export const MEMB_RECALL_RULE = '- For questions about projects, people, the company, earlier decisions or preferences: query memB first (memb search / the memB MCP tool), then answer.';
 
-// memory.promptRecall from ~/.aos/v5-settings.json; anything unknown means the default "semantic".
+// memory.promptRecall from ~/.aos/v5-settings.json; anything unknown means the default "fulltext".
 export function promptRecallMode(home = os.homedir()) {
   try {
     const v = JSON.parse(readFileSync(path.join(home, '.aos', 'v5-settings.json'), 'utf8'))?.memory?.promptRecall;
     if (PROMPT_RECALL_MODES.includes(v)) return v;
   } catch {}
-  return 'semantic';
+  return 'fulltext';
 }
 
 // Prompts too short or too structural to recall anything useful for (slash commands included).
@@ -85,16 +87,66 @@ export function membSearchTarget({ home = os.homedir(), env = process.env, exist
   return null;
 }
 
-// memB semantic hits for one prompt: [{ memory, score }] above minScore. A timeout, a missing
-// engine, a non-zero exit or unparsable output all yield [] (no error, no injection).
-export function semanticRecall({ prompt, python, helper, memb, run = spawnSync, budgetMs = SEMANTIC_BUDGET_MS, minScore = SEMANTIC_MIN_SCORE } = {}) {
+// Runs the helper as a child in its own process group (POSIX) and resolves
+// after `budgetMs` even if a grandchild keeps stdout open: the whole group is
+// killed on the timer (POSIX) or the tree via taskkill /T (Windows).
+export function runBounded(cmd, args, { input = '', budgetMs = SEMANTIC_BUDGET_MS, env = process.env } = {}) {
+  return new Promise((resolve) => {
+    const win = process.platform === 'win32';
+    let out = '';
+    let settled = false;
+    let timer = null;
+    let child;
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    try {
+      child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true, detached: !win, env });
+    } catch {
+      return finish({ status: null });
+    }
+    const killTree = () => {
+      try {
+        if (win) {
+          spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true }).on('error', () => {});
+        } else {
+          process.kill(-child.pid, 'SIGKILL');
+        }
+      } catch {
+        try { child.kill('SIGKILL'); } catch {}
+      }
+    };
+    timer = setTimeout(() => { killTree(); finish({ status: null, timedOut: true }); }, budgetMs);
+    child.stdout.on('data', (d) => { out += d; });
+    child.stdin.on('error', () => {});
+    child.on('error', () => finish({ status: null }));
+    child.on('close', (code) => finish({ status: code, stdout: out }));
+    child.stdin.end(input);
+  });
+}
+
+// Keeps only semantic hits this user and project may see. A hit without a user is dropped
+// (no scope metadata). A project hit must name one of this project's ids; a global hit must
+// pass the same globalRowRelevant gate as the full-text path.
+export function scopeSemanticHits(hits, { userIds = [], projectIds = [], terms = [] } = {}) {
+  return hits.filter((h) => {
+    if (!h.user_id || !userIds.includes(h.user_id)) return false;
+    if (h.project_id) return projectIds.includes(h.project_id);
+    return globalRowRelevant({ cat: h.category || '', text: h.memory, ids: projectIds, terms });
+  });
+}
+
+// memB semantic hits for one prompt: [{ memory, score, user_id, project_id, category }] above minScore.
+// A timeout, a missing engine, a non-zero exit or unparsable output all yield [] (no error, no injection).
+export async function semanticRecall({ prompt, python, helper, memb, user = '', run = runBounded, budgetMs = SEMANTIC_BUDGET_MS, minScore = SEMANTIC_MIN_SCORE } = {}) {
   if (!python || !helper || !memb) return [];
   try {
-    const r = run(python, [helper, String(SEMANTIC_MAX_HITS), memb], {
-      input: String(prompt).slice(0, 500), encoding: 'utf8', timeout: budgetMs,
-      stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true,
-    });
-    if (!r || r.error || r.status !== 0 || !r.stdout) return [];
+    const args = [helper, String(SEMANTIC_MAX_HITS), memb, ...(user ? [user] : [])];
+    const r = await run(python, args, { input: String(prompt).slice(0, 500), budgetMs });
+    if (!r || r.status !== 0 || !r.stdout) return [];
     const list = JSON.parse(String(r.stdout));
     if (!Array.isArray(list)) return [];
     return list.filter((h) => h && typeof h.memory === 'string' && h.memory && Number(h.score) >= minScore);
@@ -503,7 +555,8 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     //     SEMANTIC_MAX_HITS lines and SEMANTIC_TOKEN_CHARS characters.
     if (promptSubmit && recallMode === 'semantic' && !isTrivialPrompt(prompt)) {
       const target = membSearchTarget();
-      const hits = target ? semanticRecall({ prompt, ...target }) : [];
+      const found = target ? await semanticRecall({ prompt, user: candidateUsers[0], ...target }) : [];
+      const hits = scopeSemanticHits(found, { userIds: candidateUsers, projectIds: candidateProjectIds, terms: pickTerms(prompt) });
       let chars = 0;
       let taken = 0;
       for (const h of hits) {
