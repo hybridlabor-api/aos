@@ -77,32 +77,60 @@ logs; it lasts for that session, for at most 24 hours.
 
 ## Unattended runs in a sandbox
 
-To run /factory unattended (with no human at the keyboard) while keeping the host
-machine completely safe, runs can execute with the go-gate off, but ONLY inside
-a sandbox. Outside a sandbox, the normal gate rules stay in effect.
+With no human at the keyboard, nobody can type `gogate off` or GO. For that case
+`bin/aos-factory.mjs --unattended` runs the factory inside a container, where the
+gate is off, and brings only commits back. The host gate is not changed and has no
+sandbox shortcut: nothing a host session writes or exports loosens it.
 
-When invoked with `factory --unattended` (or `/factory --unattended`), AOS starts
-the run through the platform sandbox adapter. If no sandbox runtime is available,
-AOS refuses unattended mode with a clear error message and instructions on how to install one.
+```sh
+node <aos>/bin/aos-factory.mjs --unattended --image <image> --env ANTHROPIC_API_KEY -- claude -p "/factory"
+```
 
-### Supported sandbox runtimes
+The image must contain `sh`, `node`, `git`, the agent CLI and the AOS hooks for
+that agent. AOS ships no image.
 
-| Operating System | Primary Runtime | Fallback Runtime | Installation / Prerequisite |
-|---|---|---|---|
-| macOS | Docker | Podman | Docker Desktop (`https://www.docker.com/products/docker-desktop`) or `brew install podman` |
-| Linux | Docker | Podman | `apt-get install docker.io` / `dnf install docker` or `apt-get install podman` / `dnf install podman` |
-| Windows 10+ | WSL2 | Docker | `wsl --install` or Docker Desktop (`https://www.docker.com/products/docker-desktop`) |
+**Isolated:**
 
-### Sandbox detector & safety guarantees
+- The container sees one host path: a fresh `git clone --no-local --no-hardlinks`
+  of the current branch in a temp dir. Not the worktree, its `.git`, `$HOME`,
+  `~/.ssh`, `~/.gitconfig`, `~/.aos`, the Docker socket or any credential file.
+- The clone has no remotes, so a push fails at once.
+- The container has its own HOME. Before the command starts, AOS writes the `off`
+  gate profile (the file `aos-gate profile off` writes) into that HOME only.
+  Hard blocks and the never-grantable set still apply, because they are part of
+  the gate installed in the image.
+- `--rm`, `--cap-drop ALL`, `no-new-privileges`, never `--privileged`. The
+  image's own user is used; prefer an image with a non-root `USER`.
+- A repo that is your home directory or one of its parents is refused.
 
-1. **Anti-spoof detector:** The gate treats a session as sandboxed only when AOS
-   itself started it inside a container or VM (Docker/Podman container with `/.dockerenv`
-   or `/run/.containerenv` AND an AOS sandbox marker env `AOS_SANDBOX_MARKER` set by the
-   launcher; or WSL2 VM via the `wsl2` adapter with `AOS_SANDBOX_MARKER`). An environment
-   variable alone on the host machine never counts.
-2. **Gate mode inside the sandbox:** Inside the sandbox, the gate automatically runs
-   in `off` mode. Hard blocks (deleting the home directory or filesystem root) and the
-   never-grantable set (`aos-gate grant|work|profile`) stay strictly blocked.
-3. **Leaving the sandbox:** The result leaves the sandbox only as a git branch or
-   patch. External release writes (`git push`, `npm publish`, `npm version`, `gh pr merge`,
-   `gh release create`) still require the human's literal GO on the host machine.
+**Not isolated:**
+
+- The network is open. Only the variables you name with `--env` enter, so pass
+  the agent's API key and nothing else (no GitHub or npm tokens).
+- Uncommitted changes on the host are not part of the run; commit first.
+- The `off` profile expires after 2 hours (the profile maximum); after that the
+  gate inside falls back to strict and blocks guarded commands.
+
+| OS | Accepted runtime | Refused |
+| --- | --- | --- |
+| macOS | Docker Desktop or Podman (machine running) | no runtime or daemon down |
+| Linux | Docker Engine or Podman | no runtime or daemon down |
+| Windows 10+ | Docker Desktop | WSL2 alone (it mounts the Windows drives under `/mnt` and can start Windows programs), Podman |
+
+Without a reachable runtime the command refuses with install hints and exits
+non-zero. Paths with a comma, quote or newline are refused because they break
+the `--mount` argument; Windows paths are passed as `C:/...`.
+
+**Results:** when the container exits, the new commits are exported to
+`~/.aos/factory/runs/<id>/` as `patches/*.patch`, `run.bundle` and `run.json`,
+and the temp clone is removed. Review and apply on the host:
+
+```sh
+git fetch ~/.aos/factory/runs/<id>/run.bundle HEAD:factory/<id>
+git log -p factory/<id>          # review
+git am ~/.aos/factory/runs/<id>/patches/*.patch   # or apply as patches
+```
+
+A non-zero container exit makes `aos-factory` exit non-zero; commits made before
+the failure are still exported. Push, merge and publish happen on the host and
+need your GO there.

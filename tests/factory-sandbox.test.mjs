@@ -1,262 +1,133 @@
-import { test, describe } from 'node:test';
-import assert from 'node:assert/strict';
-import { isSandboxed, resolveFactorySandbox, runFactoryUnattended } from '../lib/sandbox.mjs';
-import { check } from '../bin/go-check.mjs';
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildRunArgv, checkRepoPath, detectRuntime, main, mountSource } from "../bin/aos-factory.mjs";
 
-const has = (...bins) => (b) => (bins.includes(b) ? `/bin/${b}` : null);
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const sh = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "utf8", ...opts });
+const whichOf = (...bins) => (b) => (bins.includes(b) ? `/fake/${b}` : null);
+const infoOk = (cmd, args, opts) => (args[0] === "info" ? { status: 0 } : sh(cmd, args, opts));
 
-describe('factory sandbox detector (isSandboxed)', () => {
-  test('returns true when inside Docker container with marker', () => {
-    const ok = isSandboxed({
-      env: { AOS_SANDBOX_MARKER: '1' },
-      platform: 'linux',
-      existsSync: (p) => p === '/.dockerenv',
-    });
-    assert.equal(ok, true);
-  });
-
-  test('returns true when inside Podman container with marker', () => {
-    const ok = isSandboxed({
-      env: { AOS_SANDBOX_MARKER: 'session-xyz' },
-      platform: 'linux',
-      existsSync: (p) => p === '/run/.containerenv',
-    });
-    assert.equal(ok, true);
-  });
-
-  test('returns true when inside WSL2 with marker via WSL_DISTRO_NAME', () => {
-    const ok = isSandboxed({
-      env: { AOS_SANDBOX_MARKER: '1', WSL_DISTRO_NAME: 'Ubuntu-22.04' },
-      platform: 'linux',
-      existsSync: () => false,
-    });
-    assert.equal(ok, true);
-  });
-
-  test('returns true when inside WSL2 with marker via WSL_INTEROP', () => {
-    const ok = isSandboxed({
-      env: { AOS_SANDBOX_MARKER: '1', WSL_INTEROP: '/run/WSL/123' },
-      platform: 'linux',
-      existsSync: () => false,
-    });
-    assert.equal(ok, true);
-  });
-
-  test('returns true when inside WSL2 with marker via /proc/version', () => {
-    const ok = isSandboxed({
-      env: { AOS_SANDBOX_MARKER: '1' },
-      platform: 'linux',
-      existsSync: (p) => p === '/proc/version',
-      readFileSync: () => 'Linux version 5.15.153.1-microsoft-standard-WSL2 (gcc) #1 SMP',
-    });
-    assert.equal(ok, true);
-  });
-
-  test('returns false when marker is absent in container or VM', () => {
-    assert.equal(isSandboxed({ env: {}, existsSync: (p) => p === '/.dockerenv' }), false);
-    assert.equal(isSandboxed({ env: {}, existsSync: (p) => p === '/run/.containerenv' }), false);
-    assert.equal(isSandboxed({ env: { WSL_DISTRO_NAME: 'Ubuntu' }, platform: 'linux', existsSync: () => false }), false);
-  });
-
-  test('env-only on host must NEVER count as sandboxed', () => {
-    // macOS host with marker set in env
-    assert.equal(
-      isSandboxed({
-        env: { AOS_SANDBOX_MARKER: '1' },
-        platform: 'darwin',
-        existsSync: () => false,
-      }),
-      false,
-      'marker on macOS host must not count',
-    );
-
-    // Windows host with marker set in env
-    assert.equal(
-      isSandboxed({
-        env: { AOS_SANDBOX_MARKER: '1' },
-        platform: 'win32',
-        existsSync: () => false,
-      }),
-      false,
-      'marker on Windows host must not count',
-    );
-
-    // Standard Linux host with marker set in env (not container, not WSL2)
-    assert.equal(
-      isSandboxed({
-        env: { AOS_SANDBOX_MARKER: '1' },
-        platform: 'linux',
-        existsSync: (p) => p === '/proc/version',
-        readFileSync: () => 'Linux version 6.8.0-generic (buildd@canonical) #45-Ubuntu SMP',
-      }),
-      false,
-      'marker on standard Linux host must not count',
-    );
-  });
-
-  test('returns false when neither marker nor container is present', () => {
-    assert.equal(isSandboxed({ env: {}, platform: 'darwin', existsSync: () => false }), false);
-  });
+test("refuses without a container runtime, with install hints", () => {
+  for (const platform of ["darwin", "linux", "win32"]) {
+    const r = detectRuntime({ platform, which: whichOf(), run: () => ({ status: 1 }) });
+    assert.equal(r.ok, false);
+    assert.match(r.message, /install/i);
+  }
+  const errs = [];
+  const code = main(["--unattended", "--image", "img", "--", "true"], { platform: "linux", which: whichOf(), err: (m) => errs.push(m), log: () => {} });
+  assert.notEqual(code, 0);
+  assert.match(errs.join("\n"), /refused/);
 });
 
-describe('factory sandbox runtime resolution (resolveFactorySandbox)', () => {
-  describe('macOS platform', () => {
-    test('selects docker when available', () => {
-      const res = resolveFactorySandbox({ platform: 'darwin', which: has('docker') });
-      assert.equal(res.ok, true);
-      assert.equal(res.runtime, 'docker');
-      assert.equal(res.bin, '/bin/docker');
-      const cmd = res.wrap(['factory', 'run'], { cwd: '/workspace' });
-      assert.deepEqual(cmd, [
-        '/bin/docker',
-        'run',
-        '-i',
-        '--rm',
-        '-v',
-        '/workspace:/workspace',
-        '-w',
-        '/workspace',
-        '-e',
-        'AOS_SANDBOX_MARKER=1',
-        'node:24-bookworm',
-        'factory',
-        'run',
-      ]);
-    });
-
-    test('selects podman when docker is missing', () => {
-      const res = resolveFactorySandbox({ platform: 'darwin', which: has('podman') });
-      assert.equal(res.ok, true);
-      assert.equal(res.runtime, 'podman');
-      assert.equal(res.bin, '/bin/podman');
-    });
-
-    test('refuses unattended mode when neither docker nor podman is available', () => {
-      const res = resolveFactorySandbox({ platform: 'darwin', which: has() });
-      assert.equal(res.ok, false);
-      assert.equal(res.runtime, null);
-      assert.match(res.message, /Unattended factory runs require a container sandbox/);
-      assert.match(res.install, /Docker Desktop/);
-      assert.match(res.install, /brew install podman/);
-    });
-  });
-
-  describe('Linux platform', () => {
-    test('selects docker when available', () => {
-      const res = resolveFactorySandbox({ platform: 'linux', which: has('docker') });
-      assert.equal(res.ok, true);
-      assert.equal(res.runtime, 'docker');
-    });
-
-    test('selects podman when docker is missing', () => {
-      const res = resolveFactorySandbox({ platform: 'linux', which: has('podman') });
-      assert.equal(res.ok, true);
-      assert.equal(res.runtime, 'podman');
-    });
-
-    test('refuses unattended mode when neither docker nor podman is available', () => {
-      const res = resolveFactorySandbox({ platform: 'linux', which: has() });
-      assert.equal(res.ok, false);
-      assert.equal(res.runtime, null);
-      assert.match(res.message, /Unattended factory runs require a container sandbox/);
-      assert.match(res.install, /apt-get install docker\.io/);
-    });
-  });
-
-  describe('Windows platform', () => {
-    test('selects wsl2 when available', () => {
-      const res = resolveFactorySandbox({ platform: 'win32', which: has('wsl.exe') });
-      assert.equal(res.ok, true);
-      assert.equal(res.runtime, 'wsl2');
-      assert.equal(res.bin, '/bin/wsl.exe');
-      const cmd = res.wrap(['factory', 'run'], { cwd: 'C:\\workspace' });
-      assert.deepEqual(cmd, [
-        '/bin/wsl.exe',
-        '--cd',
-        '/mnt/c/workspace',
-        '--exec',
-        'env',
-        'AOS_SANDBOX_MARKER=1',
-        'factory',
-        'run',
-      ]);
-    });
-
-    test('selects docker on Windows when wsl.exe is missing', () => {
-      const res = resolveFactorySandbox({ platform: 'win32', which: has('docker.exe') });
-      assert.equal(res.ok, true);
-      assert.equal(res.runtime, 'docker');
-    });
-
-    test('refuses unattended mode when neither wsl2 nor docker is available', () => {
-      const res = resolveFactorySandbox({ platform: 'win32', which: has() });
-      assert.equal(res.ok, false);
-      assert.equal(res.runtime, null);
-      assert.match(res.message, /Unattended factory runs require a sandbox runtime/);
-      assert.match(res.install, /wsl --install/);
-    });
-  });
-
-  describe('runFactoryUnattended wrapper', () => {
-    test('throws NO_SANDBOX_RUNTIME when no runtime is available', () => {
-      assert.throws(
-        () => runFactoryUnattended(['factory'], { platform: 'darwin', which: has() }),
-        (err) => err.code === 'NO_SANDBOX_RUNTIME' && /Unattended factory runs require a container sandbox/.test(err.message),
-      );
-    });
-
-    test('wraps command when runtime is available', () => {
-      const cmd = runFactoryUnattended(['npm', 'test'], { platform: 'darwin', which: has('docker'), cwd: '/app' });
-      assert.equal(cmd[0], '/bin/docker');
-      assert.ok(cmd.includes('AOS_SANDBOX_MARKER=1'));
-      assert.ok(cmd.includes('npm'));
-      assert.ok(cmd.includes('test'));
-    });
-  });
+test("refuses when the runtime daemon is not reachable", () => {
+  const r = detectRuntime({ platform: "linux", which: whichOf("docker"), run: () => ({ status: 1 }) });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /daemon/);
 });
 
-describe('gate integration with sandbox', () => {
-  const fakeGate = (isSbx) => ({
-    nameKey: (n) => n,
-    readBlockTs: () => 0,
-    setGateContext: () => {},
-    hardBlockReason: (cmd) => (/rm\s+-rf\s+\/($|\s)/.test(cmd) ? 'hard block: cannot delete root' : null),
-    commandTooLong: () => false,
-    gateStoreReason: () => null,
-    isGuardedCommand: (cmd) => /(?:git\s+branch\s+-D|aos-gate\s+grant)/.test(cmd),
-    commandScopes: () => ['destructive'],
-    neverGrantable: (cmd) => /aos-gate\s+grant/.test(cmd),
-    tokenGrantsGo: () => ({ ok: false, reason: 'no GO token' }),
-    markBlock: () => {},
-    slug: (s) => s,
-    isSandboxed: () => isSbx,
-  });
+test("refuses WSL2 alone on Windows and never offers Podman there", () => {
+  const r = detectRuntime({ platform: "win32", which: whichOf("wsl.exe", "podman"), run: () => ({ status: 0 }) });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /WSL2 alone is not a sandbox/);
+  assert.deepEqual(detectRuntime({ platform: "win32", which: whichOf("docker", "wsl.exe"), run: () => ({ status: 0 }) }), { ok: true, runtime: "docker" });
+  assert.deepEqual(detectRuntime({ platform: "linux", which: whichOf("podman"), run: () => ({ status: 0 }) }), { ok: true, runtime: "podman" });
+});
 
-  test('inside sandbox: allows guarded command in off mode', () => {
-    const res = check(fakeGate(true), { session: 'test-worker', command: 'git branch -D feat' });
-    assert.equal(res.code, 0);
-    assert.equal(res.out.ok, true);
-    assert.equal(res.out.reason, 'sandboxed');
-  });
+test("refuses a repo that is HOME or an ancestor of it", () => {
+  assert.throws(() => checkRepoPath("/home/u", "/home/u"), /refused/);
+  assert.throws(() => checkRepoPath("/home", "/home/u"), /refused/);
+  assert.throws(() => checkRepoPath("/", "/home/u"), /refused/);
+  assert.equal(checkRepoPath("/home/u/dev/app", "/home/u"), "/home/u/dev/app");
+  assert.equal(checkRepoPath("/home/user2", "/home/u"), "/home/user2");
+});
 
-  test('inside sandbox: still blocks neverGrantable commands', () => {
-    const res = check(fakeGate(true), { session: 'test-worker', command: 'aos-gate grant push-feature 1h' });
-    assert.equal(res.code, 1);
-    assert.equal(res.out.ok, false);
-    assert.match(res.out.reason, /never grantable/);
-  });
+test("argv mounts only the clone: no worktree, ssh, gitconfig, docker.sock or --privileged", () => {
+  const worktree = "/home/u/dev/app";
+  for (const runtime of ["docker", "podman"]) {
+    const argv = buildRunArgv({ runtime, clone: "/tmp/aos-factory-x/repo", image: "img", cmd: ["claude", "-p", "/factory"], envNames: ["ANTHROPIC_API_KEY"], platform: "linux" });
+    const s = argv.join("\n");
+    assert.ok(!s.includes(worktree));
+    for (const bad of [".ssh", ".gitconfig", "docker.sock", "--privileged", "/home/u", ".aos/gate/config.json:"]) assert.ok(!s.includes(bad), `${runtime} argv contains ${bad}`);
+    assert.ok(!argv.includes("-v") && !argv.includes("--volume"));
+    const mounts = argv.filter((a, i) => argv[i - 1] === "--mount");
+    assert.deepEqual(mounts, ["type=bind,source=/tmp/aos-factory-x/repo,target=/work"]);
+    assert.ok(argv.includes("--rm") && argv.includes("ALL") && argv.includes("no-new-privileges"));
+    assert.deepEqual(argv.slice(-3), ["claude", "-p", "/factory"]);
+  }
+  assert.throws(() => buildRunArgv({ runtime: "docker", clone: "/tmp/x", image: "i", cmd: ["c"], envNames: ["A=B"] }), /bad --env/);
+});
 
-  test('inside sandbox: still blocks hard blocks', () => {
-    const res = check(fakeGate(true), { session: 'test-worker', command: 'rm -rf /' });
-    assert.equal(res.code, 1);
-    assert.equal(res.out.ok, false);
-    assert.match(res.out.reason, /hard block/);
-  });
+test("Windows paths convert for Docker; mount-breaking characters are refused", () => {
+  assert.equal(mountSource("C:\\Users\\u\\AppData\\Local\\Temp\\aos-factory-1\\repo", "win32"), "C:/Users/u/AppData/Local/Temp/aos-factory-1/repo");
+  for (const p of ["/tmp/a,b", "/tmp/a\"b", "C:\\a,b", "/tmp/a\nb"]) assert.throws(() => mountSource(p, "linux"), /refused/);
+});
 
-  test('outside sandbox: guarded command without token is blocked', () => {
-    const res = check(fakeGate(false), { session: 'test-worker', command: 'git branch -D feat' });
-    assert.equal(res.code, 1);
-    assert.equal(res.out.ok, false);
-    assert.equal(res.out.reason, 'no GO token');
-  });
+test("end to end with a fake runtime: clone only, commits exported, host repo untouched", () => {
+  const base = mkdtempSync(join(tmpdir(), "factory-e2e-"));
+  try {
+    const repo = join(base, "app");
+    const g = (...a) => assert.equal(sh("git", ["-C", repo, ...a]).status, 0, a.join(" "));
+    assert.equal(sh("git", ["init", "-q", "-b", "main", repo]).status, 0);
+    g("config", "user.email", "t@example.invalid"); g("config", "user.name", "t");
+    writeFileSync(join(repo, "a.txt"), "a\n"); g("add", "."); g("commit", "-qm", "init");
+    const before = sh("git", ["-C", repo, "rev-parse", "HEAD"]).stdout.trim();
+    let runArgv = null;
+    const run = (cmd, args, opts) => {
+      if (cmd === "docker" && args[0] === "run") {
+        runArgv = [cmd, ...args];
+        const src = args[args.indexOf("--mount") + 1].match(/source=([^,]+)/)[1];
+        assert.equal(sh("git", ["-C", src, "remote"]).stdout.trim(), "", "clone has no remotes");
+        writeFileSync(join(src, "b.txt"), "b\n");
+        assert.equal(sh("git", ["-C", src, "add", "."]).status, 0);
+        assert.equal(sh("git", ["-C", src, "commit", "-qm", "feat: b"]).status, 0);
+        return { status: 0 };
+      }
+      return infoOk(cmd, args, opts);
+    };
+    const results = join(base, "runs");
+    const logs = [];
+    const code = main(["--unattended", "--image", "img", "--", "true"], { platform: "linux", which: whichOf("docker"), run, cwd: repo, home: join(base, "home"), resultsRoot: results, log: (m) => logs.push(m), err: (m) => logs.push(m) });
+    assert.equal(code, 0, logs.join("\n"));
+    assert.ok(!runArgv.join(" ").includes(`source=${repo},`));
+    assert.equal(sh("git", ["-C", repo, "rev-parse", "HEAD"]).stdout.trim(), before, "host branch unchanged");
+    const [id] = readdirSync(results);
+    const out = join(results, id);
+    assert.equal(JSON.parse(readFileSync(join(out, "run.json"), "utf8")).commits, 1);
+    assert.equal(readdirSync(join(out, "patches")).length, 1);
+    assert.equal(sh("git", ["-C", repo, "fetch", "-q", join(out, "run.bundle"), `HEAD:factory/${id}`]).status, 0);
+    assert.equal(sh("git", ["-C", repo, "log", "-1", "--format=%s", `factory/${id}`]).stdout.trim(), "feat: b");
+    assert.match(logs.join("\n"), /git am/);
+    assert.ok(!existsSync(dirname(runArgv[runArgv.indexOf("--mount") + 1].match(/source=([^,]+)/)[1])), "temp clone removed");
+
+    const failRun = (cmd, args, opts) => (cmd === "docker" && args[0] === "run" ? { status: 3 } : infoOk(cmd, args, opts));
+    assert.equal(main(["--unattended", "--image", "img", "--", "true"], { platform: "linux", which: whichOf("docker"), run: failRun, cwd: repo, home: join(base, "home"), resultsRoot: results, log: () => {}, err: () => {} }), 3);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("the container entry writes a valid off profile into the container HOME only", { skip: process.platform === "win32" }, async () => {
+  const { readProfile } = await import("../lib/gate-profile.mjs");
+  const argv = buildRunArgv({ runtime: "docker", clone: "/tmp/x", image: "i", cmd: ["c"] });
+  const script = argv[argv.indexOf("-c") + 1].split("\n").find((l) => l.startsWith("node -e "));
+  const js = script.slice("node -e '".length, -1);
+  const home = mkdtempSync(join(tmpdir(), "factory-home-"));
+  try {
+    assert.equal(sh(process.execPath, ["-e", js], { env: { ...process.env, HOME: home } }).status, 0);
+    const p = readProfile({ file: join(home, ".aos", "gate", "config.json") });
+    assert.equal(p.profile, "off", p.reason);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("the host gate is unchanged against release/next-541", (t) => {
+  if (sh("git", ["-C", ROOT, "rev-parse", "--verify", "-q", "release/next-541"]).status !== 0) return t.skip("release/next-541 not present");
+  const r = sh("git", ["-C", ROOT, "diff", "--quiet", "release/next-541", "--", ".claude/hooks/go-gate.mjs", "bin/go-check.mjs"]);
+  assert.equal(r.status, 0, "go-gate.mjs or go-check.mjs differs from release/next-541");
 });
