@@ -462,11 +462,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        test('hook carries version stamp 8', () => {
+        test('hook carries version stamp 9', () => {
             const content = fs.readFileSync(MEMB_INJECT_SRC, 'utf8');
             const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
             assert.ok(m, 'memb-inject.mjs must contain aos-hook-version header');
-            assert.equal(m[1], '8', `Expected version 8, got ${m[1]}`);
+            assert.equal(m[1], '9', `Expected version 9, got ${m[1]}`);
         });
 
         test('parses Antigravity workspacePaths input and returns injectSteps only', () => {
