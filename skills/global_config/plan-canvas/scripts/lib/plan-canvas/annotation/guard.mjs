@@ -60,6 +60,18 @@ export function newToken() {
 export const tokenOk = hubTokenOk;
 export const shaToken = hubShaToken;
 
+// Validate a presented session ID against a Map of sha256(sessionId) -> expiresAt (ms).
+// Expired entries are removed on sight. The process token is never a cookie value.
+export function sessionOk(presented, { sessions } = {}) {
+  if (!presented || typeof presented !== 'string' || !(sessions instanceof Map)) return false;
+  const sha = shaToken(presented);
+  const expiresAt = sessions.get(sha);
+  if (typeof expiresAt !== 'number') return false;
+  if (Date.now() <= expiresAt) return true;
+  sessions.delete(sha);
+  return false;
+}
+
 // Exact host:port. Loopback spellings only, the given port only, no wildcards,
 // no suffix matching (DNS-rebinding Hosts fail here). Reused from lib/hub/guard.mjs.
 export function hostAllowed(host, port) {
@@ -200,7 +212,17 @@ export function checkRequest(req, config = {}) {
   if ((qpath === '/__aos_annot' || qpath.startsWith('/__aos_annot/') || qpath === '/aos-api' || qpath.startsWith('/aos-api/')) && queryHasToken(req.url ?? '')) throw new GuardError(guardErrorCodes.QUERY_TOKEN, 'token in query string refused');
   const method = String(req.method ?? '').toUpperCase();
   const presented = cookieToken(headers.cookie);
-  if (!presented || !tokenOk(presented, tokenSha)) throw new GuardError(guardErrorCodes.TOKEN, 'missing or invalid token cookie');
+  let valid = false;
+  if (presented) {
+    if (typeof config.sessionOk === 'function') {
+      valid = Boolean(config.sessionOk(presented));
+    } else if (config.sessions instanceof Map) {
+      valid = sessionOk(presented, { sessions: config.sessions });
+    } else if (tokenSha) {
+      valid = tokenOk(presented, tokenSha);
+    }
+  }
+  if (!presented || !valid) throw new GuardError(guardErrorCodes.TOKEN, 'missing or invalid token cookie');
   if (!FORWARDABLE_METHODS.has(method)) throw new GuardError(guardErrorCodes.METHOD, `method ${method} not allowed`);
   if (method === 'POST') {
     if (wantJsonBody && !contentTypeJson(req)) throw new GuardError(guardErrorCodes.METHOD, 'writes must be POST with application/json');

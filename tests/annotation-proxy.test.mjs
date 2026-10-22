@@ -5,7 +5,6 @@ import net from 'node:net';
 import zlib from 'node:zlib';
 import {
   COOKIE_NAME,
-  newToken,
 } from '../lib/annotation/guard.mjs';
 import {
   DEFAULT_PORTS,
@@ -19,15 +18,40 @@ import {
   rewriteSetCookieLine,
   upgradePathOk,
 } from '../lib/annotation/proxy.mjs';
+import { shaToken } from '../lib/annotation/guard.mjs';
 
 function listen(server) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 }
 
+// Browser session per proxy port, created by the one-time login route.
+const SESSIONS = new Map();
+const sessionOn = (port) => SESSIONS.get(port) ?? '';
+
+function login(created) {
+  const { token } = created.issueLogin();
+  return new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port: created.port, path: `/__aos/annotate/login?t=${token}`, agent: false }, (res) => {
+      res.resume();
+      const set = [].concat(res.headers['set-cookie'] ?? []).find((c) => c.startsWith(`${COOKIE_NAME}=`));
+      if (res.statusCode !== 302 || !set) return reject(new Error(`login failed: HTTP ${res.statusCode}`));
+      const value = set.slice(COOKIE_NAME.length + 1).split(';')[0];
+      SESSIONS.set(created.port, value);
+      resolve(value);
+    }).on('error', reject);
+  });
+}
+
+async function makeProxy(options) {
+  const created = await createProxy(options);
+  await login(created);
+  return created;
+}
+
 function reqRaw({ path, headers = {}, method = 'GET', port = proxyPort, body } = {}) {
   return new Promise((resolve, reject) => {
     const r = http.request(
-      { host: '127.0.0.1', port, method, path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, ...headers }, agent: false },
+      { host: '127.0.0.1', port, method, path, headers: { cookie: `${COOKIE_NAME}=${sessionOn(port)}`, ...headers }, agent: false },
       (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
@@ -90,12 +114,11 @@ let proxy;
 let proxyPort;
 const upstreamPortAlt = 5173; // fixture inside the default allow range
 
-const TOKEN = newToken();
 
 function req({ path, headers = {}, method = 'GET', port = proxyPort, body } = {}) {
   return new Promise((resolve, reject) => {
     const r = http.request(
-      { host: '127.0.0.1', port, method, path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, ...headers } },
+      { host: '127.0.0.1', port, method, path, headers: { cookie: `${COOKIE_NAME}=${sessionOn(port)}`, ...headers } },
       (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
@@ -114,7 +137,7 @@ function req({ path, headers = {}, method = 'GET', port = proxyPort, body } = {}
 before(async () => {
   upstream = makeUpstream();
   upstreamPort = await listen(upstream.server);
-  const created = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: upstreamPort }, allowedPorts: [upstreamPort] });
+  const created = await makeProxy({ upstream: { host: '127.0.0.1', port: upstreamPort }, allowedPorts: [upstreamPort] });
   proxy = created.server;
   proxyPort = created.port;
 });
@@ -196,7 +219,7 @@ test('uniform: guard rejections surface through the proxy (bad token, spoofed Ho
   const spoofed = await hostOverrideProbe(proxyPort, 'evil.example');
   assert.equal(spoofed.status, 403);
   assert.equal(JSON.parse(spoofed.body).error, 'E_HOST');
-  const rebinding = await rawProbe(proxyPort, 'dns-rebind.example', TOKEN);
+  const rebinding = await rawProbe(proxyPort, 'dns-rebind.example', sessionOn(proxyPort));
   assert.equal(rebinding.status, 403); // DNS-rebinding style Host also refused
   const badOrigin = await req({ path: '/plain', headers: { origin: 'http://evil.example' } });
   assert.equal(badOrigin.status, 403);
@@ -225,7 +248,7 @@ function rawProbe(port, hostHeader, token) {
   });
 }
 
-const hostOverrideProbe = (port, hostHeader) => rawProbe(port, hostHeader, TOKEN);
+const hostOverrideProbe = (port, hostHeader) => rawProbe(port, hostHeader, sessionOn(port));
 
 test('secure: the real proxy refuses CONNECT and opens no connection upstream', async () => {
   let upstreamConns = 0;
@@ -236,7 +259,7 @@ test('secure: the real proxy refuses CONNECT and opens no connection upstream', 
       const socket = net.connect(proxyPort, '127.0.0.1');
       let out = '';
       socket.on('connect', () => {
-        socket.write(`CONNECT 127.0.0.1:${upstreamPort} HTTP/1.1\r\nHost: 127.0.0.1:${upstreamPort}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\n\r\n`);
+        socket.write(`CONNECT 127.0.0.1:${upstreamPort} HTTP/1.1\r\nHost: 127.0.0.1:${upstreamPort}\r\nCookie: ${COOKIE_NAME}=${sessionOn(proxyPort)}\r\n\r\n`);
       });
       socket.on('data', (c) => { out += c.toString('latin1'); });
       socket.on('error', () => {});
@@ -324,8 +347,7 @@ test('secure: Set-Cookie Domain attribute is dropped, other attributes kept', ()
 });
 
 test('secure: upstream timeouts surface as typed error', async () => {
-  const strict = await createProxy({
-    token: TOKEN,
+  const strict = await makeProxy({
     upstream: { host: '127.0.0.1', port: upstreamPort },
     allowedPorts: [upstreamPort],
     upstreamTimeoutMs: 120,
@@ -343,8 +365,7 @@ test('uniform: tip cap passthrough marks skipped with no injection', async () =>
     res.end('</body>');
   });
   const bigPort = await listen(bigServer);
-  const strict = await createProxy({
-    token: TOKEN,
+  const strict = await makeProxy({
     upstream: { host: '127.0.0.1', port: bigPort },
     allowedPorts: [bigPort],
     maxHtmlBytes: 8 * 1024 * 1024,
@@ -370,8 +391,7 @@ async function proxyFixture(handler, proxyOptions, run) {
   const upServer = http.createServer(handler);
   upServer.on('upgrade', () => {});
   const upPort = await listen(upServer);
-  const created = await createProxy({
-    token: TOKEN,
+  const created = await makeProxy({
     upstream: { host: '127.0.0.1', port: upPort },
     allowedPorts: [upPort],
     ...proxyOptions,
@@ -406,7 +426,7 @@ test('secure: upstream sees app cookies and identity accept-encoding, never aos_
       res.end('nope');
     },
     {},
-    ({ port }) => req({ port, path: '/echo', headers: { cookie: `app_one=x; ${COOKIE_NAME}=${TOKEN}; app_two=y` } }),
+    ({ port }) => req({ port, path: '/echo', headers: { cookie: `app_one=x; ${COOKIE_NAME}=${sessionOn(port)}; app_two=y` } }),
   );
   assert.equal(result.status, 200);
   assert.equal(seen.cookie, 'app_one=x; app_two=y');
@@ -528,7 +548,7 @@ test('secure: concurrency slot is released after the response ends or the client
 });
 
 function danglingRequest(port, path) {
-  const r = http.request({ host: '127.0.0.1', port, path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, connection: 'close' }, agent: false });
+  const r = http.request({ host: '127.0.0.1', port, path, headers: { cookie: `${COOKIE_NAME}=${sessionOn(port)}`, connection: 'close' }, agent: false });
   r.on('error', () => {});
   r.end();
   return r;
@@ -554,7 +574,7 @@ function makeWsEchoServer() {
 test('uniform: upgrade tunnel echoes frames after guard checks (echo server)', async () => {
   const wsServer = makeWsEchoServer();
   const wsPort = await listen(wsServer);
-  const strict = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: wsPort }, allowedPorts: [wsPort] });
+  const strict = await makeProxy({ upstream: { host: '127.0.0.1', port: wsPort }, allowedPorts: [wsPort] });
   const tracked = new Map();
   for (const srv of [strict.server, wsServer]) {
     const set = new Set();
@@ -582,7 +602,7 @@ test('uniform: upgrade tunnel echoes frames after guard checks (echo server)', a
     });
     socket.on('error', reject);
     socket.write(
-      `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\nCookie: aos_ann=${TOKEN}\r\n\r\n`,
+      `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\nCookie: aos_ann=${sessionOn(strict.port)}\r\n\r\n`,
     );
   });
   assert.equal(head101.status, 101);
@@ -609,13 +629,13 @@ test('secure: upgrade refused on bad token and on disallowed path', async () => 
     socket.on('data', (chunk) => socket.write(chunk));
   });
   const wsPort = await listen(wsServer);
-  const strict = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: wsPort }, allowedPorts: [wsPort] });
+  const strict = await makeProxy({ upstream: { host: '127.0.0.1', port: wsPort }, allowedPorts: [wsPort] });
 
   const refused = await upgradeProbe(strict.port, '/ws', `${COOKIE_NAME}=wrong`, false);
   assert.equal(refused.status, 403);
   assert.equal(JSON.parse(refused.body).error, 'E_TOKEN');
 
-  const refusedPath = await upgradeProbe(strict.port, '/other/path', `${COOKIE_NAME}=${TOKEN}`, false);
+  const refusedPath = await upgradeProbe(strict.port, '/other/path', `${COOKIE_NAME}=${sessionOn(strict.port)}`, false);
   assert.equal(refusedPath.status, 403);
   assert.equal(JSON.parse(refusedPath.body).error, 'E_UPGRADE_PATH');
 
@@ -663,20 +683,20 @@ test('secure: createProxy validates the upstream via parseUpstream and the liste
   assert.equal(parseUpstreamSafe('127.0.0.1:5169').code, 'E_UPSTREAM', 'below range refused by default');
   assert.deepEqual(parseUpstream('127.0.0.1:5173'), { host: '127.0.0.1', port: 5173 });
   await assert.rejects(
-    () => createProxy({ token: TOKEN, upstream: '127.0.0.1:22' }),
+    () => createProxy({ upstream: '127.0.0.1:22' }),
     (err) => err.code === 'E_UPSTREAM',
   );
   await assert.rejects(
-    () => createProxy({ token: TOKEN, upstream: 'evil.example:5173' }),
+    () => createProxy({ upstream: 'evil.example:5173' }),
     (err) => err.code === 'E_UPSTREAM',
   );
   // allowedPorts option widens the allowlist for explicit fixture ports only
   await assert.rejects(
-    () => createProxy({ token: TOKEN, upstream: '127.0.0.1:5200' }),
+    () => createProxy({ upstream: '127.0.0.1:5200' }),
     (err) => err.code === 'E_UPSTREAM',
   );
   await assert.rejects(
-    () => createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: 48162 }, allowedPorts: [48163] }),
+    () => createProxy({ upstream: { host: '127.0.0.1', port: 48162 }, allowedPorts: [48163] }),
     (err) => err.code === 'E_UPSTREAM',
   );
 });
@@ -684,12 +704,11 @@ test('secure: createProxy validates the upstream via parseUpstream and the liste
 test('secure: self-port upstream refused when the proxy assigns its own port (F6)', { timeout: 8000 }, async () => {
   // first bind a proxy, then try to point a second proxy's upstream at the
   // first proxy's own listening port
-  const first = await createProxy({ token: TOKEN, upstream: '127.0.0.1:5173' });
+  const first = await makeProxy({ upstream: '127.0.0.1:5173' });
   try {
     await assert.rejects(
       () =>
         createProxy({
-          token: TOKEN,
           upstream: { host: '127.0.0.1', port: first.port },
           allowedPorts: [first.port],
         }),
@@ -780,10 +799,8 @@ test('secure: app CSP kept with nonce appended per response; report-only handled
       const withCsp = await req({ port, path: '/csp' });
       assert.equal(withCsp.status, 200);
       const cspValue = withCsp.headers['content-security-policy'];
-      assert.ok(cspValue.includes("script-src 'self' 'unsafe-inline' 'nonce-"), 'app CSP kept, nonce appended');
-      const nonce = withCsp.body.match(/nonce="([^"]+)"/)[1];
-      assert.ok(cspValue.includes(`'nonce-${nonce}'`));
-      assert.ok(cspValue.includes("default-src 'self'"), 'first directive untouched');
+      assert.equal(cspValue, "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'none'", 'unsafe-inline app: self added, no nonce (a nonce would disable unsafe-inline)');
+      assert.ok(withCsp.body.match(/nonce="([^"]+)"/), 'overlay tag still carries a nonce');
       const ro = await req({ port, path: '/csp-ro' });
       assert.ok(ro.headers['content-security-policy-report-only'].includes("'nonce-"), 'report-only extended');
       assert.equal(ro.headers['content-security-policy'], undefined, 'report-only does not add an enforcing CSP');
@@ -793,6 +810,51 @@ test('secure: app CSP kept with nonce appended per response; report-only handled
     },
   );
   assert.equal(res, 200);
+});
+
+test('secure: CSP derivation: default-src alone gets a script-src with the nonce; script-src unsafe-inline alone gets self, no nonce', { timeout: 8000 }, async () => {
+  const policies = { '/d': "default-src 'self'", '/i': "script-src 'unsafe-inline'" };
+  await proxyFixture(
+    (req, res) => {
+      const headers = { 'content-type': 'text/html; charset=utf-8' };
+      if (policies[req.url]) headers['content-security-policy'] = policies[req.url];
+      res.writeHead(200, headers);
+      res.end(`<html><body>${req.url}</body></html>`);
+    },
+    {},
+    async ({ port }) => {
+      const d = await req({ port, path: '/d' });
+      const dNonce = (d.body.match(/nonce="([^"]+)"/) ?? [])[1];
+      assert.ok(dNonce, 'overlay tag carries a nonce');
+      assert.equal(d.headers['content-security-policy'], `default-src 'self'; script-src 'self' 'nonce-${dNonce}'`, 'script-src derived from default-src plus nonce');
+      const i = await req({ port, path: '/i' });
+      assert.equal(i.headers['content-security-policy'], "script-src 'unsafe-inline' 'self'", 'unsafe-inline only: self added, no nonce');
+    },
+  );
+});
+
+test('secure: login refuses cross-site navigation without spending the token; cookie is a session id, not the token', { timeout: 8000 }, async () => {
+  const created = await createProxy({ upstream: { host: '127.0.0.1', port: upstreamPort }, allowedPorts: [upstreamPort] });
+  try {
+    const { token } = created.issueLogin();
+    const get = (headers) => new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port: created.port, path: `/__aos/annotate/login?t=${token}`, headers, agent: false }, (res) => {
+        res.resume();
+        resolve(res);
+      }).on('error', reject);
+    });
+    const crossSite = await get({ 'sec-fetch-site': 'cross-site' });
+    assert.equal(crossSite.statusCode, 403);
+    const ok = await get({});
+    assert.equal(ok.statusCode, 302, 'token still unspent after the refused cross-site try');
+    const cookie = [].concat(ok.headers['set-cookie'])[0].split(';')[0].slice(COOKIE_NAME.length + 1);
+    assert.notEqual(cookie, token);
+    assert.ok(created.sessions.has(shaToken(cookie)), 'server stores only the session hash');
+    const replay = await get({});
+    assert.equal(replay.statusCode, 403, 'one-shot: second use refused');
+  } finally {
+    await new Promise((r) => created.server.close(r));
+  }
 });
 
 test('secure: X-Frame-Options kept by default, dropped only with embedOrigin (F8)', { timeout: 8000 }, async () => {
@@ -829,9 +891,9 @@ test('secure: upgrade against a plain HTTP upstream answers 502 JSON, both socke
     socket.end();
   });
   const upPort = await listen(up);
-  const strict = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: upPort }, allowedPorts: [upPort] });
+  const strict = await makeProxy({ upstream: { host: '127.0.0.1', port: upPort }, allowedPorts: [upPort] });
   try {
-    const probe = await upgradeProbe(strict.port, '/ws', `${COOKIE_NAME}=${TOKEN}`, false);
+    const probe = await upgradeProbe(strict.port, '/ws', `${COOKIE_NAME}=${sessionOn(strict.port)}`, false);
     assert.equal(probe.status, 502);
     assert.equal(JSON.parse(probe.body).error, 'E_UPSTREAM');
   } finally {
@@ -849,7 +911,7 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
   up.on('connection', () => { connections += 1; });
   up.on('upgrade', () => {});
   const upPort = await listen(up);
-  const strict = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: upPort }, allowedPorts: [upPort] });
+  const strict = await makeProxy({ upstream: { host: '127.0.0.1', port: upPort }, allowedPorts: [upPort] });
   try {
     const socket = net.connect(strict.port, '127.0.0.1');
     try {
@@ -857,7 +919,7 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
       let raw = '';
       socket.on('connect', () => {
         socket.write(
-          `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: a\tb\r\nCookie: aos_ann=${TOKEN}\r\n\r\n`,
+          `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: a\tb\r\nCookie: aos_ann=${sessionOn(strict.port)}\r\n\r\n`,
         );
       });
       socket.on('data', (chunk) => {
@@ -969,7 +1031,7 @@ test('crash: upstream abort after headers still leaves proxy serving', { timeout
       const start = Date.now();
       const abortReq = (path) => new Promise((resolve) => {
         const chunks = [];
-        const r = http.request({ host: '127.0.0.1', port, method: 'GET', path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}` } }, (res) => {
+        const r = http.request({ host: '127.0.0.1', port, method: 'GET', path, headers: { cookie: `${COOKIE_NAME}=${sessionOn(port)}` } }, (res) => {
           res.on('data', (c) => chunks.push(c));
           res.on('aborted', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
           res.on('error', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
@@ -1012,9 +1074,9 @@ test('smuggling: GET/HEAD/DELETE/OPTIONS with CL body over one keep-alive socket
       let done = 0;
       s.on('connect', () => {
         for (const m of ['GET', 'HEAD', 'DELETE', 'OPTIONS']) {
-          s.write(`${m} /k HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\n12345`);
+          s.write(`${m} /k HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${sessionOn(port)}\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\n12345`);
         }
-        s.write(`POST /k HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n5\r\nhello\r\n0\r\n\r\n`);
+        s.write(`POST /k HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${sessionOn(port)}\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n5\r\nhello\r\n0\r\n\r\n`);
       });
       s.on('data', (c) => {
         raw += c.toString('latin1');
@@ -1045,7 +1107,7 @@ test('cap: chunked body over cap answers 413 E_BODY', { timeout: 8000 }, async (
     (req, res) => { req.resume(); req.on('end', () => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('up'); }); },
     { maxBodyBytes: 64 },
     ({ port }) => new Promise((resolve, reject) => {
-      const r = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/chunk', headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, 'transfer-encoding': 'chunked', 'content-type': 'text/plain' } }, (res) => {
+      const r = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/chunk', headers: { cookie: `${COOKIE_NAME}=${sessionOn(port)}`, 'transfer-encoding': 'chunked', 'content-type': 'text/plain' } }, (res) => {
         const ch = []; res.on('data', (c) => ch.push(c)); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(ch).toString() }));
       });
       r.on('error', reject); r.write('y'.repeat(50)); r.write('z'.repeat(50)); r.end();
@@ -1062,7 +1124,7 @@ test('url: bad paths rejected 400, vite paths forwarded', { timeout: 8000 }, asy
     async ({ port }) => {
       const rawPath = (p) => new Promise((resolve, reject) => {
         const s = net.connect(port, '127.0.0.1'); let raw = '';
-        s.on('connect', () => s.write(`GET ${p} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nConnection: close\r\n\r\n`));
+        s.on('connect', () => s.write(`GET ${p} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${sessionOn(port)}\r\nConnection: close\r\n\r\n`));
         s.on('data', (c) => { raw += c.toString('latin1'); });
         s.on('close', () => resolve({ status: Number(raw.split(' ')[1]), raw }));
         s.on('error', reject);
@@ -1095,7 +1157,7 @@ test('uniform: localhost upstream reaches a 127.0.0.1 listener', { timeout: 8000
   const upPort = await listen(upServer);
   let proxied = null;
   try {
-    proxied = await createProxy({ token: TOKEN, upstream: 'localhost:' + upPort, allowedPorts: [upPort] });
+    proxied = await makeProxy({ upstream: 'localhost:' + upPort, allowedPorts: [upPort] });
   } catch (err) { upServer.close(); throw err; }
   try {
     const res = await req({ port: proxied.port, path: '/' });
@@ -1117,7 +1179,7 @@ test('smuggling: chunked DELETE body is refused 400 and upstream sees zero reque
       const first = await new Promise((resolve, reject) => {
         const s = net.connect(port, '127.0.0.1');
         let raw = '';
-        s.on('connect', () => s.write(`DELETE /x HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n\r\n`));
+        s.on('connect', () => s.write(`DELETE /x HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${sessionOn(port)}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n\r\n`));
         s.on('data', (c) => { raw += c.toString('latin1'); });
         s.on('close', () => resolve(raw));
         s.on('error', reject);
@@ -1144,7 +1206,7 @@ test('ipv6: proxy reaches an upstream listening on [::1]', { timeout: 8000 }, as
   } catch { upServer.close(); t.skip('ipv6 loopback unavailable'); return; }
   let proxied = null;
   try {
-    proxied = await createProxy({ token: TOKEN, upstream: `[::1]:${upPort}`, allowedPorts: [upPort] });
+    proxied = await makeProxy({ upstream: `[::1]:${upPort}`, allowedPorts: [upPort] });
   } catch { upServer.close(); throw new Error('ipv6 proxy failed'); }
   try {
     const res = await req({ port: proxied.port, path: '/' });
@@ -1164,7 +1226,7 @@ test('url: dot-dot spellings rejected but query %2e%2e forwarded', { timeout: 80
     async ({ port }) => {
       const rawPath = (p) => new Promise((resolve, reject) => {
         const s = net.connect(port, '127.0.0.1'); let raw = '';
-        s.on('connect', () => s.write(`GET ${p} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nConnection: close\r\n\r\n`));
+        s.on('connect', () => s.write(`GET ${p} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${sessionOn(port)}\r\nConnection: close\r\n\r\n`));
         s.on('data', (c) => { raw += c.toString('latin1'); });
         s.on('close', () => resolve({ status: Number(raw.split(' ')[1]), raw }));
         s.on('error', reject);

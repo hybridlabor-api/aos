@@ -10,12 +10,26 @@ import http from 'node:http';
 import zlib from 'node:zlib';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { COOKIE_NAME, GuardError, checkRequest, hostAllowed, issueCookie, shaToken, tokenOk, MAX_BODY } from './guard.mjs';
+import {
+  COOKIE_NAME,
+  GuardError,
+  MAX_BODY,
+  TOKEN_TTL_SECONDS,
+  checkRequest,
+  fetchSiteReadOnlyOk,
+  hostAllowed,
+  issueCookie,
+  shaToken,
+  tokenOk,
+} from './guard.mjs';
 
 const requireCjs = createRequire(import.meta.url);
 export const OVERLAY_VERSION = '0.1.0';
 export const LOGIN_PATH = '/__aos/annotate/login';
 export const LOGIN_TTL_MS = 10 * 60 * 1000;
+// Browser session created by a successful login: the cookie carries a random
+// session id, the server keeps only its SHA-256 and expires it after 8 h.
+export const SESSION_TTL_MS = TOKEN_TTL_SECONDS * 1000;
 const CANVAS_API_PREFIX = '/__aos_annot/api/';
 let clientSource = null;
 // Annotate client (fetch transport) served as the overlay. Built once, lazily.
@@ -214,20 +228,47 @@ export function overlaySecurityHeaders(nonce) {
   };
 }
 
-// Pure. The app's own CSP is never deleted: the injected script's nonce is
-// appended to the app's existing script-src directive (a script-src directive
-// is added only when the app CSP has one to extend — no CSP in, no CSP out).
-// report-only CSPs get the same treatment in the matching response header.
+// Script-capable directives that the overlay tag must satisfy.
+const SCRIPT_DIRECTIVES = ['script-src', 'script-src-elem'];
+
+// Sources for one script directive once the overlay is added. A nonce makes
+// browsers ignore 'unsafe-inline', which would break the app's own inline
+// scripts. So when the app relies on 'unsafe-inline' (and has no nonce or hash),
+// no nonce is added: 'self' is added instead so the same-origin overlay loads.
+function overlaySources(sources, nonce) {
+  const list = sources.filter((s) => s.toLowerCase() !== "'none'");
+  const lower = list.map((s) => s.toLowerCase());
+  const unsafeInline = lower.includes("'unsafe-inline'");
+  const hasNonceOrHash = lower.some((s) => /^'(nonce-|sha(256|384|512)-)/.test(s));
+  if (unsafeInline && !hasNonceOrHash) {
+    if (!lower.includes("'self'")) list.push("'self'");
+    return list;
+  }
+  list.push(`'nonce-${nonce}'`);
+  return list;
+}
+
+// Pure. The app's own CSP is never deleted. The overlay's nonce is added to
+// every script-capable directive. When the app has no script-src but has a
+// default-src, script-src is created from a copy of default-src, so the app's
+// own scripts stay allowed. With neither directive, scripts are unrestricted
+// and nothing is added. report-only CSPs get the same treatment.
 export function cspWithNonce(csp, nonce) {
   const directives = String(csp ?? '')
     .split(';')
     .map((d) => d.trim())
-    .filter(Boolean);
-  const scriptSrc = directives.findIndex((d) => d.toLowerCase().startsWith('script-src'));
-  const token = `'nonce-${nonce}'`;
-  if (scriptSrc >= 0) directives[scriptSrc] = `${directives[scriptSrc]} ${token}`;
-  else directives.push(`script-src ${token}`);
-  return directives.join('; ');
+    .filter(Boolean)
+    .map((d) => d.split(/\s+/));
+  const find = (name) => directives.findIndex((d) => d[0].toLowerCase() === name);
+  for (const name of SCRIPT_DIRECTIVES) {
+    const i = find(name);
+    if (i >= 0) directives[i] = [directives[i][0], ...overlaySources(directives[i].slice(1), nonce)];
+  }
+  if (find('script-src') < 0) {
+    const d = find('default-src');
+    if (d >= 0) directives.push(['script-src', ...overlaySources(directives[d].slice(1), nonce)]);
+  }
+  return directives.map((d) => d.join(' ')).join('; ');
 }
 
 // The app sent no CSP: the proxy sends none. A present CSP keeps every
@@ -305,7 +346,6 @@ function withDerivedOrigin(req) {
 const liveProxyPorts = new Set();
 export async function createProxy(options = {}) {
   const port = options.port ?? 0;
-  const tokenSha = options.tokenSha ?? shaToken(options.token ?? '');
   const upstreamRaw = options.upstream ?? null;
   const caps = {
     maxHtmlBytes: options.maxHtmlBytes ?? DEFAULTS.maxHtmlBytes,
@@ -331,23 +371,21 @@ export async function createProxy(options = {}) {
     allowPorts,
   );
 
-  // The cookie value is the process token; only its SHA-256 is compared on
-  // requests. Login tokens are one-shot and short-lived (see issueLogin).
-  const cookieValue = options.token ?? null;
+  // Login tokens are one-shot and short-lived (see issueLogin). Browser
+  // sessions map sha256(sessionId) -> expiresAt; the cookie is the session id.
   const logins = { slot: null };
+  const sessions = new Map();
   const cfg = {
     port,
-    tokenSha,
     upstream,
     caps,
     nonce,
     embedOrigin,
-    cookieValue,
     logins,
+    sessions,
     canvasPort: options.canvasPort ?? null,
     overlay: null,
   };
-  if (typeof cookieValue !== 'string' || cookieValue === '') throw new GuardError('E_TOKEN', 'token required');
   const server = http.createServer({ maxHeaderSize: 65536 }, onRequest(state, cfg));
   server.on('upgrade', onUpgrade(state, cfg));
   server.on('clientError', (_err, socket) => {
@@ -371,6 +409,7 @@ export async function createProxy(options = {}) {
     nonce,
     caps,
     embedOrigin,
+    sessions,
     // One-shot login token: consumed on the first redeem attempt, right or wrong.
     issueLogin({ ttlMs = LOGIN_TTL_MS } = {}) {
       const token = randomBytes(32).toString('base64url');
@@ -395,11 +434,16 @@ function redeemLogin(proxy, token) {
 function handleLogin(proxy, req, res) {
   if (req.method !== 'GET') return writeJsonError(res, 405, 'E_METHOD');
   if (!hostAllowed(req.headers.host ?? '', proxy.port)) return writeJsonError(res, 403, 'E_HOST');
+  // Only a typed-in or same-origin navigation may spend the one-shot token;
+  // a cross-site page must not burn it. A missing header counts as 'none'.
+  if (!fetchSiteReadOnlyOk(req.headers['sec-fetch-site'])) return writeJsonError(res, 403, 'E_FETCH_SITE');
   const t = new URL(String(req.url ?? ''), 'http://127.0.0.1').searchParams.get('t');
   if (!redeemLogin(proxy, t)) return writeJsonError(res, 403, 'E_TOKEN');
+  const sessionId = randomBytes(32).toString('base64url');
+  proxy.sessions.set(shaToken(sessionId), Date.now() + SESSION_TTL_MS);
   res.writeHead(302, {
     location: '/',
-    'set-cookie': issueCookie(proxy.cookieValue),
+    'set-cookie': issueCookie(sessionId),
     'cache-control': 'no-store',
     'referrer-policy': 'no-referrer',
   });
@@ -479,7 +523,7 @@ function onRequest(state, proxy) {
       // /__aos_annot/ endpoints only.
       checkRequest(withDerivedOrigin(req), {
         port: proxy.port,
-        tokenSha: proxy.tokenSha,
+        sessions: proxy.sessions,
         wantJsonBody: path.startsWith('/__aos_annot/'),
       });
     } catch (err) {
@@ -756,7 +800,7 @@ function onUpgrade(state, proxy) {
   return (req, socket, head) => {
     try {
       assertHeaderSize(proxy, req.rawHeaders);
-      checkRequest(withDerivedOrigin(req), { port: proxy.port, tokenSha: proxy.tokenSha });
+      checkRequest(withDerivedOrigin(req), { port: proxy.port, sessions: proxy.sessions });
       if (!upgradePathOk(req.url)) throw new GuardError('E_UPGRADE_PATH', 'upgrade path not allowed');
       if (!requestPathOk(req.url)) throw new GuardError('E_PATH', 'bad request path');
     } catch (err) {
