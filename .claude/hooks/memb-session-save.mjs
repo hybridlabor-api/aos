@@ -11,7 +11,7 @@
  * a substantial last answer, and sessions already saved (stamp per session id).
  * Secrets: env-like lines are dropped and token shapes redacted; memb-mcp filters again.
  */
-import { readFileSync, existsSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, realpathSync, fstatSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -78,6 +78,10 @@ const PY = 'import sys,json\nd=json.load(sys.stdin)\nimport run\nrun.add_memory(
 // Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
 // the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
 function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
   if (process.stdin.isTTY) return Promise.resolve("");
   return new Promise((resolve) => {
     let buf = "";
@@ -86,7 +90,8 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
       if (settled) return;
       settled = true;
       clearTimeout(to);
-      try { process.stdin.pause(); } catch {}
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
       resolve(incomplete === true && !buf ? null : buf);
     };
     const to = setTimeout(finish, maxMs, true);

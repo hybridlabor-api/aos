@@ -20,7 +20,7 @@
 // failure here, because the consequence (history AOS does not recognise) is
 // recoverable with a rebase, and a wedged commit flow is not.
 
-import { realpathSync } from "node:fs";
+import { realpathSync, readFileSync, fstatSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore", "ci", "build", "revert"];
@@ -33,6 +33,10 @@ const COMMIT = /(?:^|[;&|\n])[ \t]*(?:\w+=\S+[ \t]+)*git(?:[ \t]+(?:-[Cc][ \t]+\
 // Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
 // the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
 function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
   if (process.stdin.isTTY) return Promise.resolve("");
   return new Promise((resolve) => {
     let buf = "";
@@ -41,7 +45,8 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
       if (settled) return;
       settled = true;
       clearTimeout(to);
-      try { process.stdin.pause(); } catch {}
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
       resolve(incomplete === true && !buf ? null : buf);
     };
     const to = setTimeout(finish, maxMs, true);
