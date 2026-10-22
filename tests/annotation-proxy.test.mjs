@@ -166,11 +166,13 @@ test('uniform: overlay injected exactly once into upstream HTML before </body>',
     'Host rewritten to the fixed upstream; request path cannot select a different origin');
 });
 
-test('uniform: overlay route serves the version placeholder with strict CSP', async () => {
+test('uniform: overlay route serves the real annotate client with strict CSP', async () => {
   const res = await req({ path: '/__aos_annot/overlay.js' });
   assert.equal(res.status, 200);
   assert.match(res.headers['content-type'], /javascript/);
-  assert.equal(res.body, 'window.__AOS_ANNOT = { version: "0.1.0" };\n');
+  assert.ok(res.body.includes("'use strict';"), 'serves the annotate client source');
+  assert.ok(res.body.includes('window.__aosAnnotate'), 'client guard present');
+  assert.equal(res.headers['content-length'], String(Buffer.byteLength(res.body)));
   const csp = res.headers['content-security-policy'] ?? '';
   assert.ok(csp.includes("script-src 'self'"), 'self scripts allowed');
   assert.ok(!csp.includes('unsafe-inline'), 'no inline');
@@ -774,7 +776,7 @@ test('secure: nonce is crypto base64url, fresh per HTML response, and never in t
   assert.notEqual(tagNonce2, tagNonce, 'fresh nonce per HTML response');
   const overlay = html.js;
   assert.equal(overlay.body.includes(tagNonce), false, 'nonce never in readable JS response body');
-  assert.match(overlay.body, /^window\.__AOS_ANNOT/);
+  assert.ok(overlay.body.includes("'use strict';"), 'overlay body is the annotate client, not a placeholder');
 });
 
 test('secure: app CSP kept with nonce appended per response; report-only handled; no CSP in -> none out (F8)', { timeout: 8000 }, async () => {
