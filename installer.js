@@ -36,7 +36,7 @@ const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
-const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs } = require('./lib/retired-skills');
+const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs, LEGACY_CODEX_DISPATCH } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
 const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
@@ -635,7 +635,7 @@ function describeJsonParseError(filePath) {
     }
 }
 
-const { stripJsonc, removeJsoncArrayEntries } = require('./lib/jsonc');
+const { stripJsonc } = require('./lib/jsonc');
 
 function readJsoncFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
@@ -6238,25 +6238,22 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 
     // OpenCode auto-loads plugins/bdb-aos.js. A plugin[] entry for the same file made OpenCode on Windows load it
     // twice (two plugin_origins), so auto-load is the only mechanism: our entry goes, foreign entries stay.
+    // Legacy ~/.opencode and %APPDATA%\opencode configs are cleaned too (a stale entry there was the second origin).
     const ourPluginFile = path.resolve(opencodeDir, 'plugins', 'bdb-aos.js');
-    const { pluginFile } = require('./lib/opencode-verify.js');
-    const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-    const isOurPluginEntry = (e) => { const abs = pluginFile(e, targetHome); return !!abs && fold(path.resolve(abs)) === fold(ourPluginFile); };
+    const ov = require('./lib/opencode-verify.js');
+    const isOurPluginEntry = (e) => ov.isAosPluginEntry(e, targetHome) || ov.pluginFile(e, targetHome) === ourPluginFile;
 
     const ownsWrite = data === null;
     let beforeSerialized = null;
+    if (ownsWrite && !configPath) return data;
+    // Textual removal first, so the comments in opencode.jsonc survive when nothing else changes. Never deletes a file.
+    try {
+        const backup = (file) => backupOnce(file, () => { const b = `${file}.${timestamp}.bak`; fs.copyFileSync(file, b); return b; });
+        for (const file of ov.removeAosPluginEntries(targetHome, { extraFiles: configPath ? [configPath] : [], dryRun: DRY_RUN, backup })) {
+            log.step(`Removed the bdb-aos.js plugin[] entry from ${file}: OpenCode auto-loads plugins/bdb-aos.js`);
+        }
+    } catch (e) { logDebug(e, 'opencode plugin[] textual cleanup'); }
     if (ownsWrite) {
-        if (!configPath) return data;
-        // Textual removal first, so the comments in opencode.jsonc survive when nothing else changes.
-        try {
-            const src = readTextFile(configPath);
-            const text = removeJsoncArrayEntries(src, 'plugin', isOurPluginEntry);
-            if (text !== null && text !== src) {
-                backupOnce(configPath, () => { const b = `${configPath}.${timestamp}.bak`; fs.copyFileSync(configPath, b); return b; });
-                fs.writeFileSync(configPath, text, { mode: 0o600 });
-                log.step(`Removed the bdb-aos.js plugin[] entry from ${configPath}: OpenCode auto-loads plugins/bdb-aos.js`);
-            }
-        } catch (e) { logDebug(e, 'opencode plugin[] textual cleanup'); }
         const loaded = loadJsonConfig(configPath);
         if (loaded.state === 'invalid') { warnUnparseable(configPath, 'OpenCode plugin registration', loaded); return null; }
         const existing = loaded.data;
@@ -7383,7 +7380,14 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     // Drop every AOS hook entry (marker block or not, duplicates included), then append one fresh block.
     const isAosMarker = (l) => /^\s*# AOS:HOOKS:(START|END)\s*$/.test(l);
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
-    const kept = (uninstallRecords.dropAosHookGroups(content.split(/\r?\n/).filter((l) => !isAosMarker(l))));
+    // LEGACY_CODEX_DISPATCH was renamed to fabric-dispatch.mjs: an old entry for it outside the marker block ran a
+    // missing file on every prompt (exit 1). Renamed here, it is dropped below as an AOS entry and the fresh block wires
+    // fabric-dispatch.mjs when this profile uses it. Only an entry pointing at <codex>/workflows/<LEGACY_CODEX_DISPATCH>.
+    const fold = (p) => { const r = p.replace(/\\+/g, '/'); return process.platform === 'win32' ? r.toLowerCase() : r; };
+    const oldDispatch = path.join(workflowsDir, LEGACY_CODEX_DISPATCH);
+    const oldForms = [fold(oldDispatch), ...(oldDispatch.startsWith(homeDir + path.sep) ? [fold(`~/${path.relative(homeDir, oldDispatch)}`)] : [])];
+    const migrated = content.split(/\r?\n/).map((l) => (/^\s*command\s*=/.test(l) && oldForms.some((o) => fold(l).includes(o)) ? l.replace(new RegExp(LEGACY_CODEX_DISPATCH.replace(/\./g, '\\.'), 'i'), 'fabric-dispatch.mjs') : l));
+    const kept = (uninstallRecords.dropAosHookGroups(migrated.filter((l) => !isAosMarker(l))));
     // Blank lines left where AOS groups sat are collapsed, so a block that is not last in the file does not grow on every run.
     const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, eol + eol).trimEnd();
     content = `${body}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;

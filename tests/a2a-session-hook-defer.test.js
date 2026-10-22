@@ -28,6 +28,27 @@ test('deferred hook replies with the peer name, exits 0 fast, and the detached f
     assert.ok(pid, 'the finisher spawned the sidecar; log: ' + logOf(home));
 });
 
+test('the hook stdout pipe reaches EOF within 1 s of exit although the detached finisher and sidecar keep running', async () => {
+    const { spawn } = require('child_process');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-a2a-hook-'));
+    const child = spawn(process.execPath, [HOOK, '--harness', 'codex'], { stdio: 'pipe', windowsHide: true, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_A2A_HOOK_DEFER: '1' } });
+    let exitAt = 0;
+    const eof = new Promise((resolve) => child.stdout.on('end', () => resolve(Date.now())));
+    child.stdout.resume();
+    child.on('exit', () => { exitAt = Date.now(); });
+    child.stdin.write(JSON.stringify({ session_id: 'eofeof12-0000' }) + '\n'); // stdin stays open, like Codex
+    const kill = setTimeout(() => child.kill('SIGKILL'), 8000);
+    const eofAt = await eof;
+    clearTimeout(kill);
+    child.stdin.destroy();
+    await new Promise((r) => (exitAt ? r() : child.on('exit', r)));
+    const pidfile = path.join(home, '.aos', 'sessions', 'codex-eofeof12.pid');
+    const pid = await waitFor(() => { try { return Number(fs.readFileSync(pidfile, 'utf8')); } catch { return 0; } });
+    if (pid) try { process.kill(pid); } catch { /* already gone */ }
+    assert.ok(eofAt - exitAt < 1000, `stdout EOF ${eofAt - exitAt} ms after exit: a detached child holds the hook's pipe`);
+    assert.ok(pid, 'the finisher still started the sidecar; log: ' + logOf(home));
+});
+
 test('errors never fail the hook and land in the log', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-a2a-hook-'));
     const bad = run(home, ['--harness', 'codex'], 'not json');

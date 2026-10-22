@@ -427,6 +427,19 @@ function checkHooks() {
     existsSync(codexConf) ? `${tilde(codexConf)} (${codexWired ? 'AOS hook commands wired' : 'no AOS hook commands'})` : `${tilde(codexConf)} missing`,
     'Run the AOS installer to wire Codex hooks.', true);
 
+  // A hook command that runs a missing AOS script fails on every event (5.4.0 Lenovo: the pre-fabric dispatch script after the rename).
+  const missingScripts = [];
+  for (const m of codexToml.matchAll(/^\s*command\s*=\s*("(?:[^"\\]|\\.)*"|'[^']*')/gm)) {
+    let cmd;
+    try { cmd = m[1].startsWith('"') ? JSON.parse(m[1]) : m[1].slice(1, -1); } catch { continue; }
+    for (const t of cmd.match(/"[^"]+\.m?js"|\S+\.m?js/g) || []) {
+      const p = t.replace(/^"|"$/g, '').replace(/^~(?=[\\/])/, HOME);
+      if (/[\\/]\.codex[\\/](?:workflows|hooks)[\\/]/.test(p) && !existsSync(p)) missingScripts.push(tilde(p));
+    }
+  }
+  if (missingScripts.length) add('hooks', 'Codex hook scripts', false, `${tilde(codexConf)} runs missing AOS scripts: ${missingScripts.join(', ')}`,
+    'Run aos update: it moves entries for the pre-fabric dispatch script to fabric-dispatch.mjs and rewrites the AOS hook block.', true);
+
   if (codexWired) {
     // Codex's hash algorithm is not reproduced here. Evidence of a re-trust is only that Codex's set of
     // trust values changed after the install that last changed the AOS hooks (snapshot in ~/.aos/codex-hooks.json).
