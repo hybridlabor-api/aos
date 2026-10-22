@@ -50,6 +50,28 @@ One hook, `memb-inject.mjs`, serves every harness; deja, OpenWiki and codebase-m
 - **Per prompt:** only full-text hits that share at least two prompt terms. A hit without a project is
   injected only if it relates to this project or prompt: project cards must name the project, other
   categories (branding, mail, ...) must match a project id or a prompt term.
+- **Per prompt, semantic (opt-in):** a non-trivial prompt (15+ characters, not a slash command) also
+  asks memB's own search (`search_memory` in the memB engine: local embeddings plus BM25) through
+  `memb-recall.py`, scoped to the reader user. Hard budget 400 ms; the helper runs in its own process
+  group and the whole group is killed at the budget. A timeout, a missing memB or an engine error skips
+  it silently. Only hits scoring at least 0.45 are kept; a hit must belong to the reader user, and a
+  project hit must match this project (a global hit must pass the same relevance gate as full-text).
+  Deduped against the full-text hits, at most 5 lines and about 600 tokens (2400 characters), shown as
+  `- Relevant memory: ...`. The 0.45 threshold is a starting point: memB scores are ~0..1 (dense
+  similarity, BM25 boosted x1.25 and capped at 1.0, see memB `run.py`), and no measured calibration exists yet.
+  **Cold start:** semantic recall needs a warm memB process. Loading the Python engine and the ONNX
+  embedding model takes seconds on a cold machine, far above the 400 ms budget, so a cold prompt gets no
+  semantic hits (the process is killed at the budget). The hook spawns `memb-recall.py` per prompt, so
+  semantic recall only fits inside the budget when the engine load is already cheap on that machine.
+  Cold-start cost was not measured here; measure it on your machine before enabling `semantic`.
+- **Standing rule:** the SessionStart block carries one line telling the agent to query memB first for
+  questions about projects, people, the company, earlier decisions or preferences. Shared text, so
+  Claude Code, Codex, Antigravity and OpenCode all get it once per session.
+- **Setting `memory.promptRecall`** in `~/.aos/v5-settings.json` (no CLI setter yet):
+  - `"fulltext"` (default): full-text recall only; the engine is never started per prompt.
+  - `"semantic"` (opt-in): full-text plus semantic recall per prompt, as above.
+  - `"off"`: no per-prompt recall at all; the start context and the standing rule are unchanged.
+  Unknown values fall back to `fulltext`.
 - **Pull more:** the session hint (`aos-session-hint.mjs`, all four harnesses) ends with one line naming
   the installed tools: `memb search`, `deja search`, `openwiki_search`, `codebase_memory_mcp`. Tools that
   are not installed, or whose package is in the `disabled` list, are left out; AOS works with none of them.

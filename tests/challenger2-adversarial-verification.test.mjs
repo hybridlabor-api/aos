@@ -487,7 +487,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(cdxCheck.ok, true, 'reports wired config.toml after merge');
     });
 
-    test('aos-doctor: verifies memb-inject.mjs version 8 requirement', () => {
+    test('aos-doctor: verifies memb-inject.mjs version 9 requirement', () => {
       const hooksDir = path.join(mockHome, '.claude', 'hooks');
       fs.mkdirSync(hooksDir, { recursive: true });
 
@@ -499,17 +499,17 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       let doc = JSON.parse(res.stdout);
       let membCheck = doc.results.find(r => r.area === 'hooks' && r.name === 'memb-inject.mjs');
       assert.strictEqual(membCheck.ok, false, 'flags v5 hook as failing');
-      assert(membCheck.detail.includes('v5, this release ships v8'));
+      assert(membCheck.detail.includes('v5, this release ships v9'));
 
-      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 8\n');
+      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 9\n');
       res = runNode(DOCTOR_PATH, {
         args: ['--json'],
         env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       doc = JSON.parse(res.stdout);
       membCheck = doc.results.find(r => r.area === 'hooks' && r.name === 'memb-inject.mjs');
-      assert.strictEqual(membCheck.ok, true, 'approves v8 hook');
-      assert(membCheck.detail.includes('(v8)'));
+      assert.strictEqual(membCheck.ok, true, 'approves v9 hook');
+      assert(membCheck.detail.includes('(v9)'));
     });
   });
 
