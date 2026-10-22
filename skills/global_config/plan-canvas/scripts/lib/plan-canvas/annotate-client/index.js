@@ -24,7 +24,15 @@ function clientMain(CFG) {
   const script = document.currentScript;
   let endpoint = null;
   let token = '';
-  if (FETCH && script) {
+  // Proxy overlay (lib/plan-canvas/annotation/proxy.mjs) presets the session,
+  // token and same-origin endpoint instead of script-tag data attributes.
+  const preset = window.__AOS_ANNOT_CFG || null;
+  if (FETCH && preset) {
+    if (/^[a-f0-9]{12}$/.test(preset.session) && preset.token && typeof preset.endpoint === 'string') {
+      endpoint = preset.endpoint;
+      token = String(preset.token);
+    }
+  } else if (FETCH && script) {
     const key = script.getAttribute('data-session') || '';
     token = script.getAttribute('data-token') || '';
     let base = '';

@@ -69,6 +69,7 @@ function usage() {
     '  aos-plan-canvas open <file> --await  Open, then block like await in the same call',
     '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
     '  aos-plan-canvas annotate <app-url>  Print the script tag that lets you annotate a running dev app',
+    '  aos-plan-canvas annotate <app-url> --proxy  Serve the app through a loopback proxy with the overlay built in (foreground)',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
     '  aos-plan-canvas pending          Show feedback queued for no listener',
     '  aos-plan-canvas typing <file>    Show a thinking/typing indicator in chat',
@@ -90,6 +91,8 @@ function usage() {
     '         --force        Overwrite an existing output file',
     '  annotate: --session <file>  Session file (default production_artifacts/canvas-annotations/<host>-<port>.md)',
     '         --ttl-ms <n>   Token lifetime (default 8h, max 24h)',
+    '         --proxy        Foreground loopback proxy, no script tag: prints a one-time login URL, Ctrl+C stops',
+    '         --proxy-port <n>  With --proxy: fixed proxy port 1024-65535 (default: a free port)',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
     '         --timeout-ms <n>  Return {status:"waiting"} after n ms (tests/debug only)',
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
@@ -461,11 +464,8 @@ async function cmdAnnotate(appUrl, args, context) {
   const opened = await cmdOpen(file, args, context);
   if (opened.error || opened.status !== 'open') return opened;
   const key = sessionKeyFor(canonicalizeArtifactPath(file));
-  const res = await request(context.port, 'POST', `/api/annotate/${key}/token`, {
-    origin,
-    ...(ttlMs === undefined ? {} : { ttlMs })
-  });
-  if (res.statusCode !== 200) throw new Error(res.body.error || `token request failed (HTTP ${res.statusCode})`);
+  if (args.includes('--proxy')) return serveAnnotateProxy({ origin, key, file, context, args });
+  const res = await requestAnnotateToken(context, key, origin, ttlMs);
   return {
     status: 'ready',
     url: opened.url,
@@ -475,6 +475,61 @@ async function cmdAnnotate(appUrl, args, context) {
     expiresAt: res.body.expiresAt,
     next_step: `Add scriptTag to the dev app's index.html (or paste the bookmarklet), reload the app, press Alt+Shift+A to annotate, then run \`aos-plan-canvas await ${file}\`. The token only works from ${origin}; rerun annotate to rotate it.`
   };
+}
+
+async function requestAnnotateToken(context, key, origin, ttlMs) {
+  const res = await request(context.port, 'POST', `/api/annotate/${key}/token`, {
+    origin,
+    ...(ttlMs === undefined ? {} : { ttlMs })
+  });
+  if (res.statusCode !== 200) throw new Error(res.body.error || `token request failed (HTTP ${res.statusCode})`);
+  return res;
+}
+
+// The overlay's token is bound to the proxy origin the browser sees, and lives
+// 30 min: shorter than the session token, so a leaked overlay config expires fast.
+const PROXY_OVERLAY_TTL_MS = 30 * 60 * 1000;
+
+// Foreground: serves the app through a loopback proxy and blocks until Ctrl+C.
+// The one-time login URL sets the session cookie; the app is then reached at /.
+async function serveAnnotateProxy({ origin, key, context, args }) {
+  const { createProxy } = await import('./lib/plan-canvas/annotation/proxy.mjs');
+  const appUrl = new URL(origin);
+  const appPort = Number(appUrl.port);
+  const proxyPortRaw = valueAfter(args, '--proxy-port');
+  const proxyPort = proxyPortRaw === null ? 0 : Number(proxyPortRaw);
+  if (!Number.isInteger(proxyPort) || (proxyPort !== 0 && (proxyPort < 1024 || proxyPort > 65535))) {
+    throw new Error('--proxy-port must be an integer 1024-65535');
+  }
+  const proxy = await createProxy({
+    port: proxyPort,
+    upstream: { host: appUrl.hostname, port: appPort },
+    allowedPorts: [appPort],
+    canvasPort: context.port
+  });
+  const proxyOrigin = `http://127.0.0.1:${proxy.port}`;
+  try {
+    const minted = await requestAnnotateToken(context, key, proxyOrigin, PROXY_OVERLAY_TTL_MS);
+    proxy.setOverlay({ session: key, token: minted.body.token, endpoint: `/__aos_annot/api/${key}` });
+  } catch (error) {
+    proxy.server.close();
+    throw error;
+  }
+  const login = proxy.issueLogin();
+  process.stdout.write(
+    `Proxy for ${origin} on ${proxyOrigin}\n` +
+    `Open once (single use, valid 10 min): ${proxyOrigin}/__aos/annotate/login?t=${login.token}\n` +
+    `Annotation token valid 30 min. Ctrl+C stops the proxy.\n`
+  );
+  await new Promise((resolve) => {
+    const stop = () => {
+      proxy.server.closeAllConnections?.();
+      proxy.server.close(resolve);
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+  });
+  return { status: 'stopped', origin, proxy: proxyOrigin };
 }
 
 function awaitRequest(port, key, timeoutMs) {
