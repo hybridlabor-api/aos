@@ -427,7 +427,7 @@ function checkHooks() {
     existsSync(codexConf) ? `${tilde(codexConf)} (${codexWired ? 'AOS hook commands wired' : 'no AOS hook commands'})` : `${tilde(codexConf)} missing`,
     'Run the AOS installer to wire Codex hooks.', true);
 
-  // A hook command that runs a missing AOS script fails on every event (5.4.0 Lenovo: startcycle-dispatch.mjs after the rename).
+  // A hook command that runs a missing AOS script fails on every event (5.4.0 Lenovo: the pre-fabric dispatch script after the rename).
   const missingScripts = [];
   for (const m of codexToml.matchAll(/^\s*command\s*=\s*("(?:[^"\\]|\\.)*"|'[^']*')/gm)) {
     let cmd;
@@ -438,7 +438,7 @@ function checkHooks() {
     }
   }
   if (missingScripts.length) add('hooks', 'Codex hook scripts', false, `${tilde(codexConf)} runs missing AOS scripts: ${missingScripts.join(', ')}`,
-    'Run aos update: it moves startcycle-dispatch.mjs entries to fabric-dispatch.mjs and rewrites the AOS hook block.', true);
+    'Run aos update: it moves entries for the pre-fabric dispatch script to fabric-dispatch.mjs and rewrites the AOS hook block.', true);
 
   if (codexWired) {
     // Codex's hash algorithm is not reproduced here. Evidence of a re-trust is only that Codex's set of

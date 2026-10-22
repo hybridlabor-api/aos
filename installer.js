@@ -36,7 +36,7 @@ const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
-const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs } = require('./lib/retired-skills');
+const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs, LEGACY_CODEX_DISPATCH } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
 const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
@@ -7380,13 +7380,13 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     // Drop every AOS hook entry (marker block or not, duplicates included), then append one fresh block.
     const isAosMarker = (l) => /^\s*# AOS:HOOKS:(START|END)\s*$/.test(l);
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
-    // startcycle-dispatch.mjs was renamed to fabric-dispatch.mjs: an old entry for it outside the marker block ran a
+    // LEGACY_CODEX_DISPATCH was renamed to fabric-dispatch.mjs: an old entry for it outside the marker block ran a
     // missing file on every prompt (exit 1). Renamed here, it is dropped below as an AOS entry and the fresh block wires
-    // fabric-dispatch.mjs when this profile uses it. Only an entry pointing at <codex>/workflows/startcycle-dispatch.mjs.
+    // fabric-dispatch.mjs when this profile uses it. Only an entry pointing at <codex>/workflows/<LEGACY_CODEX_DISPATCH>.
     const fold = (p) => { const r = p.replace(/\\+/g, '/'); return process.platform === 'win32' ? r.toLowerCase() : r; };
-    const oldDispatch = path.join(workflowsDir, 'startcycle-dispatch.mjs');
+    const oldDispatch = path.join(workflowsDir, LEGACY_CODEX_DISPATCH);
     const oldForms = [fold(oldDispatch), ...(oldDispatch.startsWith(homeDir + path.sep) ? [fold(`~/${path.relative(homeDir, oldDispatch)}`)] : [])];
-    const migrated = content.split(/\r?\n/).map((l) => (/^\s*command\s*=/.test(l) && oldForms.some((o) => fold(l).includes(o)) ? l.replace(/startcycle-dispatch\.mjs/i, 'fabric-dispatch.mjs') : l));
+    const migrated = content.split(/\r?\n/).map((l) => (/^\s*command\s*=/.test(l) && oldForms.some((o) => fold(l).includes(o)) ? l.replace(new RegExp(LEGACY_CODEX_DISPATCH.replace(/\./g, '\\.'), 'i'), 'fabric-dispatch.mjs') : l));
     const kept = (uninstallRecords.dropAosHookGroups(migrated.filter((l) => !isAosMarker(l))));
     // Blank lines left where AOS groups sat are collapsed, so a block that is not last in the file does not grow on every run.
     const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, eol + eol).trimEnd();
