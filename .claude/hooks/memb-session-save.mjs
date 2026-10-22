@@ -75,8 +75,36 @@ export function firstTime(sessionId, base = path.join(os.homedir(), '.aos', 'cac
 
 const PY = 'import sys,json\nd=json.load(sys.stdin)\nimport run\nrun.add_memory(d["text"],project_id=d["project"],category="task_learnings",infer=False,source="session-end",harness=d["harness"],session=d["session"])\n';
 
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      try { process.stdin.pause(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
+
 async function main() {
-  const raw = readFileSync(0, 'utf8');
+  const raw = (await readStdinBounded(1500)) ?? '';
   const input = JSON.parse(raw);
   if (disabled()) return;
   const tp = input.transcript_path;

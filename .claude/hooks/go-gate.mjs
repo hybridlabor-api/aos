@@ -51,7 +51,7 @@
 // Origin: only human-typed entries count, as GO and as gogate commands
 // (isHumanEntry). Loops, peers, task notifications, SDK and system prompts never.
 
-import { constants as FS, readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync, opendirSync } from "node:fs";
+import { constants as FS, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync, opendirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID, createPublicKey, verify as cryptoVerify, timingSafeEqual } from "node:crypto";
@@ -2285,9 +2285,32 @@ export function gateStoreReason(command) {
   return readOnly ? null : why;
 }
 
-// Unreadable stdin throws: safeMain denies (exit 2) instead of allowing with empty input.
-function readStdin() {
-  return readFileSync(0, "utf8");
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+export function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      try { process.stdin.pause(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
 }
 
 // Block cooldown: the first block of a session writes <gate dir>/<session key>.block. For 10
@@ -3637,17 +3660,19 @@ export function profileAllows(command) {
   return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !(indirectReleaseRisk(command) || contentReleaseRisk(command));
 }
 
-function main() {
+async function main() {
+  // Fail closed: no complete payload before the timeout or a stdin error is denied like unparseable input.
+  const rawInput = await readStdinBounded(2000);
   hookDeadline = Date.now() + SCAN_MS;
-  const rawInput = readStdin();
   // Opt-in payload capture for harness debugging; never on by default, never fatal.
   const dbg = process.env.AOS_GATE_DEBUG;
   if (dbg && isAbsolute(dbg)) {
-    try { appendFileSync(dbg, `${maskSecrets(rawInput.replace(/\r?\n/g, " "))}\n`); } catch { /* debug only */ }
+    try { appendFileSync(dbg, `${maskSecrets((rawInput ?? "").replace(/\r?\n/g, " "))}\n`); } catch { /* debug only */ }
   }
   let input = {};
-  if (rawInput.trim()) {
+  if (rawInput === null || rawInput.trim()) {
     try {
+      if (rawInput === null) throw new Error("no complete payload on stdin (timeout or read error)");
       input = JSON.parse(rawInput);
     } catch (e) {
       // Harness unknown: deny JSON on stdout (Antigravity) plus stderr + exit 2 (Claude Code/Codex) closes every path.
@@ -3793,9 +3818,9 @@ function main() {
 }
 
 // Never fail open: any exception (bad input shape, unreadable state, a bug) denies.
-function safeMain() {
+async function safeMain() {
   try {
-    main();
+    await main();
   } catch (e) {
     const reason = `go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}`;
     if (codexMode) codexDeny(`[MECHANICAL GO-GATE BLOCKED] ${reason}`);

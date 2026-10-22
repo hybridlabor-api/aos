@@ -19,7 +19,7 @@
 // the agent is not. The go-gate store check is the exception: unparseable input that names the
 // store is denied.
 
-import { readFileSync, realpathSync, lstatSync, readlinkSync } from "node:fs";
+import { realpathSync, lstatSync, readlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 
@@ -28,12 +28,32 @@ import { basename, dirname, isAbsolute, resolve } from "node:path";
 const TEMPLATE_FILE = /^\.env\.(example|sample|template|dist)$/i;
 const ENV_FILE = /^\.env(\..*)?$/i;
 
-function readStdin() {
-  try {
-    return readFileSync(0, "utf8");
-  } catch {
-    return "";
-  }
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      try { process.stdin.pause(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
 }
 
 function respond(isAgy, allowed, reason = "") {
@@ -124,8 +144,8 @@ export function envFileReason(filePath, cwd = "") {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
-function main() {
-  const rawInput = readStdin();
+async function main() {
+  const rawInput = (await readStdinBounded(2000)) ?? "";
   let input = {};
   if (rawInput.trim()) {
     try {
@@ -176,4 +196,4 @@ export function targetsOf(input) {
   return out;
 }
 
-if (isMain()) main();
+if (isMain()) await main();

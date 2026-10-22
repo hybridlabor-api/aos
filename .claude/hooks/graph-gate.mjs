@@ -44,6 +44,34 @@
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      try { process.stdin.pause(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
+
 function allow() {
   process.exit(0);
 }
@@ -53,10 +81,10 @@ function block(reason) {
   process.exit(2);
 }
 
-function main() {
+async function main() {
   let input;
   try {
-    input = JSON.parse(readFileSync(0, "utf8"));
+    input = JSON.parse((await readStdinBounded(2000)) ?? "");
   } catch {
     allow(); // can't read hook input -- fail open, this hook has no opinion without it
     return;
@@ -142,4 +170,4 @@ function main() {
   );
 }
 
-main();
+await main();

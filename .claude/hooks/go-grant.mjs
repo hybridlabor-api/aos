@@ -13,11 +13,11 @@
 //
 // CLI: node go-grant.mjs --status [--session <id>]   (read-only, prints status)
 
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   parseGogate, textHash, sessionKey, readState, writeState, gateLog, effectiveGate,
-  gogateCommandsFor, statusText, listStateKeys,
+  gogateCommandsFor, statusText, listStateKeys, readStdinBounded,
 } from "./go-gate.mjs";
 
 const emptyState = (source) => ({ transcript: source, grants: [] });
@@ -79,7 +79,7 @@ if (isMain()) {
     process.exit(0);
   }
   try {
-    const input = JSON.parse(readFileSync(0, "utf8"));
+    const input = JSON.parse((await readStdinBounded(2000)) ?? "");
     const text = applyGogate(input.prompt, { key: sessionKey(input.session_id), source: input.transcript_path });
     if (text) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } }));
   } catch { /* a failing hook must never block the prompt */ }
