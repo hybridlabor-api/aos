@@ -307,10 +307,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(fs.existsSync(cfgPath), 'opencode.jsonc must be written by the Quick Update path');
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             assert.ok(Array.isArray(cfg.plugin), 'plugin must be an array');
-            assert.ok(
-                cfg.plugin.some(p => String(p).includes('bdb-aos')),
-                'bdb-aos.js must be registered in the plugin array'
-            );
+            assert.ok(!cfg.plugin.some(p => String(p).includes('bdb-aos')), 'bdb-aos.js is auto-loaded from plugins/, never listed in plugin[]');
         });
 
         test('hooks are copied to plugins/aos-hooks and the plugin stays registered once', () => {
@@ -323,7 +320,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 assert.deepStrictEqual(fs.readFileSync(copy), fs.readFileSync(path.join(REPO_ROOT, '.claude', 'hooks', `${f}.mjs`)));
             }
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-            assert.strictEqual(cfg.plugin.filter(p => String(p).includes('bdb-aos')).length, 1);
+            assert.strictEqual(cfg.plugin.filter(p => String(p).includes('bdb-aos')).length, 0);
             assert.ok(!cfg.plugin.some(p => String(p).includes('aos-hooks')), 'aos-hooks must not be registered as a plugin');
         });
 
@@ -333,7 +330,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             run(CALL(cfgPath));
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             const hits = cfg.plugin.filter(p => String(p).includes('bdb-aos'));
-            assert.strictEqual(hits.length, 1, `bdb-aos registered ${hits.length}x, expected exactly 1`);
+            assert.strictEqual(hits.length, 0, `bdb-aos listed ${hits.length}x in plugin[], expected auto-load only`);
         });
 
         test('preserves user-owned keys in an existing opencode.jsonc', () => {
@@ -350,7 +347,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             assert.strictEqual(cfg.model, 'anthropic/claude-sonnet-4-5', 'user model must survive');
             assert.ok(cfg.plugin.includes('opencode-helicone-session'), 'foreign plugin entries must survive');
-            assert.ok(cfg.plugin.some(p => String(p).includes('bdb-aos')), 'bdb-aos must be added');
+            assert.ok(!cfg.plugin.some(p => String(p).includes('bdb-aos')), 'bdb-aos is auto-loaded, not added to plugin[]');
         });
 
         test('shipped slash-command payload is copied alongside the plugin', () => {
