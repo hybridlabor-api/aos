@@ -116,6 +116,7 @@ Reviewer, and no quality gate ever running).
 
 Pass these through verbatim in the goal text; the dispatcher parses them itself.
 
+- `--plan <file>`: use a pre-approved plan file (with a `.approval.json` sidecar record containing `verdict: "approve"` and a matching `contentHash`) to skip the Architect and TechLead/human approval steps. The approval sidecar binds to the plan content via SHA-256 hash; a missing, mismatched, or invalid approval record causes the dispatcher to escalate and refuse the shortcut. Without this flag, the default Architect → TechLead → human approval flow runs. See `.agents/graph.md`, "Pre-approved plans".
 - `--skill=<name>` (repeatable): hard-required skill, see above.
 - `--profile=<name>`: select a domain profile from `.agents/profiles/<name>.json` (`copywriter`, `creator`, `kicad`, `touchdesigner`). An unknown or repeated `--profile` escalates before any agent works. Without the flag the dispatcher matches profile triggers against the goal, and falls back to the default software pipeline. See `.agents/graph.md`, "Domain profiles".
 - `--workstreams`: let Architect plan dynamic workstreams (1 to 6, `execution_manifest` in `state.json`) instead of the fixed build nodes. See `.agents/graph.md`.

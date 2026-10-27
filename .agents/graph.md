@@ -138,6 +138,31 @@ this discipline exists to prevent:
    isn't making progress. Same intent (don't keep trusting a loop that isn't
    working), a form this control flow can actually reach.
 
+## Pre-approved plans (`--plan` flag)
+
+The dispatcher accepts `/fabric-graph --plan <file>` to use an already-approved plan, skipping both Architect and TechLead/human approval. This is safe only when the plan carries a verifiable approval record that binds to its content:
+
+- The approval record is a `.approval.json` sidecar file (same directory, same basename) containing: `{ "verdict": "approve", "contentHash": "<sha256>", "timestamp": <iso-8601 or unix-ms> }`
+- The approval record's `contentHash` must match the SHA-256 hash of the plan file's **current content**
+- If the record is missing, malformed, or the hash doesn't match: the dispatcher escalates and refuses the shortcut
+- Without valid approval: refuse with a clear error (exit non-zero); never fall back to "approved"
+- On success: record in `state.json` that the plan came pre-approved (`pre_approved: true`, `approval_source: <plan-file>`, `approval_hash: <hash>`)
+
+This mechanism is for CI pipelines and workflows that have already obtained human sign-off outside the dispatcher. An approval record is ephemeral and carries no weight across runs.
+
+## Reviewer: 4 parallel reviewers with deduplication
+
+The Reviewer node (marked with `"parallelReviewers"` in nodes.json) invokes 4 reviewers in parallel for broader coverage:
+
+1. **reviewer-1**: correctness focus — logic errors, broken edge cases, contract mismatches
+2. **reviewer-2**: security & operability — injection, leaked secrets, auth gaps, rollback hazards
+3. **code-reviewer**: code health & maintainability — architecture, error handling, performance
+4. **devils-advocate**: hunts unstated assumptions, missing failure modes, case where the approach is wrong
+
+Findings are deduplicated by `(file, line, summary)` — identical findings from multiple reviewers merge to one, keeping the highest severity and listing all sources. The deduplication step (role `merge_review`, model from `pipeline.json`) runs after all four return, before the dispatcher decides whether to loop or proceed.
+
+Max 2 review repair rounds (Reviewer cycles 1 and 2) before escalation via the no-progress guard: if Reviewer reports the same blocking finding IDs twice in a row, stop and escalate rather than trying to fix unfixable issues. Repair rounds count toward the iteration budget together with all other rounds (Architect loops, gate fixes).
+
 ## Workers and scopes
 
 Each node in `.agents/nodes.json` may declare two optional fields:
@@ -163,7 +188,7 @@ never inside a node's own prompt.
 | TechLead | plan approved | invoke UI_UX, Engineering, Media_EventTech (parallel — each is an independent dispatcher call, not one node fanning out to the others) |
 | any build node | *(after all three return, or the ones the goal needs)* | invoke Reviewer |
 | Reviewer | any `blocking` finding open, and it's a **new** finding ID | `iteration++`, invoke the owning build node (only that one, not all three) |
-| Reviewer | the **same** `blocking` finding ID(s) as the previous cycle | set `needs_human: true`, `phase: escalated` — **stop** (no-progress guard, see above) |
+| Reviewer | the **same** `blocking` finding ID(s) as the previous cycle | set `needs_human: true`, `phase: escalated` — **stop** (no-progress guard, see above) — max 2 review repair rounds before escalation |
 | Reviewer | zero blocking findings | invoke Shipping |
 | Shipping | any `gate.*` is `fail` | `iteration++`, invoke whichever build node(s) Shipping's own structured output names as owning the failing check(s) — the dispatcher does not guess a lint/test-to-node mapping itself |
 | Shipping | all `gate.*` are `pass`/`skip` | `phase: ready_to_ship`, stop — surface "ready to ship, needs GO" to the user. The dispatcher does not itself check `approvals` for a prior GO here (see the Harness section's noted exception); the actual push/version/publish is a separate GO-gated step, enforced by `go-gate.mjs`, which does the GO check at the point it matters. |

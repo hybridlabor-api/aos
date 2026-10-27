@@ -154,7 +154,13 @@
         "architect-review",
         "systematic-debugging"
       ],
-      "instructions": null
+      "instructions": null,
+      "parallelReviewers": [
+        "reviewer-1",
+        "reviewer-2",
+        "code-reviewer",
+        "devils-advocate"
+      ]
     },
     "shipping": {
       "label": "Godmode_Shipping",
