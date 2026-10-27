@@ -103,6 +103,25 @@ test('manifest: target edited -> no skip', async (t) => {
     }
 });
 
+test('manifest: record without its files (copy emptied, e.g. by uninstall) -> no skip', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const source = path.join(tmpDir, 'source');
+        const target = path.join(tmpDir, 'target');
+        writeTestFile(source, 'SKILL.md', '# Test Skill');
+        writeTestFile(target, 'SKILL.md', '# Test Skill');
+        skillManifest.writeManifest(target, dirHash(source), dirHash(target));
+        assert.strictEqual(skillManifest.shouldSkipSkillSync(source, target).skip, true, 'intact copy is skipped');
+
+        fs.unlinkSync(path.join(target, 'SKILL.md'));
+        const result = skillManifest.shouldSkipSkillSync(source, target);
+        assert.strictEqual(result.skip, false, 'a copy with only its record left must be written again');
+        assert.strictEqual(result.reason, 'target files missing');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
+
 test('manifest: no manifest -> no skip', async (t) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
     try {
