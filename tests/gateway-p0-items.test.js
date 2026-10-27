@@ -128,5 +128,49 @@ test('P0#3 unverified harness rows: should be listed in doctor/docs as unsupport
     const unverifiedIds = unverified.map((h) => h.id).sort();
     assert.ok(unverifiedIds.includes('claude-desktop'));
     assert.ok(unverifiedIds.includes('cursor-app'));
-    assert.ok(unverifiedIds.includes('windsurf'));
+    assert.ok(unverifiedIds.includes('windsurf-legacy'));
+    assert.ok(!unverifiedIds.includes('windsurf'));
+});
+
+test('P0#3 doctor lists every unverified harness row as not managed by the gateway', () => {
+    const doctor = require('../lib/gateway/doctor.js');
+    const home = tmp();
+    const row = doctor.gatewayChecks({ home, files: [], platform: 'linux' }).find((c) => c.name === 'not managed by the gateway (unverified)');
+    assert.ok(row, 'row present');
+    const unverifiedIds = require('../lib/harnesses.json').filter((h) => !h.verified).map((h) => h.id);
+    for (const id of unverifiedIds) assert.ok(row.detail.split(', ').includes(id), id);
+    assert.ok(!row.detail.split(', ').includes('claude'));
+});
+
+test('P0#2 doctor reports a direct-by-design server as direct by design, not as a duplicate', () => {
+    const doctor = require('../lib/gateway/doctor.js');
+    const home = tmp();
+    const file = path.join(home, '.claude.json');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: {
+        aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp' },
+        bdb_blender_official_mcp: { command: 'node', args: ['b.js'] },
+    } }));
+    const checks = doctor.gatewayChecks({ home, files: [{ file, kind: 'claude' }], platform: 'linux' });
+    const dup = checks.find((c) => c.name === `gateway duplicates in ${file}`);
+    const byDesign = checks.find((c) => c.name === `gateway direct by design in ${file}`);
+    assert.equal(dup.ok, true);
+    assert.doesNotMatch(dup.detail, /bdb_blender_official_mcp/);
+    assert.equal(byDesign.ok, true);
+    assert.match(byDesign.detail, /bdb_blender_official_mcp/);
+});
+
+test('P0#1 dropped-servers message names the running servers not carried over', () => {
+    const { resolveAndSaveSelection } = require('../lib/v5/pkg-gateway.js');
+    const home = tmp();
+    const dir = cfg.gatewayDir(home);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: {
+        github: { type: 'stdio', command: 'npx', args: ['x'], tags: ['aos', 'github'] },
+        bdb_unreal_mcp: { type: 'stdio', command: 'node', args: ['u.js'], tags: ['aos', 'bdb_unreal_mcp'] },
+    } }, null, 2) + '\n', { mode: 0o600 });
+    const lines = [];
+    const ctx = { home, aosRoot: home, platform: 'linux', env: {}, keepCurrentOnUpdate: false };
+    resolveAndSaveSelection(ctx, (m) => lines.push(m));
+    assert.ok(lines.includes('gateway: first selection = base + detected apps; not carried over: bdb_unreal_mcp (add back with "aos-gateway add <name>")'), lines.join('\n'));
+    assert.ok(!lines.some((m) => /not carried over: github/.test(m)));
 });
