@@ -143,9 +143,11 @@ test('manifest: read and write roundtrip', async (t) => {
 test('manifest: hash keys files by path relative to the skill dir, not basename', async (t) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
     try {
-        writeTestFile(path.join(tmpDir, 'a'), 'x.txt', 'same');
-        writeTestFile(path.join(tmpDir, 'b'), 'x.txt', 'same');
-        assert.notStrictEqual(dirHash(path.join(tmpDir, 'a')), dirHash(path.join(tmpDir, 'b')), 'moved file must change the hash');
+        const skillA = path.join(tmpDir, 'skill-a');
+        const skillB = path.join(tmpDir, 'skill-b');
+        writeTestFile(path.join(skillA, 'a'), 'x.md', 'same');
+        writeTestFile(path.join(skillB, 'b'), 'x.md', 'same');
+        assert.notStrictEqual(dirHash(skillA), dirHash(skillB), 'same basename and content in another subdir must change the hash');
     } finally {
         fs.rmSync(tmpDir, { recursive: true });
     }
