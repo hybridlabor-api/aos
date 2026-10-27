@@ -10,7 +10,7 @@ const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 
 const GATE_KEYS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
 const GATE_VALUES = new Set(['pass', 'fail', 'skip']);
-const PHASES = new Set(['define', 'plan', 'build', 'verify', 'review', 'ready_to_ship', 'ship', 'done', 'escalated']);
+const PHASES = new Set(['define', 'plan', 'build', 'verify', 'review', 'ready_to_ship', 'ship', 'done', 'escalated', 'cancelled']);
 
 function sampleAoState() {
   return {

@@ -26,7 +26,9 @@ in this file's edge table and in the dispatcher, not inside an agent's prompt.
 ## State
 
 The full schema is `.agents/state.schema.json`, persisted at
-`production_artifacts/state.json`. Markdown artifacts
+`production_artifacts/state.json`. With `aos-fabric` that file is the mirror of a
+per-run store, `production_artifacts/runs/<id>/` (`events.jsonl` is the truth,
+`state.json` its projection), and only the CLI writes it. Markdown artifacts
 (`production_artifacts/{00_execution_plan,01_frontend_spec,...}.md`) stay the
 human-readable payload; `state.json` is what the dispatcher's edges evaluate.
 Every node reads `state.json` at the start of its turn and writes it back
@@ -110,6 +112,10 @@ registry, not here or in `.agents/agents.md`.
 | **Reviewer** | `artifacts.{frontend,backend,media}` **only** — never `goal`, never a build node's reasoning | `findings[]` | invokes a build node itself, or ever sees the original `goal`/CLAIM |
 | **Shipping** | `artifacts.*`, `findings` (all must be `fixed`/`wont_fix`) | `gate.*`, `artifacts.report`, `phase: ready_to_ship` | invokes anything, or ships with an open `blocking` finding |
 
+With `aos-fabric` no node writes `state.json` or a `state.d/` fragment: a node writes its
+artifact and a report (`aos.fabric.report/1`) and the CLI folds it into the state. The
+"Writes" column above describes the legacy workflow engine.
+
 ### Reviewer discipline (from B3's `doubt-driven-development`, adopted verbatim)
 
 The Reviewer is the one node most likely to be miswired into "just read what
@@ -183,7 +189,12 @@ The task-manager is the dispatcher's queue owner. It sequences work (which node 
 ## Edges
 
 Evaluated by the dispatcher after every node returns, against `state.json` —
-never inside a node's own prompt.
+never inside a node's own prompt. The rows below are the contract; they are
+implemented once, as the pure function `decide()` in `lib/fabric/edges.mjs`, and
+`tests/fabric-edges.test.mjs` pins one case per row. Under `aos-fabric` the build
+nodes run one after another, a human plan verdict (step kind `human`, plan-canvas)
+sits between "TechLead approved" and the first build node, and a step that fails
+`max_attempts` (2) times escalates.
 
 | After | Predicate | Dispatcher does |
 |---|---|---|
@@ -208,11 +219,22 @@ a Claude-only file:
   dispatcher role — the main Claude Code session, an Antigravity subagent
   loop, or an OpenCode primary agent. The edge table above is the contract
   regardless of which harness executes it.
-- **Executable dispatcher (Claude Code only)**: `.claude/workflows/fabric-dispatch.mjs`
-  is the actual runnable implementation of this contract, using Claude
+- **Harness-neutral dispatcher (every harness)**: `aos-fabric` (`bin/aos-fabric.mjs`,
+  `docs/fabric.md`) is the runnable form of this contract that needs no workflow
+  runtime: `start`, `next`, `report`, `status`, `cancel` and `drive`. The edge table,
+  the loop brake and the escalation live in `lib/fabric/edges.mjs` only; a harness
+  supplies the executor (or lets `drive` use `aos-acp`, `codex exec` or AO). It is the only
+  writer of the state; the report an executor hands in is checked against the work tree.
+  It does not carry over `--plan` (pre-approved plans), the four parallel Reviewers with
+  deduplication or the two-review-round cap yet: the Reviewer is one step there, and those
+  features run in the legacy engine below.
+- **Workflow-runtime dispatcher (legacy engine)**: `.claude/workflows/fabric-dispatch.mjs`
+  is an older, runnable implementation of this contract, using Claude
   Code's Dynamic Workflows runtime (a script holds the loop and branches;
   the seven agents are leaves it calls via `agent()`/`pipeline()`, never
-  calling each other). The script's first action is a `load-registry` step
+  calling each other). With `--engine=cli` (or `AOS_FABRIC_ENGINE=cli`) the same script is a
+  thin client of `aos-fabric` instead; the legacy engine stays its default because only
+  it handles `--profile` and `--workstreams`. What follows describes the legacy engine. The script's first action is a `load-registry` step
   that reads `.agents/nodes.json` for each node's `agentType` and
   `skills` allowlist (no model: a node gets one only from `pipeline.json`, role = agent slug or node id, harness `claude`; otherwise `agent()` is called without `model` and inherits the session model) — if a required node id is missing from that file, the
   script escalates rather than falling back to a hardcoded list. It's a

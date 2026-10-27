@@ -391,6 +391,8 @@ if (inputGoal === null && ambientArgs) {
 }
 
 // 4. Standalone runtime shims for pipeline() and agent()
+// True only inside the Claude workflow runtime, which injects the real agent(); the shim below is not one.
+const hasRealAgent = typeof globalThis.agent === 'function';
 if (typeof globalThis.pipeline === 'undefined') {
   globalThis.pipeline = async function standalonePipeline(items, fn) {
     // Hard cap on parallel children. An unbounded Promise.all is how a
@@ -422,6 +424,23 @@ if (typeof globalThis.pipeline === 'undefined') {
 if (typeof globalThis.agent === 'undefined') {
   globalThis.agent = async function standaloneAgent(prompt, options = {}) {
     const label = options.label || '';
+
+    // Deterministic step: fabric-cli (cli engine). Runs aos-fabric with the given argv; files are written first, verbatim.
+    if (label === 'fabric-cli') {
+      const bin = fabricBinPath();
+      if (!child_process || !fs || !bin) return { code: 1, json: null, stderr: 'aos-fabric was not found (install AOS or run from a checkout)' };
+      try {
+        for (const [file, text] of Object.entries(options.files || {})) {
+          fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+          fs.writeFileSync(path.resolve(file), String(text));
+        }
+        const r = child_process.spawnSync(process.execPath, [bin, ...(options.cliArgs || []).map(String)], { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 64 << 20, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        const lines = String(r.stdout || '').trim().split('\n');
+        let json = null;
+        try { json = JSON.parse(lines[lines.length - 1]); } catch {}
+        return { code: r.status ?? 1, json, stderr: String(r.stderr || '').slice(-300) };
+      } catch (e) { return { code: 1, json: null, stderr: String(e.message || e).slice(-300) }; }
+    }
 
     // Deterministic step: load-profile (same load step shape as load-registry)
     if (label === 'load-profile') {
@@ -1219,8 +1238,107 @@ const REGISTRY_SCHEMA = {
 
 const REQUIRED_NODE_IDS = ['architect', 'techlead', 'ui_ux', 'engineering', 'media_eventtech', 'reviewer', 'shipping'];
 
+// ---------------------------------------------------------------------
+// Engine "cli": a thin client of bin/aos-fabric.mjs (docs/fabric.md). The CLI owns the state, the edges, the loop brake and
+// the escalation; this script only asks for the next step, lets an executor do it and hands the report back. No state.d, no
+// merge step. Selected with --engine=cli in the goal or AOS_FABRIC_ENGINE=cli; the legacy engine below stays the default.
+// ---------------------------------------------------------------------
+
+function pickEngine(text) {
+  const m = /(?:^|\s)--engine=(cli|legacy)(?=\s|$)/.exec(text || '');
+  const env = typeof process !== 'undefined' ? process.env.AOS_FABRIC_ENGINE : undefined;
+  return {
+    engine: m ? m[1] : env === 'cli' ? 'cli' : 'legacy',
+    flagged: !!m,
+    goal: m ? text.replace(m[0], ' ').replace(/\s{2,}/g, ' ').trim() : text || '',
+  };
+}
+
+let selfFile = null;
+if (typeof process !== 'undefined') { try { selfFile = (await import('node:url')).fileURLToPath(import.meta.url); } catch {} }
+
+function fabricBinPath() {
+  if (!fs || !path || !os) return null;
+  const candidates = [
+    selfFile && path.join(path.dirname(selfFile), '..', '..', 'bin', 'aos-fabric.mjs'),
+    path.join(os.homedir(), '.agents', 'bin', 'aos-fabric.mjs'),
+  ].filter(Boolean);
+  return candidates.find((c) => fs.existsSync(c)) || null;
+}
+
+const CLI_GO_TEXT = 'All quality gates passed. Reply with the literal word GO to authorize the push (git commit, version tag, push) -- go-gate.mjs will not let it proceed otherwise.';
+const shellWord = (a) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : `'${String(a).replace(/'/g, "'\\''")}'`);
+
+async function runCliEngine(goalText, extraSkills = []) {
+  const refuse = (reason, extra = {}) => ({ phase: 'escalated', reason, needs_human: true, ...extra });
+  // Flags only the legacy engine knows. Refused like a bad --plan: loudly, and with a non-zero exit for a CI step.
+  if (/(^|\s)--(plan|profile|workstreams)\b/.test(goalText)) {
+    return refuse('The cli engine does not support --plan, --profile or --workstreams yet. Run with --engine=legacy.', { exitCode: 1 });
+  }
+  const skills = [...extraSkills];
+  const goal = goalText.replace(/--skill=("[^"]+"|'[^']+'|\S+)/g, (_, v) => { skills.push(v.replace(/^["']|["']$/g, '')); return ''; }).replace(/\s{2,}/g, ' ').trim();
+  if (!goal) return refuse('fabric-graph needs actual goal text, e.g. "Run /fabric-graph on: add OAuth login with Google" -- nothing was invoked.');
+
+  const runId = `fg-${Date.now().toString(36)}`;
+  // One aos-fabric call. The Claude runtime has no process access, so a helper agent runs it; the standalone shim runs it directly.
+  const fab = async (cliArgs, files = {}) => {
+    const r = await agent(
+      'Run the command below in the repository root and report what it did. This is a deterministic step, not a reasoning task.\n' +
+        Object.entries(files).map(([f, t]) => `First write the file ${f} with exactly this content, unchanged:\n<<<\n${t}\n>>>\n`).join('') +
+        `Command (one argument per word, run it as written, no extra flags): aos-fabric ${cliArgs.map(shellWord).join(' ')}\n` +
+        'Return only { "code": <its exit code>, "json": <its stdout parsed as one JSON object; the last line if there are several>, "stderr": <the last 300 characters of its stderr> }.',
+      {
+        label: 'fabric-cli', ...modelOpt('load_registry'), cliArgs, files,
+        schema: { type: 'object', required: ['code'], properties: { code: { type: 'number' }, json: { type: ['object', 'null'] }, stderr: { type: 'string' } } },
+      }
+    );
+    return { code: r?.code ?? 1, json: r?.json ?? null, stderr: r?.stderr ?? '' };
+  };
+
+  const goalFile = `production_artifacts/goal-${runId}.md`;
+  const exec = typeof process !== 'undefined' ? process.env.AOS_FABRIC_EXECUTOR : undefined;
+  const started = await fab(['start', '--run', runId, '--goal-file', goalFile, ...skills.flatMap((n) => ['--skill', n]), ...(exec ? ['--executor', exec] : [])], { [goalFile]: goal });
+  if (started.code !== 0 || !started.json?.next) return refuse(`aos-fabric start failed (exit ${started.code}): ${started.stderr}`);
+
+  let view = started.json.next;
+  if (!hasRealAgent) {
+    // No worker agents here (hook or standalone): the CLI's own executors run every step.
+    const driven = await fab(['drive', '--run', runId]);
+    const done = driven.json || {};
+    view = { kind: done.phase || 'escalated', reason: done.reason || (driven.code ? `aos-fabric drive stopped (exit ${driven.code}): ${driven.stderr}` : ''), iteration: done.iteration };
+  } else {
+    for (let n = 0; n < 200 && view.kind === 'step'; n++) {
+      const step = view.step;
+      await agent(
+        `[trail-node:${step.node}] Carry out the fabric step described in the brief file ${step.brief} exactly as written there ` +
+          `(its first lines name the step, the report file and the allowed writes), then write the report file it names. Return only { "done": boolean }.`,
+        {
+          label: step.step_id, ...(step.kind !== 'human' && { agentType: step.role }), trail: { node: step.node, plan: '' },
+          ...(() => { const m = step.model_hint?.models?.claude ?? (!step.model_hint?.harness || step.model_hint.harness === 'claude' ? step.model_hint?.model : undefined); return typeof m === 'string' && m && !/\s/.test(m) ? { model: m } : {}; })(),
+          schema: { type: 'object', properties: { done: { type: 'boolean' } } },
+        }
+      );
+      let rep = await fab(['report', '--run', runId, '--step', step.step_id, '--file', step.expected_report]);
+      // No usable report file counts as a failed step (graph.md: a step without a report is a fail).
+      if (rep.code === 2) rep = await fab(['report', '--run', runId, '--step', step.step_id, '--fail', 'the worker left no valid report file']);
+      if (rep.code !== 0 && rep.code !== 6) return refuse(`aos-fabric report failed (exit ${rep.code}): ${rep.stderr}`);
+      view = rep.json || { kind: 'escalated', reason: `aos-fabric report gave no result (exit ${rep.code})` };
+    }
+    if (view.kind === 'step') view = { kind: 'escalated', reason: 'The cli engine stopped after 200 steps.' };
+  }
+  const result = { phase: view.kind, run: runId, iteration: view.iteration, ...(view.reason && { reason: view.reason }) };
+  if (view.kind === 'ready_to_ship') result.reason = CLI_GO_TEXT;
+  if (view.kind === 'escalated') result.needs_human = true;
+  return result;
+}
+
 export async function runWorkflow() {
 try {
+const early = pickEngine(inputGoal || (typeof args !== 'undefined' ? (typeof args === 'string' ? args : args?.goal) : '') || '');
+if (early.engine === 'cli') {
+  return await runCliEngine(early.goal, typeof args !== 'undefined' && Array.isArray(args?.mandatorySkills) ? args.mandatorySkills : inputSkills);
+}
+if (early.flagged) inputGoal = early.goal;
 // Without fs (Claude workflow runtime) the loader itself cannot know its own model: it inherits, and
 // reads the pipeline config for every later spawn.
 pipelineCfg = readPipelineConfigFs();

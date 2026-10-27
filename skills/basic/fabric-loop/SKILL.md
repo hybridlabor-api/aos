@@ -35,7 +35,7 @@ Every stop or pause decision comes after its log line. Steps 2 and 3 only gather
 1. Read `production_artifacts/loop.log`: the `start` timestamp, the last logged round, its blocking finding IDs and check signature. Resume from the last logged round, never from round 1. `quota` lines are not rounds.
 2. Time: compare elapsed time since the `start` line with 3 hours. At 3 hours or more, the round does not run: reason `time`.
 3. Quota: check the usage windows via `stay-within-limits`. At 95 % or more, the round does not run: reason `quota`.
-4. If neither applies, run one `fabric-graph` cycle, or the single build or review step the goal needs, then run the exit check and compute this round's signature (see below).
+4. If neither applies, run one `fabric-graph` cycle (`aos-fabric start` and `drive`, or `next` and `report` by hand; a new run id per round), or the single build or review step the goal needs, then run the exit check and compute this round's signature (see below).
 5. Pick the reason:
    - `green`: the exit check passes.
    - `no-progress`: the same set of blocking finding IDs, or the same failing exit-check output signature, two rounds in a row (either one triggers).

@@ -32,10 +32,12 @@ Pass the goal text through verbatim; flags are described below.
 ## Flags and building blocks
 
 - `--skill=<name>`: handled by `fabric-graph` and `fabric-multigraph`. `fabric-swarm` and `fabric-loop` pass it through to each worker brief. `fabric-teamwork` does not support it.
-- `--profile=<name>`: domain profile from `.agents/profiles/<name>.json`; handled by `fabric-graph`. An unknown profile escalates.
-- `--workstreams`: `fabric-graph` only; the Architect plans 1-6 dynamic workstreams (target 4, cap 6). Off by default.
+- `--profile=<name>`: domain profile from `.agents/profiles/<name>.json`; handled by the workflow script of `fabric-graph`. An unknown profile escalates.
+- `--workstreams`: workflow script of `fabric-graph` only; the Architect plans 1-6 dynamic workstreams (target 4, cap 6). Off by default.
 - Teams: `aos-team list`, `aos-team show <id>`, `aos-team new <id> [--from-playbook <name>]`; add `--json` for machine output. Team JSON lives in `~/.aos/teams` or `.aos/teams` (project wins); shipped teams are in `lib/roles/teams`.
 - Roles: a registry of role JSON files (types plan, approve, build, review, gate, specialist). Precedence: project `.aos/roles` over user `~/.aos/roles` over shipped. Role flags beyond the registry: unverified.
+
+**One loop for every harness.** `fabric-graph` (and a `fabric-loop` round) runs on the `aos-fabric` CLI: `start`, then `next` and `report` by hand with your own executor, or `drive` for a headless run. It needs no workflow runtime and works without AO.
 
 **Agents never invoke each other.** The dispatcher (the main session or the workflow script) decides every next step. Independent sub-tasks go to subagents; only work whose members must react to each other needs a team.
 
