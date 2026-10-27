@@ -1,9 +1,9 @@
 ---
 name: fabric-graph
 description: >-
-  Use for /fabric-graph or "run a fabric": the autonomous build pipeline with
-  durable state, a review repair loop and a quality gate, driven by the
-  aos-fabric CLI in any harness. Nodes never call each other; the contract is
+  Use for /fabric-graph, "run a fabric" or after /bdbrainstorm: the build
+  pipeline with durable production_artifacts/state.json, a review repair loop
+  and a quality gate, driven by the aos-fabric CLI in any harness. Contract:
   .agents/graph.md.
 category: bdb-core
 ---
