@@ -342,7 +342,8 @@ async function cmdOpen(file, args, context) {
   // open --await: one call opens the session AND keeps listening, so the turn
   // can never end without a listener. Same output contract as await.
   if (!result.error && args.includes('--await')) {
-    return cmdAwait(file, args.filter(a => a !== '--await'), context);
+    const waited = await cmdAwait(file, args.filter(a => a !== '--await'), context);
+    return waited.url ? waited : { ...waited, url: result.url };
   }
   return result;
 }

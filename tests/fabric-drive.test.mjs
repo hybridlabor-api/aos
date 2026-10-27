@@ -238,3 +238,16 @@ test('CLI drive, fake executor: a driver that is not set up leaves the step open
   assert.equal(runCli(['next', '--run', 'r'], { cwd: p.dir, env: fakeEnv(p.home) }).json.step.step_id, '0-architect-1');
   assert.equal(runCli(['drive', '--run', 'r', '--executor', 'bogus'], { cwd: p.dir, env: fakeEnv(p.home) }).code, 2);
 }));
+
+test('drive stops with a waiting_for_human event and leaves the human step open, instead of running into an outer timeout', withProject(async (p) => {
+  begin(p);
+  const stub = async (step) => step.kind === 'human'
+    ? { report: reportFor(step, p.dir, 'ok'), waiting: 'waiting for human approval: open http://127.0.0.1:4519/s/x', harness: null, executor: 'plan-canvas', notes: [] }
+    : { report: reportFor(step, p.dir, 'ok'), harness: 'stub', executor: 'stub', notes: [] };
+  const r = await runDrive(p, { stub });
+  assert.equal(r.code, EXIT_CODES.TERMINAL_PHASE);
+  assert.equal(r.lines.at(-1).event, 'waiting_for_human');
+  assert.match(r.lines.at(-1).message, /open http/);
+  assert.ok(!r.lines.some((l) => l.event === 'done'));
+  assert.equal(createStore('r', { root: p.dir }).replay().terminal, false, 'no verdict is never an approval and the run stays resumable');
+}));
