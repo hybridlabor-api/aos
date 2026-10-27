@@ -4706,6 +4706,8 @@ function installMcpLauncher() {
         [path.join(srcDir, 'lib', 'mcp-secrets.js'), path.join(homeDir, '.agents', 'lib', 'mcp-secrets.js')],
         [path.join(srcDir, 'lib', 'jsonc.js'), path.join(homeDir, '.agents', 'lib', 'jsonc.js')],
         [path.join(srcDir, 'lib', 'mcp-pick.js'), path.join(homeDir, '.agents', 'lib', 'mcp-pick.js')],
+        [path.join(srcDir, 'lib', 'cli-spawn.js'), path.join(homeDir, '.agents', 'lib', 'cli-spawn.js')],
+        [path.join(srcDir, 'lib', 'win-bin.js'), path.join(homeDir, '.agents', 'lib', 'win-bin.js')],
     ];
     let ok = true;
     for (const [src, dest] of pairs) {

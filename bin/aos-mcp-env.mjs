@@ -6,8 +6,6 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 
 // The help guard is optional here: the launcher starts every MCP server and may sit next to only its three lib files.
 await import('../lib/cli-help-guard.mjs').catch((e) => { if (e?.code !== 'ERR_MODULE_NOT_FOUND') throw e; });
@@ -50,18 +48,26 @@ if (membLlm) {
     } catch { /* memB keeps its own defaults */ }
 }
 
-// npx, uv shims etc. are .cmd files on Windows and need cmd to be spawned.
-const win = process.platform === 'win32' && !/\.exe$/i.test(command);
-// cmd /c exits 1 for an unknown command and never emits 'error', so look the bare name up first (PATH x PATHEXT).
-if (win && !/[\\/]/.test(command)) {
-    const dirs = String(env.PATH || env.Path || '').split(';').filter(Boolean);
-    const exts = ['', ...String(env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';')];
-    if (!dirs.some((d) => exts.some((x) => existsSync(join(d, command + x))))) {
-        console.error(`aos-mcp-env: cannot start ${command}: ENOENT`);
+// Windows: resolve with the entry's own env (PATH x PATHEXT, key case-insensitive, ~/.local/bin and %APPDATA%\npm fallbacks)
+// through the shared cli-spawn helper; .cmd shims go through an escaped cmd.exe line, never shell:true.
+let cliSpawn = null;
+try { cliSpawn = createRequire(import.meta.url)('../lib/cli-spawn.js'); } catch { /* bare spawn below */ }
+let file = command;
+let spawnArgs = args;
+let spawnOpts = {};
+if (process.platform === 'win32' && cliSpawn) {
+    // A spread of process.env keeps each key's case; two PATH spellings must not disagree about which one wins.
+    const pathKeys = Object.keys(env).filter((k) => k.toLowerCase() === 'path');
+    if (pathKeys.length > 1) { const keep = pathKeys.includes('PATH') ? 'PATH' : pathKeys[0]; for (const k of pathKeys) if (k !== keep) delete env[k]; }
+    const resolved = cliSpawn.resolveCommand(command, { env });
+    if (!resolved) {
+        console.error(`aos-mcp-env: cannot start ${command}: ENOENT (searched PATH x PATHEXT and the standard install folders)`);
         process.exit(127);
     }
+    try { ({ file, args: spawnArgs, options: spawnOpts } = cliSpawn.buildInvocation(resolved, args, { env })); }
+    catch (e) { console.error(`aos-mcp-env: cannot start ${command}: ${e.message}`); process.exit(127); }
 }
-const child = win ? spawn('cmd', ['/c', command, ...args], { stdio: 'inherit', env, windowsHide: true }) : spawn(command, args, { stdio: 'inherit', env, windowsHide: true });
+const child = spawn(file, spawnArgs, { stdio: 'inherit', env, windowsHide: true, ...spawnOpts });
 const forward = (sig) => () => { try { child.kill(sig); } catch { /* already gone */ } };
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, forward(sig));
 child.on('error', (e) => { console.error(`aos-mcp-env: cannot start ${command}: ${e.code || e.message}`); process.exit(127); });
