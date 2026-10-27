@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildRunArgv, checkRepoPath, detectRuntime, main, mountSource } from "../bin/aos-factory.mjs";
+import { buildRunArgv, checkRepoPath, detectRuntime, imageExists, main, mountSource, parseArgs, resolveBuildHint } from "../bin/aos-factory.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sh = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "utf8", ...opts });
@@ -130,4 +130,51 @@ test("the host gate is unchanged against release/next-541", (t) => {
   if (sh("git", ["-C", ROOT, "rev-parse", "--verify", "-q", "release/next-541"]).status !== 0) return t.skip("release/next-541 not present");
   const r = sh("git", ["-C", ROOT, "diff", "--quiet", "release/next-541", "--", ".claude/hooks/go-gate.mjs", "bin/go-check.mjs"]);
   assert.equal(r.status, 0, "go-gate.mjs or go-check.mjs differs from release/next-541");
+});
+
+test("default image missing fails with the build hint; explicit --image skips the inspect", () => {
+  const inspected = [];
+  const run = (cmd, args, opts) => {
+    if (args[0] === "info") return { status: 0 };
+    if (args[0] === "image") { inspected.push(args[2]); return { status: 1 }; }
+    return { status: 1, stdout: "", stderr: "" };
+  };
+  const errs = [];
+  const code = main(["--unattended", "--", "true"], { platform: "linux", which: whichOf("docker"), run, cwd: ROOT, home: join(ROOT, "no-home"), resultsRoot: join(ROOT, "no-runs"), log: () => {}, err: (m) => errs.push(m) });
+  assert.equal(code, 1);
+  assert.match(errs.join("\n"), /docker build -t aos-factory:local -f .*docker\/factory\/Dockerfile/);
+  assert.deepEqual(inspected, ["aos-factory:local"]);
+
+  inspected.length = 0;
+  main(["--unattended", "--image", "custom:1", "--", "true"], { platform: "linux", which: whichOf("docker"), run, cwd: ROOT, home: join(ROOT, "no-home"), resultsRoot: join(ROOT, "no-runs"), log: () => {}, err: () => {} });
+  assert.deepEqual(inspected, []);
+});
+
+test("Dockerfile exists and validates against the spec", () => {
+  const dockerfile = join(ROOT, "docker/factory/Dockerfile");
+  assert.ok(existsSync(dockerfile), "Dockerfile exists at docker/factory/Dockerfile");
+  const content = readFileSync(dockerfile, "utf8");
+  assert.match(content, /FROM node:\d+-slim/, "Dockerfile uses node slim base image");
+  assert.ok(content.includes("git"), "Dockerfile installs git");
+  assert.ok(content.includes("sh"), "Dockerfile preserves sh (from base image)");
+  assert.ok(!content.match(/ADD.*https?:\/\//), "Dockerfile does not ADD from remote URLs");
+  assert.match(content, /USER\s+\w+/, "Dockerfile has a non-root USER directive");
+  assert.ok(!/^USER\s+root/m.test(content), "Dockerfile USER is not root");
+  assert.ok(content.includes("WORKDIR /work"), "Dockerfile sets WORKDIR /work");
+});
+
+test("resolveBuildHint returns correct build command", () => {
+  const hint = resolveBuildHint("/path/to/aos");
+  assert.match(hint, /docker build.*-t aos-factory:local.*-f.*docker\/factory\/Dockerfile/);
+});
+
+test("imageExists checks if image is available locally", () => {
+  const run = (cmd, args) => {
+    if (cmd === "docker" && args[0] === "image" && args[1] === "inspect") {
+      return args[2] === "exists" ? { status: 0 } : { status: 1 };
+    }
+    return { status: 1 };
+  };
+  assert.ok(imageExists("exists", "docker", run), "imageExists returns true for existing image");
+  assert.ok(!imageExists("missing", "docker", run), "imageExists returns false for missing image");
 });

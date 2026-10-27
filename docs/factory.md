@@ -83,11 +83,20 @@ gate is off, and brings only commits back. The host gate is not changed and has 
 sandbox shortcut: nothing a host session writes or exports loosens it.
 
 ```sh
-node <aos>/bin/aos-factory.mjs --unattended --image <image> --env ANTHROPIC_API_KEY -- claude -p "/factory"
+node <aos>/bin/aos-factory.mjs --unattended [--image <image>] --env ANTHROPIC_API_KEY -- claude -p "/factory"
 ```
 
+If `--image` is omitted, `aos-factory:local` is used. Build the default image:
+
+```sh
+docker build -t aos-factory:local -f docker/factory/Dockerfile .
+```
+
+Override the default image by passing `--image <your-image>`.
+
 The image must contain `sh`, `node`, `git`, the agent CLI and the AOS hooks for
-that agent. AOS ships no image.
+that agent. The Dockerfile supplied in `docker/factory/Dockerfile` is a minimal
+image suitable for unattended factory runs.
 
 **Isolated:**
 

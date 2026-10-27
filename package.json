@@ -82,6 +82,7 @@
     "plugins/bdb-aos-codex/",
     ".opencode/",
     "docs/",
+    "docker/",
     "!vendor/token-saver/tests/**",
     "!vendor/token-saver/docs/**",
     "assets/",
