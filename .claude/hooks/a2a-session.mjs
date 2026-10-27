@@ -4,7 +4,8 @@
 //   node a2a-session.mjs --harness codex      -> Codex        (sidecar --mode codex --thread <session_id>; prints the
 //                                                              session's own peer name as SessionStart additionalContext)
 import { readFileSync, mkdirSync, appendFileSync, statSync, renameSync, realpathSync, fstatSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -75,6 +76,26 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
   });
 }
 
+// Codex on Windows runs the hook inside a kill-on-close job object and Node cannot break away from it
+// (detached is not CREATE_BREAKAWAY_FROM_JOB), so the finisher and the sidecar die when the hook returns.
+// Win32_Process.Create starts the process under WmiPrvSE, outside that job. Resolves true when WMI accepted it.
+export function startOutsideJob(args, { cwd = process.cwd(), execFileImpl = execFile, timeoutMs = 6000 } = {}) {
+  return new Promise((resolve) => {
+    try {
+      const req = createRequire(import.meta.url);
+      let wb;
+      for (const p of ["../../lib/win-bin.js", join(homedir(), ".agents", "lib", "win-bin.js")]) { try { wb = req(p); break; } catch { /* next */ } }
+      const q = (a) => `"${String(a).replace(/"/g, "")}"`;
+      const cmd = [process.execPath, ...args].map(q).join(" ");
+      const ps = ["$ProgressPreference='SilentlyContinue'",
+        `$r=Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='${wb.psQuote(cmd)}'; CurrentDirectory='${wb.psQuote(cwd)}'}`,
+        "if($r.ReturnValue -eq 0){'ok'}"].join("\n");
+      execFileImpl(wb.winBin("powershell.exe"), ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(ps, "utf16le").toString("base64")],
+        { encoding: "utf8", timeout: timeoutMs, windowsHide: true }, (err, out) => resolve(!err && /ok/.test(String(out))));
+    } catch { resolve(false); }
+  });
+}
+
 // Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs). Never throws, always code 0.
 //   Claude Code: harness "claude" (sidecar --mode live, drained by the a2a-inbox hook)
 //   Codex:       harness "codex"  (sidecar --mode codex --thread <session_id>; stdout carries the session's own peer name)
@@ -99,12 +120,19 @@ export async function hook(input, { harness = "claude", finish = false, ppid = p
           if (harness === "codex" && sessionId) stdout += contextJson(lib.sessionName({ harness, sessionId, env: process.env }));
           let payload = JSON.stringify(input);
           if (payload.length > 16000) payload = JSON.stringify({ session_id: sessionId });
-          const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--harness", harness, "--finish"], {
-            detached: true, stdio: "ignore", windowsHide: true,
-            env: { ...process.env, AOS_A2A_HOOK_INPUT: payload, AOS_A2A_HOOK_PPID: String(ppid) },
-          });
-          child.on("error", (e) => log(`cannot start the finisher: ${e.message}`));
-          child.unref();
+          const self = fileURLToPath(import.meta.url);
+          // WMI-started processes get no env: the payload and parent pid travel as arguments (small payload only).
+          const b64 = Buffer.from(payload).toString("base64");
+          const viaWmi = process.platform === "win32" && harness === "codex" && b64.length <= 4000 && !process.env.AOS_A2A_NO_WMI
+            && await startOutsideJob([self, "--harness", harness, "--finish", "--hook-ppid", String(ppid), "--input-b64", b64]);
+          if (!viaWmi) {
+            const child = spawn(process.execPath, [self, "--harness", harness, "--finish"], {
+              detached: true, stdio: "ignore", windowsHide: true,
+              env: { ...process.env, AOS_A2A_HOOK_INPUT: payload, AOS_A2A_HOOK_PPID: String(ppid) },
+            });
+            child.on("error", (e) => log(`cannot start the finisher: ${e.message}`));
+            child.unref();
+          }
         }
       } else {
         // ppid is the harness CLI that spawned this hook. The session's title/name (audit
@@ -146,12 +174,17 @@ if (isMain()) {
   process.on("unhandledRejection", (e) => { logErr(harness, finish, `unhandled: ${e?.stack || e}`); process.exitCode = 0; });
   // Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude 5 s, Codex 10 s). The only exit
   // call: by then the identity line (if any) left long ago. The detached finisher has no harness timeout and no budget.
-  if (!finish) setTimeout(() => { logErr(harness, finish, "hook budget exceeded"); process.exit(0); }, 3500 - process.uptime() * 1000).unref();
+  // Windows+codex also waits for the WMI launch (PowerShell cold start), still under the 10 s hook timeout.
+  const budgetMs = process.platform === "win32" && harness === "codex" ? 8000 : 3500;
+  if (!finish) setTimeout(() => { logErr(harness, finish, "hook budget exceeded"); process.exit(0); }, budgetMs - process.uptime() * 1000).unref();
 
   let input = {};
   try {
-    input = JSON.parse(finish ? process.env.AOS_A2A_HOOK_INPUT || "{}" : ((await readStdinBounded(1500)) ?? ""));
+    const b64 = argv[argv.indexOf("--input-b64") + 1];
+    input = JSON.parse(finish ? (argv.includes("--input-b64") ? Buffer.from(b64, "base64").toString("utf8") : process.env.AOS_A2A_HOOK_INPUT || "{}") : ((await readStdinBounded(1500)) ?? ""));
   } catch { if (!finish) logErr(harness, finish, "stdin: not valid JSON"); } // never log e.message: JSON.parse quotes a snippet of the payload
+  const pp = Number(argv[argv.indexOf("--hook-ppid") + 1]);
+  if (finish && pp > 1) process.env.AOS_A2A_HOOK_PPID = String(pp);
   const r = await hook(input, { harness, finish });
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
