@@ -91,7 +91,7 @@ Recommendation: set the strongest model available per harness for `advisor`. Shi
 }
 ```
 
-This block is the role entry; in `pipeline.json` it sits under the top-level `"pipeline"` key. The keys are the harness names `resolveAgentConfig` receives from the installer. No entry means the advisor inherits the session model.
+This block is the role entry; in `pipeline.json` it sits under the top-level `"pipeline"` key. The keys are the harness names `resolveAgentConfig` receives from the installer. No entry means the advisor inherits the session model. Router targets map to these keys: `agy` to `antigravity`, `opencode-go` to `opencode`, `claude-glm` to `claude`; other targets are used as-is. Precedence: explicit model argument, then `pipeline.json`, then the configured default. A missing or invalid `pipeline.json` falls back to the default.
 
 The advisor is not a graph node and its output is never a GO.
 
