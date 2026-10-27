@@ -28,11 +28,12 @@ function fakeBinary(dir, name, exitCode, stderr = '') {
 }
 
 describe('fabric-dispatch standalone shim: fail-closed on executor failure', () => {
-  test('when agy exits non-zero, techlead escalates instead of approving', () => {
+  test('when agy exits non-zero, dispatcher escalates and never calls shim techlead', () => {
     withTmpDir('dispatch-fail-closed-tl-', (dir) => {
       const cwd = path.join(dir, 'proj');
       fs.mkdirSync(cwd, { recursive: true });
       fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
+      fs.mkdirSync(path.join(cwd, 'production_artifacts'), { recursive: true });
 
       // Fake agy that exits 127 (command not found)
       const binDir = path.join(dir, 'bin');
@@ -42,25 +43,35 @@ describe('fabric-dispatch standalone shim: fail-closed on executor failure', () 
       const harness = path.join(dir, 'run.mjs');
       fs.writeFileSync(harness, `
 import fs from 'node:fs';
-const calls = [];
 globalThis.args = { goal: 'test goal' };
 globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
 globalThis.agent = async (prompt, opts) => {
-  calls.push({ label: opts.label, approved: opts.label.startsWith('techlead') ? !!opts.result?.approved : undefined });
+  // Only handle deterministic steps; agy fails for LLM steps
   if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
   if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
-  if (opts.label === 'architect') return { planPath: 'p.md', needsMedia: false, deliverOk: true };
-  if (opts.label.startsWith('techlead')) {
-    // The shim should return approved: false with escalate: true when agy fails
-    calls[calls.length - 1].result = opts.result;
+  if (opts.label === 'escalate') {
+    try {
+      const statePath = 'production_artifacts/state.json';
+      let state = {};
+      if (fs.existsSync(statePath)) {
+        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      }
+      state.phase = 'escalated';
+      state.needs_human = true;
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\\n');
+    } catch (e) {
+      process.stderr.write('escalate write failed: ' + e.message + '\\n');
+    }
+    return { phase: 'escalated' };
   }
-  return {};
+  // All other LLM steps (architect, techlead, etc) will fail because agy is not available
+  throw new Error('Unexpected agent call for ' + opts.label + ' -- agy should be missing');
 };
 try {
   const result = await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
-  process.stdout.write(JSON.stringify({ phase: result.default?.phase, calls }));
+  process.stdout.write(JSON.stringify({ phase: result.default?.phase }));
 } catch (e) {
-  process.stdout.write(JSON.stringify({ error: e.message, calls }));
+  process.stdout.write(JSON.stringify({ error: e.message }));
 }
 `);
 
@@ -80,16 +91,17 @@ try {
 
       assert.equal(r.status, 0, `exit status should be 0, got ${r.status}. stderr: ${r.stderr}`);
       const output = JSON.parse(r.stdout);
-      // The dispatcher should escalate when techlead executor fails
+      // The dispatcher should escalate when architect executor fails (agy not found)
       assert.equal(output.phase, 'escalated', `phase should be 'escalated', got '${output.phase}'`);
     });
   });
 
-  test('when agy exits non-zero, reviewer returns a blocking failure finding', () => {
+  test('when agy exits non-zero, shim returns blocking executor-failed finding', () => {
     withTmpDir('dispatch-fail-closed-rev-', (dir) => {
       const cwd = path.join(dir, 'proj');
       fs.mkdirSync(cwd, { recursive: true });
       fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
+      fs.mkdirSync(path.join(cwd, 'production_artifacts'), { recursive: true });
 
       // Fake agy that exits 127
       const binDir = path.join(dir, 'bin');
@@ -99,25 +111,49 @@ try {
       const harness = path.join(dir, 'run.mjs');
       fs.writeFileSync(harness, `
 import fs from 'node:fs';
-globalThis.args = { goal: 'test' };
+globalThis.args = { goal: 'test goal' };
 globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
+const agentCalls = [];
 globalThis.agent = async (prompt, opts) => {
+  agentCalls.push(opts.label);
   if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
   if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
   if (opts.label === 'architect') return { planPath: 'p.md', needsMedia: false, deliverOk: true };
   if (opts.label.startsWith('techlead')) return { approved: true, reason: '' };
+  if (opts.label.startsWith('ws_') || opts.label === 'ui_ux' || opts.label === 'engineering') {
+    try {
+      const stateDDir = 'production_artifacts/state.d';
+      fs.mkdirSync(stateDDir, { recursive: true });
+      const fragPath = stateDDir + '/' + opts.label + '.json';
+      fs.writeFileSync(fragPath, JSON.stringify({node: opts.label, artifacts: {}, findings: []}, null, 2) + '\\n');
+    } catch (e) {}
+    return { needsHuman: false };
+  }
   if (opts.label.startsWith('merge-')) return { merged: 0, skipped: [], needsHuman: false };
   if (opts.label.startsWith('reviewer')) {
-    // The shim should return a blocking "executor-failed" finding when agy fails
-    return opts.result || {};
+    // shim will return executor-failed finding because agy is missing
+    throw new Error('Unexpected: reviewer called -- agy should fail first');
   }
-  return {};
+  if (opts.label === 'escalate') {
+    try {
+      const statePath = 'production_artifacts/state.json';
+      let state = {};
+      if (fs.existsSync(statePath)) {
+        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      }
+      state.phase = 'escalated';
+      state.needs_human = true;
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\\n');
+    } catch (e) {}
+    return { phase: 'escalated' };
+  }
+  throw new Error('Unexpected agent call: ' + opts.label);
 };
 try {
   const result = await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
-  process.stdout.write(JSON.stringify({ phase: result.default?.phase }));
+  process.stdout.write(JSON.stringify({ phase: result.default?.phase, calls: agentCalls }));
 } catch (e) {
-  process.stdout.write(JSON.stringify({ error: e.message }));
+  process.stdout.write(JSON.stringify({ error: e.message, calls: agentCalls }));
 }
 `);
 
@@ -137,16 +173,18 @@ try {
 
       assert.equal(r.status, 0, `exit status should be 0, got ${r.status}. stderr: ${r.stderr}`);
       const output = JSON.parse(r.stdout);
-      // Reviewer failure should escalate
+      // When reviewer shim fails (agy missing), dispatcher should escalate
       assert.equal(output.phase, 'escalated', `phase should be 'escalated' when reviewer executor fails, got '${output.phase}'`);
+      assert.ok(output.calls.includes('reviewer-0'), 'reviewer should have been called');
     });
   });
 
-  test('when agy exits non-zero, shipping returns all gates as fail', () => {
+  test('when agy exits non-zero, shim returns all gates as fail', () => {
     withTmpDir('dispatch-fail-closed-ship-', (dir) => {
       const cwd = path.join(dir, 'proj');
       fs.mkdirSync(cwd, { recursive: true });
       fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
+      fs.mkdirSync(path.join(cwd, 'production_artifacts'), { recursive: true });
 
       // Fake agy that exits 127
       const binDir = path.join(dir, 'bin');
@@ -156,26 +194,50 @@ try {
       const harness = path.join(dir, 'run.mjs');
       fs.writeFileSync(harness, `
 import fs from 'node:fs';
-globalThis.args = { goal: 'test' };
+globalThis.args = { goal: 'test goal' };
 globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
+const agentCalls = [];
 globalThis.agent = async (prompt, opts) => {
+  agentCalls.push(opts.label);
   if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
   if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
   if (opts.label === 'architect') return { planPath: 'p.md', needsMedia: false, deliverOk: true };
   if (opts.label.startsWith('techlead')) return { approved: true, reason: '' };
+  if (opts.label.startsWith('ws_') || opts.label === 'ui_ux' || opts.label === 'engineering') {
+    try {
+      const stateDDir = 'production_artifacts/state.d';
+      fs.mkdirSync(stateDDir, { recursive: true });
+      const fragPath = stateDDir + '/' + opts.label + '.json';
+      fs.writeFileSync(fragPath, JSON.stringify({node: opts.label, artifacts: {}, findings: []}, null, 2) + '\\n');
+    } catch (e) {}
+    return { needsHuman: false };
+  }
   if (opts.label.startsWith('merge-')) return { merged: 0, skipped: [], needsHuman: false };
   if (opts.label.startsWith('reviewer')) return { findings: [], blockingCount: 0 };
   if (opts.label.startsWith('shipping')) {
-    // The shim should return all gates as 'fail' when agy fails
-    return opts.result || {};
+    // shim will return all gates as 'fail' because agy is missing
+    throw new Error('Unexpected: shipping called -- agy should fail first');
   }
-  return {};
+  if (opts.label === 'escalate') {
+    try {
+      const statePath = 'production_artifacts/state.json';
+      let state = {};
+      if (fs.existsSync(statePath)) {
+        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      }
+      state.phase = 'escalated';
+      state.needs_human = true;
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\\n');
+    } catch (e) {}
+    return { phase: 'escalated' };
+  }
+  throw new Error('Unexpected agent call: ' + opts.label);
 };
 try {
   const result = await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
-  process.stdout.write(JSON.stringify({ phase: result.default?.phase }));
+  process.stdout.write(JSON.stringify({ phase: result.default?.phase, calls: agentCalls }));
 } catch (e) {
-  process.stdout.write(JSON.stringify({ error: e.message }));
+  process.stdout.write(JSON.stringify({ error: e.message, calls: agentCalls }));
 }
 `);
 
@@ -195,8 +257,9 @@ try {
 
       assert.equal(r.status, 0, `exit status should be 0, got ${r.status}. stderr: ${r.stderr}`);
       const output = JSON.parse(r.stdout);
-      // Shipping failure should escalate
+      // When shipping shim fails (agy missing), dispatcher should escalate instead of passing
       assert.equal(output.phase, 'escalated', `phase should be 'escalated' when shipping executor fails, got '${output.phase}'`);
+      assert.ok(output.calls.includes('shipping-0'), 'shipping should have been called');
     });
   });
 });
