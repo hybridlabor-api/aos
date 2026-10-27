@@ -299,6 +299,29 @@ const pruneEmpty = (dir) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
   try { rmdirSync(dir); } catch { /* not empty */ }
 };
+// Synced skill copies carry .aos-skill-manifest.json, which is not in the install manifest, so the file
+// pass above never removes it. Runs after that pass, so an emptied copy goes whole.
+const skillManifest = createRequire(import.meta.url)('../lib/skill-manifest.js');
+function removeSyncedSkillCopies({ home = HOME } = {}) {
+  const roots = [
+    path.join(pm.claudeDir(home), 'skills'),
+    path.join(home, '.config', 'opencode', 'skills'),
+    path.join(home, '.agents', 'skills'),
+    path.join(home, '.gemini', 'config', 'skills'),
+    path.join(home, '.codex', 'skills'),
+  ];
+  const done = [];
+  for (const root of roots) {
+    let names = [];
+    try { names = readdirSync(root); } catch { continue; }
+    for (const name of names) {
+      const copy = path.join(root, name);
+      const result = skillManifest.removeSyncedCopy(copy);
+      if (result !== 'none') done.push({ copy, result });
+    }
+  }
+  return done;
+}
 // An MCP server folder is AOS's only through its record: <folder>/.aos-copy.json (written at install, file -> sha256).
 // Unchanged recorded files and generated build trees go; changed or unrecorded files stay and are reported.
 // A folder without a record is a legacy copy (or the user's): left alone, reported once.
@@ -416,6 +439,11 @@ async function execute(p) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
+  attempt('synced skill copies', () => {
+    for (const { copy, result } of removeSyncedSkillCopies()) {
+      console.log(result === 'removed' ? `  ${tilde(copy)} removed` : `  ${tilde(copy)} kept (edited); its AOS manifest removed`);
+    }
+  });
   attempt('AOS-copied MCP server folders', () => {
     const { removed: gone, hints } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
     for (const t of gone) console.log(`  removed ${tilde(t)}`);
@@ -638,7 +666,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer };
+export { plan, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer, removeSyncedSkillCopies };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });

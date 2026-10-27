@@ -2118,12 +2118,14 @@ function runCodexPluginStep() {
 function collectSkillFiles(dir) {
     const files = [];
     let unsafe = false;
+    const { MANIFEST_FILE } = require('./lib/skill-manifest');
     function walk(sub) {
         const fullDir = sub ? path.join(dir, sub) : dir;
         let items;
         try { items = fs.readdirSync(fullDir, { withFileTypes: true }); } catch (_) { unsafe = true; return; }
         for (const item of items) {
             if (item.name === '.DS_Store') continue;
+            if (!sub && item.name === MANIFEST_FILE) continue;
             const rel = sub ? `${sub}/${item.name}` : item.name;
             const full = path.join(dir, rel);
             let st;

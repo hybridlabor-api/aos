@@ -185,3 +185,21 @@ test('manifest via installer sync: unchanged skipped, edit detected, corrupt man
         fs.rmSync(tmpDir, { recursive: true });
     }
 });
+
+test('synced skill copy with a manifest is removed completely by the uninstall helper', async () => {
+    const { pathToFileURL } = require('url');
+    const { removeSyncedSkillCopies } = await import(pathToFileURL(path.join(__dirname, '..', 'bin', 'aos-uninstall.mjs')).href);
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-'));
+    try {
+        const copy = path.join(home, '.claude', 'skills', 'memb-ingest');
+        writeTestFile(copy, 'SKILL.md', '# memb-ingest');
+        writeTestFile(path.join(copy, 'scripts'), 'run.js', 'module.exports = {};');
+        skillManifest.writeManifest(copy, dirHash(copy), dirHash(copy));
+
+        const done = removeSyncedSkillCopies({ home });
+        assert.deepStrictEqual(done, [{ copy, result: 'removed' }]);
+        assert.strictEqual(fs.existsSync(copy), false, 'copy and its manifest are gone');
+    } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
