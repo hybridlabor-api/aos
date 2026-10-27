@@ -107,10 +107,36 @@ export function connectFailures(dir) {
         } finally { fs.closeSync(fd); }
     } catch { /* no log */ }
     for (const m of text.matchAll(/\[ERROR\] message="Failed to connect to ([\w-]+): ([^"]*)"/g)) out.set(m[1], redactLog(m[2]));
+    // "Connection closed" only says the child died; its own stderr line (prefixed `[name]`) says why.
+    const causes = lastCauses(text);
+    for (const [name, cause] of causes) {
+        const base = out.get(name);
+        if (!base || /connection closed/i.test(base)) out.set(name, base ? `${cause} (${base})` : cause);
+    }
     return out;
 }
+const LEVELS = new Set(['error', 'warn', 'warning', 'info', 'debug', 'trace']);
+const CAUSE_WORDS = /error|cannot|can't|fail|enoent|eperm|eacces|denied|not found|could not|unable|refus|verified|missing/i;
+// Last root-cause line per upstream: `[name] text` lines, preferring ones that read like an error. Redacted and cut.
+export function lastCauses(text) {
+    const last = new Map(), strong = new Map();
+    for (const line of String(text).split(/\r?\n/)) {
+        const m = /\[([\w-]+)\]\s+(\S.*)$/.exec(line);
+        if (!m || LEVELS.has(m[1].toLowerCase()) || /Failed to connect to/.test(m[2])) continue;
+        last.set(m[1], m[2]);
+        if (CAUSE_WORDS.test(m[2])) strong.set(m[1], m[2]);
+    }
+    return new Map([...last].map(([n, l]) => [n, redactLog(strong.get(n) || l)]));
+}
+// A half-written npx cache dir cannot be fixed by AOS (never deletes user caches): name the path and the manual command.
+export function causeHint(cause) {
+    const m = /((?:[A-Za-z]:)?[^\s"']*_npx[\\/][0-9a-f]+)[\\/]package\.json/i.exec(String(cause));
+    if (!m) return '';
+    const win = /^[A-Za-z]:|\\/.test(m[1]);
+    return ` Hint: npx cache ${m[1]} is half-written; with the gateway stopped remove it by hand: ${win ? `rmdir /s /q "${m[1]}"` : `rm -rf "${m[1]}"`}`;
+}
 export const neverConnected = (name, failures) =>
-    `not connected since the gateway started (${failures.get(name) ? `1mcp log: ${failures.get(name)}` : 'spawn failed, early exit or no MCP answer within 60 s; see gateway.log'}). Fix the cause, then run: aos-gateway restart`;
+    `not connected since the gateway started (${failures.get(name) ? `1mcp log: ${failures.get(name)}` : 'spawn failed, early exit or no MCP answer within 60 s; see gateway.log'}). Fix the cause, then run: aos-gateway restart.${causeHint(failures.get(name))}`;
 
 // 1mcp's recovery command for a dead server is `1mcp mcp restart`, which needs an admin session AOS never creates.
 export function runHint(output) {
