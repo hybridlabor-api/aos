@@ -1995,6 +1995,7 @@ function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
         const targetPath = path.join(targetSkillDir, dirName);
         const skip = skillManifest.shouldSkipSkillSync(fullPath, targetPath);
         if (skip.skip) return; // Skip unchanged skill
+        if (skip.reason === 'target edited') log.warn(`[skills] ${dirName}: local edits in ${targetPath} are replaced by the shipped copy`);
 
         copyDirRecursiveSync(fullPath, targetPath, excludeSkills);
 
@@ -9359,6 +9360,7 @@ module.exports = {
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
+    syncSkillEntry,
     INSTALL_MANIFEST_PATH,
     // Agent compilers & pipeline helpers
     parseAgentsMd,

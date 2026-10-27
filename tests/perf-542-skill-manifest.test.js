@@ -139,3 +139,47 @@ test('manifest: read and write roundtrip', async (t) => {
         fs.rmSync(tmpDir, { recursive: true });
     }
 });
+
+test('manifest: hash keys files by path relative to the skill dir, not basename', async (t) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        writeTestFile(path.join(tmpDir, 'a'), 'x.txt', 'same');
+        writeTestFile(path.join(tmpDir, 'b'), 'x.txt', 'same');
+        assert.notStrictEqual(dirHash(path.join(tmpDir, 'a')), dirHash(path.join(tmpDir, 'b')), 'moved file must change the hash');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
+
+test('manifest via installer sync: unchanged skipped, edit detected, corrupt manifest falls back', async (t) => {
+    const installer = require('../installer');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const source = path.join(tmpDir, 'src', 'my-skill');
+        const skillsDir = path.join(tmpDir, 'skills');
+        const target = path.join(skillsDir, 'my-skill');
+        writeTestFile(source, 'SKILL.md', '# Test Skill');
+        writeTestFile(source, 'index.js', 'module.exports = {};');
+
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.ok(skillManifest.readManifest(target), 'first sync records a manifest');
+
+        const past = new Date('2001-01-01T00:00:00Z');
+        fs.utimesSync(path.join(target, 'index.js'), past, past);
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.strictEqual(fs.statSync(path.join(target, 'index.js')).mtimeMs, past.getTime(), 'second sync of unchanged skill is skipped');
+
+        writeTestFile(target, 'index.js', 'user edit');
+        assert.strictEqual(skillManifest.shouldSkipSkillSync(source, target).reason, 'target edited', 'edit is detected');
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.strictEqual(skillManifest.shouldSkipSkillSync(source, target).skip, true, 'resync records the new target state');
+
+        fs.writeFileSync(path.join(target, skillManifest.MANIFEST_FILE), '{not json');
+        assert.strictEqual(skillManifest.shouldSkipSkillSync(source, target).reason, 'no manifest', 'corrupt manifest is treated as missing');
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.strictEqual(skillManifest.readManifest(target).sourceHash, dirHash(source), 'corrupt manifest is rewritten');
+        assert.strictEqual(fs.readFileSync(path.join(target, 'index.js'), 'utf8'), 'module.exports = {};', 'source content is present');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});

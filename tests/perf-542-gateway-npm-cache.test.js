@@ -129,3 +129,30 @@ test('gateway npm cache: read and write roundtrip', async (t) => {
         fs.rmSync(tmpDir, { recursive: true });
     }
 });
+
+test('pinned packages: failed install leaves no cache hash, successful install writes one', async (t) => {
+    const pkgGateway = require('../lib/v5/pkg-gateway');
+    const savedSandbox = process.env.AOS_TEST_SANDBOX;
+    delete process.env.AOS_TEST_SANDBOX;
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const dir = path.join(tmpDir, 'gateway');
+        const pkgDir = path.join(dir, 'mcp-pkgs');
+        const cachePath = path.join(pkgDir, gatewayNpmCache.CACHE_FILE);
+        const servers = { demo: { command: 'npx', args: ['-y', 'demo-pkg@1.2.3'] } };
+        const home = path.resolve(__dirname, '..');
+        fs.mkdirSync(pkgDir, { recursive: true });
+        gatewayNpmCache.writeCache(pkgDir, 'stale-hash');
+
+        const failing = { home, log: () => {}, run: async () => ({ status: 1, stderr: '' }) };
+        await pkgGateway.installPinnedPackages(failing, dir, servers);
+        assert.strictEqual(fs.existsSync(cachePath), false, 'failed install must not leave a cache hash');
+
+        const passing = { home, log: () => {}, run: async () => ({ status: 0 }) };
+        await pkgGateway.installPinnedPackages(passing, dir, servers);
+        assert.strictEqual(fs.existsSync(cachePath), true, 'successful install writes the cache hash');
+    } finally {
+        if (savedSandbox === undefined) delete process.env.AOS_TEST_SANDBOX; else process.env.AOS_TEST_SANDBOX = savedSandbox;
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
