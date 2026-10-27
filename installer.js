@@ -1989,8 +1989,21 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
 // global sync intact.
 function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
     const isLeafSkill = fs.existsSync(path.join(fullPath, 'SKILL.md'));
+    const skillManifest = require('./lib/skill-manifest');
+
     if (isLeafSkill) {
-        copyDirRecursiveSync(fullPath, path.join(targetSkillDir, dirName), excludeSkills);
+        const targetPath = path.join(targetSkillDir, dirName);
+        const skip = skillManifest.shouldSkipSkillSync(fullPath, targetPath);
+        if (skip.skip) return; // Skip unchanged skill
+
+        copyDirRecursiveSync(fullPath, targetPath, excludeSkills);
+
+        // Record the sync in manifest
+        const sourceHash = skillManifest.computeDirContentHash(fullPath);
+        const targetHash = skillManifest.computeDirContentHash(targetPath);
+        if (sourceHash && targetHash) {
+            skillManifest.writeManifest(targetPath, sourceHash, targetHash);
+        }
     } else {
         copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
     }
