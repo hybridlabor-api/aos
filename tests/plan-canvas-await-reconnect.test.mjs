@@ -19,7 +19,7 @@ const freePort = () => new Promise((resolve) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Same drop as watchCodeStamp (server.js): the code changed on disk, so the server drops every socket and restarts.
-test('await survives a server restart that resets the held long-poll (ECONNRESET)', async () => {
+test('await survives a server restart that resets the held long-poll (ECONNRESET)', { timeout: 30000 }, async () => {
   const ws = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pc-reconnect-')));
   const stateDir = path.join(ws, '.state');
   const plan = path.join(ws, 'plan.md');
@@ -41,12 +41,12 @@ test('await survives a server restart that resets the held long-poll (ECONNRESET
   try {
     await sleep(700);
     server.server.closeAllConnections();
-    await new Promise((r) => server.server.close(r));
+    await server.close(); // also stops the sweep/watch timers that would keep the runner alive
     await sleep(300);
     server = await boot();
     await sleep(300);
     await fetch(`${base}/api/session/${opened.key}/feedback`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: [{ kind: 'verdict', verdict: 'approve' }] }) });
-    await Promise.race([exited, sleep(10000)]);
+    await Promise.race([exited, new Promise((r) => setTimeout(r, 10000).unref())]);
     const out = JSON.parse(stdout.slice(stdout.indexOf('{')));
     assert.equal(out.error, undefined, out.error);
     assert.equal(out.status, 'feedback');
