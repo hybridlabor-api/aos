@@ -25,7 +25,7 @@ const field = (text, key) => {
 };
 
 const short = (d) => {
-  const first = d.replace(/\bBDB\b/g, 'AOS').split(/(?<=\.)\s/)[0].replace(/\.$/, '');
+  const first = d.replace(/\bBDB\b/g, 'AOS').replace(/\bObsidian\b\s*/g, '').split(/(?<=\.)\s/)[0].replace(/\.$/, '');
   return first.length > 90 ? `${first.slice(0, 87).trimEnd()}...` : first;
 };
 
