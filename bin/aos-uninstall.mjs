@@ -299,6 +299,38 @@ const pruneEmpty = (dir) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
   try { rmdirSync(dir); } catch { /* not empty */ }
 };
+// Synced skill copies carry .aos-skill-manifest.json, which is not in the install manifest, so the file pass
+// never removes it. This pass runs after the file pass and removes that record, then the copy's directories that
+// are empty by then (rmdir only). Skill roots, $HOME, symlinks and every remaining file stay.
+const skillManifest = createRequire(import.meta.url)('../lib/skill-manifest.js');
+// Every dir a skill sync writes to (installer.js: resolveTargetPaths, globalSkillDestinations).
+const skillRoots = (home) => [
+  path.join(pm.claudeDir(home), 'skills'),
+  ...[['.config', 'opencode', 'skills'], ['.agents', 'skills'], ['.gemini', 'config', 'skills'], ['.codex', 'skills'],
+    ['.cursor', 'skills'], ['.roo', 'skills'], ['.windsurf', 'bdb-skills'], ['.aider', 'bdb-skills']].map((p) => path.join(home, ...p)),
+];
+const atOrBelow = (dir, p) => { const r = path.relative(dir, p); return r !== '..' && !r.startsWith('..' + path.sep) && !path.isAbsolute(r); };
+function removeSyncedSkillCopies({ home = HOME } = {}) {
+  const real = (p) => { try { return realpathSync(p); } catch { return null; } };
+  const realHome = real(home);
+  const done = [];
+  for (const root of skillRoots(home)) {
+    const realRoot = real(root);
+    if (!realRoot || !realHome || atOrBelow(realRoot, realHome)) continue; // absent, or a root that is $HOME or above it
+    let names = [];
+    try { names = readdirSync(realRoot); } catch { continue; }
+    for (const name of names) {
+      const copy = path.join(root, name);
+      if (real(copy) !== path.join(realRoot, name)) continue; // a symlink, or anything that resolves outside the root
+      try {
+        if (!skillManifest.removeSyncedRecord(copy)) continue;
+        try { pruneEmpty(copy); } catch { /* an unreadable folder inside keeps the copy */ }
+        done.push({ copy, result: existsSync(copy) ? 'kept' : 'removed' });
+      } catch (e) { done.push({ copy, result: 'failed', error: e.message }); }
+    }
+  }
+  return done;
+}
 // An MCP server folder is AOS's only through its record: <folder>/.aos-copy.json (written at install, file -> sha256).
 // Unchanged recorded files and generated build trees go; changed or unrecorded files stay and are reported.
 // A folder without a record is a legacy copy (or the user's): left alone, reported once.
@@ -416,6 +448,15 @@ async function execute(p) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
+  // Without the install manifest the file pass removed nothing, so no copy is "emptied" and nothing here is proven.
+  if (p.manifest) attempt('synced skill copies', () => {
+    const copies = removeSyncedSkillCopies();
+    for (const { copy, result, error } of copies) {
+      if (result === 'failed') failures.push(`${tilde(copy)}: AOS skill record cleanup failed (${error})`);
+      else if (result === 'kept') console.log(`  ${tilde(copy)} kept: it still holds files or folders; its AOS skill record removed`);
+    }
+    console.log(`  ${copies.filter((c) => c.result === 'removed').length} synced skill copies removed with their AOS record`);
+  });
   attempt('AOS-copied MCP server folders', () => {
     const { removed: gone, hints } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
     for (const t of gone) console.log(`  removed ${tilde(t)}`);
@@ -638,7 +679,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer };
+export { plan, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer, removeSyncedSkillCopies };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });

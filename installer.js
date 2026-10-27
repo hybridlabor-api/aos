@@ -25,6 +25,7 @@ const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
 const mcpCopyMarker = require('./lib/mcp-copy-marker');
+const skillManifest = require('./lib/skill-manifest');
 const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
@@ -1899,6 +1900,9 @@ function ensureBackupParent() {
     return dir;
 }
 
+// Failures copyDirRecursiveSync only warns about. syncSkillEntry records a copy only when none happened during it.
+let copyFailures = 0;
+
 function copyDirRecursiveSync(source, target, excludeList = [], manifest = null, knownSourceHashes = null) {
     // Fall back to session-level state when no explicit manifest is passed.
     const mfst = manifest !== null ? manifest : _sessionManifest;
@@ -1952,6 +1956,7 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
                         log.warn(`Skipping broken symlink ${curSource}`);
                     }
                 } catch (e) {
+                    copyFailures++;
                     log.warn(`Could not copy symlink ${curSource}: ${e.message}`);
                 }
             } else if (stat.isDirectory()) {
@@ -1961,12 +1966,13 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
                 copyDirRecursiveSync(curSource, curTarget, excludeList, mfst, hashes);
             } else {
                 if (mfst && hashes) {
-                    resolveFileConflict(curSource, curTarget, mfst, hashes);
+                    if (resolveFileConflict(curSource, curTarget, mfst, hashes) === 'skipped') copyFailures++;
                 } else {
                     fs.copyFileSync(curSource, curTarget);
                 }
             }
         } catch (e) {
+            copyFailures++;
             log.warn(`Failed to copy ${curSource} -> ${curTarget}: ${e.message}`);
         }
     });
@@ -1989,8 +1995,26 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
 // global sync intact.
 function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
     const isLeafSkill = fs.existsSync(path.join(fullPath, 'SKILL.md'));
+
     if (isLeafSkill) {
-        copyDirRecursiveSync(fullPath, path.join(targetSkillDir, dirName), excludeSkills);
+        const targetPath = path.join(targetSkillDir, dirName);
+        const skip = skillManifest.shouldSkipSkillSync(fullPath, targetPath, pkg.version);
+        // The record is written per skill but the install manifest only when the run ends: a run that died in between
+        // leaves records for files the manifest never saw, and skipping them would keep those files out of it for good.
+        const tracked = !_sessionManifest || Boolean(_sessionManifest[path.join(targetPath, 'SKILL.md')]);
+        const force = process.argv.includes('--force') || Boolean(process.env.AOS_FORCE);
+        if (skip.skip && tracked && !force) return; // Skip unchanged skill
+        if (skip.reason === 'target edited') log.warn(`[skills] ${dirName}: ${targetPath} differs from what AOS last wrote; edited files are kept and the shipped version lands beside them as .new`);
+
+        const failedBefore = copyFailures;
+        copyDirRecursiveSync(fullPath, targetPath, excludeSkills);
+
+        // Record the sync only when every file arrived: the record stands for "this copy is complete".
+        const sourceHash = skillManifest.computeDirContentHash(fullPath);
+        const targetHash = skillManifest.computeDirContentHash(targetPath);
+        if (copyFailures === failedBefore && sourceHash && targetHash) {
+            skillManifest.writeManifest(targetPath, sourceHash, targetHash, pkg.version);
+        }
     } else {
         copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
     }
@@ -2110,6 +2134,7 @@ function collectSkillFiles(dir) {
         try { items = fs.readdirSync(fullDir, { withFileTypes: true }); } catch (_) { unsafe = true; return; }
         for (const item of items) {
             if (item.name === '.DS_Store') continue;
+            if (!sub && item.name === skillManifest.MANIFEST_FILE) continue;
             const rel = sub ? `${sub}/${item.name}` : item.name;
             const full = path.join(dir, rel);
             let st;
@@ -2198,6 +2223,12 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
             const codexScan = collectSkillFiles(codexSkillDir);
             const agentsScan = collectSkillFiles(agentsSkillDir);
 
+            // The recorded files are already gone (removeLooseCopies); AOS's sync record is all this copy still holds.
+            if (!codexScan.unsafe && codexScan.files.length === 0 && skillManifest.removeSyncedRecord(codexSkillDir)) {
+                cleanEmptySkillDirs(codexSkillDir);
+                continue;
+            }
+
             if (codexScan.unsafe || agentsScan.unsafe || codexScan.files.length === 0 || codexScan.files.length !== agentsScan.files.length) {
                 leftoverSkills.add(skillName);
                 continue;
@@ -2266,6 +2297,7 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
                     logDebug(e, `${label} retire module skill: ${abs}`);
                 }
             }
+            skillManifest.removeSyncedRecord(codexSkillDir);
             cleanEmptySkillDirs(codexSkillDir);
         }
     }
@@ -9348,6 +9380,7 @@ module.exports = {
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
+    syncSkillEntry,
     INSTALL_MANIFEST_PATH,
     // Agent compilers & pipeline helpers
     parseAgentsMd,
