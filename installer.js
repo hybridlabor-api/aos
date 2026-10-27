@@ -9153,8 +9153,15 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const selection = require('./lib/gateway/selection');
         const dir = gwConfig.gatewayDir(home);
         const current = require('./lib/v5/pkg-gateway').currentShippedUpstreams(dir);
-        const seen = require('./lib/gateway/doctor').directGatewayNames({ files: mcpSecrets.harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
         const st = v5Profile.readSettings(home, () => {});
+        // first run: derive from base + detected apps only (don't preserve all currently running servers);
+        // --yes mode for CI: also include current servers to avoid changes
+        const doKeep = FORCE_YES === true;
+        let keep = [];
+        if (doKeep) {
+            const seen = require('./lib/gateway/doctor').directGatewayNames({ files: mcpSecrets.harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
+            keep = [...current, ...seen];
+        }
         const mediaServers = tierValue === '1'
             ? (Array.isArray(mediaChoice)
                 ? mediaChoice
@@ -9169,10 +9176,10 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
             settingServers: baseStored,
             media: mediaServers,
             creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
-            keep: [...current, ...seen],
+            keep,
         });
         if (r.retired && r.retired.length) log.step(`Gateway: retired server name(s) ignored: ${r.retired.join(', ')}${r.servers.length ? '' : ' (selection is now empty; add servers with aos-gateway add <name>)'}`);
-        if (r.kept.length) log.step(`Gateway: keeping the servers you already run (${r.kept.join(', ')})`);
+        if (r.kept.length) log.step(`Gateway: ${doKeep ? 'keeping current set for CI' : `using base servers and app-detected servers (${r.kept.length} server(s) not run today removed)`}`);
         const next = { ...st, gateway: { ...(st.gateway || {}), servers: r.servers } };
         v5Profile.writeSettings(home, next);
         log.step(`Gateway servers: ${r.servers.join(', ')}`);
