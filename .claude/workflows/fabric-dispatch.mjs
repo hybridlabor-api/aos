@@ -404,8 +404,6 @@ if (typeof globalThis.pipeline === 'undefined') {
 if (typeof globalThis.agent === 'undefined') {
   globalThis.agent = async function standaloneAgent(prompt, options = {}) {
     const label = options.label || '';
-    // Normalize gate-fix labels: strip -gate-fix-N suffix for matching (e.g. ui_ux-gate-fix-1 -> ui_ux)
-    const normalizedLabel = label.replace(/-gate-fix-\d+$/, '');
 
     // Deterministic step: load-profile (same load step shape as load-registry)
     if (label === 'load-profile') {
@@ -418,58 +416,6 @@ if (typeof globalThis.agent === 'undefined') {
         }
       } catch {}
       return { missing: true };
-    }
-
-    // Deterministic step: verify-plan-approval (for --plan flag)
-    if (label === 'verify-plan-approval') {
-      const planFile = String(options?.planFile || '');
-      if (!planFile || !fs) return { valid: false, reason: 'No plan file specified or no fs access' };
-      try {
-        if (!fs.existsSync(planFile)) return { valid: false, reason: 'Plan file does not exist' };
-        const content = fs.readFileSync(planFile, 'utf8');
-
-        // Get sidecar path using same logic as lib/fabric-plan-approval.mjs
-        const parsedPath = path.parse(planFile);
-        const approvalPath = path.join(parsedPath.dir, `${parsedPath.name}.approval.json`);
-
-        if (fs.existsSync(approvalPath)) {
-          try {
-            const approval = JSON.parse(fs.readFileSync(approvalPath, 'utf8'));
-            if (approval && approval.verdict === 'approve' && approval.contentHash) {
-              // Compute hash using imported crypto module
-              let crypto;
-              try {
-                crypto = await import('node:crypto');
-              } catch {
-                crypto = { createHash: require('crypto').createHash };
-              }
-              const contentHash = crypto.createHash('sha256').update(content).digest('hex');
-              if (approval.contentHash === contentHash) {
-                return { valid: true, approval, planFile, contentHash };
-              }
-              return { valid: false, reason: 'Plan content hash does not match approval record' };
-            }
-          } catch (e) {
-            return { valid: false, reason: `Could not parse approval record: ${e.message}` };
-          }
-        }
-        // No sidecar found
-        return { valid: false, reason: 'No approval record found for plan file' };
-      } catch (e) {
-        return { valid: false, reason: `Error reading plan: ${e.message}` };
-      }
-    }
-
-    // Deterministic step: merge-review (deduplicate findings from parallel reviewers)
-    if (label === 'merge-review') {
-      const allFindings = options?.allFindings || [];
-      const parallelReviewers = options?.parallelReviewers || [];
-
-      if (dedupeReviewMod?.deduplicateFindings) {
-        const deduplicated = dedupeReviewMod.deduplicateFindings(allFindings);
-        return { deduplicated };
-      }
-      return { deduplicated: allFindings };
     }
 
     // Deterministic step: load-registry
@@ -746,6 +692,7 @@ if (typeof globalThis.agent === 'undefined') {
           shell: false,
           env: options.trail ? { ...process.env, AOS_TRAIL_NODE: options.trail.node, AOS_TRAIL_PLAN: options.trail.plan } : process.env,
         });
+        if (agyRes.error) throw agyRes.error;
         if (agyRes.status === 0 && agyRes.stdout) {
           const jsonMatch = agyRes.stdout.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
@@ -754,12 +701,12 @@ if (typeof globalThis.agent === 'undefined') {
             if (envelope.response && typeof envelope.response === 'string') {
               try {
                 const parsed = JSON.parse(envelope.response);
-                return validateRoleResponse(parsed, normalizedLabel, options);
+                return validateRoleResponse(parsed, label, options);
               } catch {
-                return validateRoleResponse(envelope, normalizedLabel, options);
+                return validateRoleResponse(envelope, label, options);
               }
             }
-            return validateRoleResponse(envelope, normalizedLabel, options);
+            return validateRoleResponse(envelope, label, options);
           }
         }
         // agy failed or returned no parseable JSON: fail closed instead of canned success
@@ -775,6 +722,8 @@ if (typeof globalThis.agent === 'undefined') {
 
     function validateRoleResponse(obj, roleLabel, opts) {
       if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { escalate: true, error: `invalid response type: ${typeof obj}` };
+      // Only build nodes (registry, profile and workstream ids alike) are dispatched with `trail`.
+      if (opts?.trail) return obj;
       if (roleLabel.startsWith('reviewer')) {
         if (!Array.isArray(obj.findings)) return { findings: [], blockingCount: 0, escalate: true, error: 'findings is not an array' };
         const blockingCount = obj.findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
@@ -792,10 +741,6 @@ if (typeof globalThis.agent === 'undefined') {
         if (!obj.planPath || typeof obj.planPath !== 'string') return { planPath: '', needsMedia: false, deliverOk: false, error: 'invalid response', escalate: true };
         return obj;
       }
-      // Build roles (engineering, ui_ux, media_eventtech, ws_*): return parsed object without escalating
-      if (roleLabel === 'engineering' || roleLabel === 'ui_ux' || roleLabel === 'media_eventtech' || roleLabel.startsWith('ws_')) {
-        return obj;
-      }
       // Unknown role: escalate to be safe
       return { escalate: true, error: `unknown role label: ${roleLabel}` };
     }
@@ -804,13 +749,13 @@ if (typeof globalThis.agent === 'undefined') {
     if (agyExecutorError) {
       process.stderr?.write?.(`[fabric-dispatch] executor failed: ${agyExecutorError}\n`);
 
-      if (normalizedLabel.startsWith('architect')) {
+      if (label.startsWith('architect')) {
         return { planPath: '', needsMedia: false, deliverOk: false, error: agyExecutorError, escalate: true };
       }
-      if (normalizedLabel.startsWith('techlead')) {
+      if (label.startsWith('techlead')) {
         return { approved: false, reason: `executor failed: ${agyExecutorError}`, escalate: true };
       }
-      if (normalizedLabel.startsWith('reviewer')) {
+      if (label.startsWith('reviewer')) {
         return {
           findings: [{
             id: 'executor-failed',
@@ -820,10 +765,11 @@ if (typeof globalThis.agent === 'undefined') {
             status: 'open'
           }],
           blockingCount: 1,
+          error: agyExecutorError,
           escalate: true
         };
       }
-      if (normalizedLabel.startsWith('shipping')) {
+      if (label.startsWith('shipping')) {
         const gateObj = {};
         if (options?.schema?.properties?.gate?.required) {
           for (const k of options.schema.properties.gate.required) {
@@ -834,7 +780,7 @@ if (typeof globalThis.agent === 'undefined') {
             gateObj[k] = 'fail';
           }
         }
-        return { gate: gateObj, blockingNodes: [], escalate: true };
+        return { gate: gateObj, blockingNodes: [], error: agyExecutorError, escalate: true };
       }
       // For every other label when executor fails, escalate
       return { escalate: true, error: agyExecutorError };

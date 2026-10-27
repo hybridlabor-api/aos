@@ -1,7 +1,11 @@
-// Test that fabric-dispatch standalone shim fails closed when executor is unavailable.
-// This is a security-relevant fix: a missing/failed agy should NOT return canned success results.
+// The standalone shim in .claude/workflows/fabric-dispatch.mjs must fail closed. Every test here runs the real
+// dispatcher with its real shim (globalThis.agent is never replaced) against a fake `agy` on PATH, so a reply of
+// the fake is the only thing that decides a stage. A failing or garbage reply at any stage must escalate and stop
+// the run; the positive control proves the same harness reaches ready_to_ship when agy answers, so the
+// escalations come from the executor and not from the harness.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,235 +14,200 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
+const REVIEWERS = ['reviewer-1', 'reviewer-2', 'code-reviewer', 'devils-advocate'];
+const SKIP_WIN = process.platform === 'win32' ? 'the fake agy is a POSIX shell script' : false;
 
-function withTmpDir(name, fn) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), name));
-  try { return fn(dir); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+// Role by prompt text; calls.log records the role of every agy call. A role without a <role>.reply file fails with exit 7.
+// Shell builtins only: PATH holds nothing but the fake's own directory.
+const FAKE_AGY = `#!/bin/sh
+case "$2" in
+  "[trail-node:"*) role=build ;;
+  *"acting as the reviewer-1 agent"*) role=reviewer-1 ;;
+  *"acting as the reviewer-2 agent"*) role=reviewer-2 ;;
+  *"acting as the code-reviewer agent"*) role=code-reviewer ;;
+  *"acting as the devils-advocate agent"*) role=devils-advocate ;;
+  *"Run the automated quality gate"*) role=shipping ;;
+  *) role=other ;;
+esac
+echo "$role" >> "$AGY_DIR/calls.log"
+if [ -f "$AGY_DIR/$role.reply" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do printf '%s\\n' "$line"; done < "$AGY_DIR/$role.reply"
+  exit 0
+fi
+echo "agy: simulated failure for $role" >&2
+exit 7
+`;
+
+const envelope = (payload) => JSON.stringify({
+  conversation_id: 'c1',
+  status: 'ok',
+  response: typeof payload === 'string' ? payload : JSON.stringify(payload),
+});
+const allReviewers = (payload) => Object.fromEntries(REVIEWERS.map((id) => [id, envelope(payload)]));
+const BUILD_OK = envelope({});
+const CLEAN = { findings: [], blockingCount: 0 };
+const GATE_KEYS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
+const gatePass = (keys) => envelope({ gate: Object.fromEntries(keys.map((k) => [k, 'pass'])), blockingNodes: [] });
+const finding = (id, node, summary) => ({ id, severity: 'blocking', node, summary, status: 'open' });
+
+function skillNames(...files) {
+  const names = new Set();
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) {
+        if ((k === 'skills' || k === 'common') && Array.isArray(x)) x.forEach((s) => names.add(s));
+        else walk(x);
+      }
+    }
+  };
+  for (const f of files) walk(JSON.parse(fs.readFileSync(f, 'utf8')));
+  return [...names];
 }
 
-function fakeBinary(dir, name, exitCode, stderr = '') {
-  const isWin = process.platform === 'win32';
-  const ext = isWin ? '.cmd' : '';
-  const content = isWin
-    ? `@echo off\n(echo ${stderr.replace(/"/g, '\\"')} >&2) > nul\nexit /b ${exitCode}\n`
-    : `#!/bin/sh\n[ -z "" ] || echo "${stderr.replace(/"/g, '\\"')}" >&2\nexit ${exitCode}\n`;
-  const fPath = path.join(dir, name + ext);
-  fs.writeFileSync(fPath, content);
-  if (!isWin) fs.chmodSync(fPath, 0o755);
+// Runs the dispatcher in a temp project with a fake agy. approve: false edits the plan after its approval record was written.
+function runFabric({ goal, replies = {}, approve = true }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fabric-fail-closed-'));
+  try {
+    const proj = path.join(dir, 'proj');
+    const bin = path.join(dir, 'bin');
+    const nodesFile = path.join(ROOT, '.agents', 'nodes.json');
+    const kicadFile = path.join(ROOT, '.agents', 'profiles', 'kicad.json');
+    fs.mkdirSync(path.join(proj, '.agents', 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(proj, 'production_artifacts'));
+    fs.mkdirSync(bin);
+    fs.copyFileSync(nodesFile, path.join(proj, '.agents', 'nodes.json'));
+    fs.copyFileSync(kicadFile, path.join(proj, '.agents', 'profiles', 'kicad.json'));
+
+    // Every registry skill is already installed, so the shim never spawns the store CLI.
+    for (const name of skillNames(nodesFile, kicadFile)) {
+      fs.mkdirSync(path.join(proj, '.claude', 'skills', name), { recursive: true });
+      fs.writeFileSync(path.join(proj, '.claude', 'skills', name, 'SKILL.md'), `# ${name}\n`);
+    }
+
+    const plan = '# Pre-approved plan\n\nBuild the thing.\n';
+    fs.writeFileSync(path.join(proj, 'plan.md'), plan);
+    fs.writeFileSync(path.join(proj, 'plan.approval.json'), JSON.stringify({
+      schema: 'aos.plan-approval/1',
+      verdict: 'approve',
+      contentHash: createHash('sha256').update(plan).digest('hex'),
+      source: 'plan-canvas',
+    }));
+    if (!approve) fs.writeFileSync(path.join(proj, 'plan.md'), `${plan}\nScope creep added after approval.\n`);
+
+    fs.writeFileSync(path.join(bin, 'agy'), FAKE_AGY);
+    fs.chmodSync(path.join(bin, 'agy'), 0o755);
+    for (const [role, body] of Object.entries(replies)) fs.writeFileSync(path.join(bin, `${role}.reply`), `${body}\n`);
+
+    const harness = path.join(dir, 'run.mjs');
+    fs.writeFileSync(harness, `
+import fs from 'node:fs';
+globalThis.args = { goal: ${JSON.stringify(goal)} };
+const mod = await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
+fs.writeFileSync(process.env.RESULT_FILE, JSON.stringify(mod.default));
+`);
+
+    const resultFile = path.join(dir, 'result.json');
+    const r = spawnSync(process.execPath, [harness], {
+      cwd: proj,
+      encoding: 'utf8',
+      timeout: 60000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        PATH: bin, HOME: proj, USERPROFILE: proj, AGY_DIR: bin, RESULT_FILE: resultFile,
+        ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot, TEMP: os.tmpdir(), TMP: os.tmpdir() } : {}),
+      },
+    });
+    assert.equal(r.status, 0, `the dispatcher run must end cleanly, got ${r.status}. stderr: ${r.stderr}`);
+
+    const read = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '');
+    return {
+      result: JSON.parse(read(resultFile)),
+      calls: read(path.join(bin, 'calls.log')).split('\n').filter(Boolean),
+      state: JSON.parse(read(path.join(proj, 'production_artifacts', 'state.json')) || '{}'),
+    };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function assertEscalated({ result, state }, reason) {
+  assert.equal(result.phase, 'escalated', `phase should be escalated, got ${JSON.stringify(result)}`);
+  assert.match(result.reason, reason);
+  assert.equal(state.phase, 'escalated', 'the escalation must be written to state.json');
+  assert.equal(state.needs_human, true);
 }
 
 describe('fabric-dispatch standalone shim: fail-closed on executor failure', () => {
-  test('when agy exits non-zero, dispatcher escalates and never calls shim techlead', () => {
-    withTmpDir('dispatch-fail-closed-tl-', (dir) => {
-      const cwd = path.join(dir, 'proj');
-      fs.mkdirSync(cwd, { recursive: true });
-      fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
-      fs.mkdirSync(path.join(cwd, 'production_artifacts'), { recursive: true });
-
-      // Fake agy that exits 127 (command not found)
-      const binDir = path.join(dir, 'bin');
-      fs.mkdirSync(binDir, { recursive: true });
-      fakeBinary(binDir, 'agy', 127, 'agy: not found');
-
-      const harness = path.join(dir, 'run.mjs');
-      fs.writeFileSync(harness, `
-import fs from 'node:fs';
-globalThis.args = { goal: 'test goal' };
-globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
-// DO NOT predefine globalThis.agent -- let the shim run and invoke agy
-try {
-  const result = await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
-  process.stdout.write(JSON.stringify({ phase: result.default?.phase }));
-} catch (e) {
-  process.stdout.write(JSON.stringify({ error: e.message }));
-}
-`);
-
-      const r = spawnSync(process.execPath, [harness], {
-        cwd,
-        encoding: 'utf8',
-        timeout: 60000,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          PATH: binDir + (process.platform === 'win32' ? ';' + process.env.PATH : ':' + process.env.PATH),
-          HOME: cwd,
-          USERPROFILE: cwd,
-          AOS_PLAN_APPROVAL: 'auto',
-        },
-      });
-
-      assert.equal(r.status, 0, `exit status should be 0, got ${r.status}. stderr: ${r.stderr}`);
-      const output = JSON.parse(r.stdout);
-      // The dispatcher should escalate when architect executor fails (agy not found)
-      assert.equal(output.phase, 'escalated', `phase should be 'escalated', got '${output.phase}'`);
-    });
+  test('a failing agy at the Architect step escalates', () => {
+    const run = runFabric({ goal: 'add a login page' });
+    assertEscalated(run, /Architect executor failed/);
   });
 
-  test('when agy exits non-zero, shim returns blocking executor-failed finding', () => {
-    withTmpDir('dispatch-fail-closed-rev-', (dir) => {
-      const cwd = path.join(dir, 'proj');
-      fs.mkdirSync(cwd, { recursive: true });
-      fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
-      fs.mkdirSync(path.join(cwd, 'production_artifacts'), { recursive: true });
+  describe('with a pre-approved plan', { skip: SKIP_WIN }, () => {
+    const goal = '--plan plan.md add a login page';
 
-      // Fake agy that exits 127
-      const binDir = path.join(dir, 'bin');
-      fs.mkdirSync(binDir, { recursive: true });
-      fakeBinary(binDir, 'agy', 127);
-
-      const harness = path.join(dir, 'run.mjs');
-      fs.writeFileSync(harness, `
-import fs from 'node:fs';
-globalThis.args = { goal: 'test goal' };
-globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
-const agentCalls = [];
-globalThis.agent = async (prompt, opts) => {
-  agentCalls.push(opts.label);
-  // Minimal shim: handle deterministic steps and provide valid role JSON for architect/techlead
-  if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
-  if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
-  if (opts.label === 'verify-plan-approval') return { valid: false, reason: 'test' };
-  if (opts.label === 'ensure-node-skills' || opts.label.startsWith('ensure-skills-')) return { installed: [], stillMissing: [] };
-  if (opts.label.startsWith('merge-')) return { merged: 0, skipped: [], needsHuman: false };
-  // Provide valid role JSON for deterministic roles
-  if (opts.label.startsWith('architect')) return { planPath: 'production_artifacts/plan/plan.mdx', needsMedia: false, deliverOk: true };
-  if (opts.label.startsWith('techlead')) return { approved: true, reason: 'test approval' };
-  // Return valid empty review for reviewer roles
-  if (opts.label.startsWith('reviewer')) return { findings: [], blockingCount: 0 };
-  // Return valid empty gate for shipping
-  if (opts.label.startsWith('shipping')) return { gate: {}, blockingNodes: [] };
-  // For any build role (engineering, ui_ux, media_eventtech, ws_*), return valid object
-  if (prompt && (prompt.includes('engineering') || prompt.includes('ui_ux') || prompt.includes('media_eventtech'))) {
-    return { needsHuman: false };
-  }
-  if (opts.label === 'escalate') {
-    try {
-      const statePath = 'production_artifacts/state.json';
-      let state = {};
-      if (fs.existsSync(statePath)) {
-        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-      }
-      state.phase = 'escalated';
-      state.needs_human = true;
-      fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\\n');
-    } catch (e) {}
-    return { phase: 'escalated' };
-  }
-  // All LLM steps will hit agy, which fails; shim should escalate
-  throw new Error('Unexpected agent call: ' + opts.label + ' -- should be handled by shim');
-};
-try {
-  const result = await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
-  process.stdout.write(JSON.stringify({ phase: result.default?.phase, calls: agentCalls }));
-} catch (e) {
-  process.stdout.write(JSON.stringify({ error: e.message, calls: agentCalls }));
-}
-`);
-
-      const r = spawnSync(process.execPath, [harness], {
-        cwd,
-        encoding: 'utf8',
-        timeout: 60000,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          PATH: binDir + (process.platform === 'win32' ? ';' + process.env.PATH : ':' + process.env.PATH),
-          HOME: cwd,
-          USERPROFILE: cwd,
-          AOS_PLAN_APPROVAL: 'auto',
-        },
-      });
-
-      assert.equal(r.status, 0, `exit status should be 0, got ${r.status}. stderr: ${r.stderr}`);
-      const output = JSON.parse(r.stdout);
-      // When reviewer shim fails (agy missing), dispatcher should escalate
-      assert.equal(output.phase, 'escalated', `phase should be 'escalated' when reviewer executor fails, got '${output.phase}'`);
-      // Verify that reviewer-N was called (with iteration counter N)
-      assert.ok(output.calls.some(c => c.startsWith('reviewer-')), `reviewer should have been called, got calls: ${output.calls.join(', ')}`);
+    test('a failing agy at the review step escalates and never reaches shipping', () => {
+      const run = runFabric({ goal, replies: { build: BUILD_OK } });
+      assertEscalated(run, /Reviewer reviewer-1 escalated: agy exited 7/);
+      assert.ok(run.calls.includes('build'), `the build step should have run, got: ${run.calls.join(', ')}`);
+      assert.ok(run.calls.includes('reviewer-1'), `the review step should have run, got: ${run.calls.join(', ')}`);
+      assert.ok(!run.calls.includes('shipping'), `shipping must not run, got: ${run.calls.join(', ')}`);
     });
-  });
 
-  test('when agy exits non-zero, shim returns all gates as fail', () => {
-    withTmpDir('dispatch-fail-closed-ship-', (dir) => {
-      const cwd = path.join(dir, 'proj');
-      fs.mkdirSync(cwd, { recursive: true });
-      fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
-      fs.mkdirSync(path.join(cwd, 'production_artifacts'), { recursive: true });
+    test('a reply that is not a review escalates instead of reading as a clean review', () => {
+      const run = runFabric({ goal, replies: { build: BUILD_OK, ...allReviewers('Looks fine to me, ship it.') } });
+      assertEscalated(run, /Reviewer reviewer-1 escalated: findings is not an array/);
+      assert.ok(!run.calls.includes('shipping'), `shipping must not run, got: ${run.calls.join(', ')}`);
+    });
 
-      // Fake agy that exits 127
-      const binDir = path.join(dir, 'bin');
-      fs.mkdirSync(binDir, { recursive: true });
-      fakeBinary(binDir, 'agy', 127);
+    test('a failing agy at the quality gate escalates and never reaches ready_to_ship', () => {
+      const run = runFabric({ goal, replies: { build: BUILD_OK, ...allReviewers(CLEAN) } });
+      assertEscalated(run, /Shipping executor failed: agy exited 7/);
+      assert.deepEqual(run.calls.filter((c) => c === 'shipping'), ['shipping']);
+    });
 
-      const harness = path.join(dir, 'run.mjs');
-      fs.writeFileSync(harness, `
-import fs from 'node:fs';
-globalThis.args = { goal: 'test goal' };
-globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
-const agentCalls = [];
-globalThis.agent = async (prompt, opts) => {
-  agentCalls.push(opts.label);
-  // Minimal shim: handle deterministic steps and provide valid role JSON
-  if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
-  if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
-  if (opts.label === 'verify-plan-approval') return { valid: false, reason: 'test' };
-  if (opts.label === 'ensure-node-skills' || opts.label.startsWith('ensure-skills-')) return { installed: [], stillMissing: [] };
-  if (opts.label.startsWith('merge-')) return { merged: 0, skipped: [], needsHuman: false };
-  // Provide valid role JSON for deterministic roles
-  if (opts.label.startsWith('architect')) return { planPath: 'production_artifacts/plan/plan.mdx', needsMedia: false, deliverOk: true };
-  if (opts.label.startsWith('techlead')) return { approved: true, reason: 'test approval' };
-  // Return valid empty review for reviewer roles
-  if (opts.label.startsWith('reviewer')) return { findings: [], blockingCount: 0 };
-  // Return valid empty gate for shipping
-  if (opts.label.startsWith('shipping')) return { gate: {}, blockingNodes: [] };
-  // For any build role (engineering, ui_ux, media_eventtech, ws_*), return valid object
-  if (prompt && (prompt.includes('engineering') || prompt.includes('ui_ux') || prompt.includes('media_eventtech'))) {
-    return { needsHuman: false };
-  }
-  if (opts.label === 'escalate') {
-    try {
-      const statePath = 'production_artifacts/state.json';
-      let state = {};
-      if (fs.existsSync(statePath)) {
-        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-      }
-      state.phase = 'escalated';
-      state.needs_human = true;
-      fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\\n');
-    } catch (e) {}
-    return { phase: 'escalated' };
-  }
-  // All LLM steps will hit agy; shim should escalate
-  throw new Error('Unexpected agent call: ' + opts.label + ' -- should be handled by shim');
-};
-try {
-  const result = await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
-  process.stdout.write(JSON.stringify({ phase: result.default?.phase, calls: agentCalls }));
-} catch (e) {
-  process.stdout.write(JSON.stringify({ error: e.message, calls: agentCalls }));
-}
-`);
+    test('a gate reply without gate results escalates', () => {
+      const run = runFabric({ goal, replies: { build: BUILD_OK, ...allReviewers(CLEAN), shipping: envelope({ blockingNodes: [] }) } });
+      assertEscalated(run, /Shipping executor failed: gate is not an object/);
+    });
 
-      const r = spawnSync(process.execPath, [harness], {
-        cwd,
-        encoding: 'utf8',
-        timeout: 60000,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          PATH: binDir + (process.platform === 'win32' ? ';' + process.env.PATH : ':' + process.env.PATH),
-          HOME: cwd,
-          USERPROFILE: cwd,
-          AOS_PLAN_APPROVAL: 'auto',
+    test('a plan edited after its approval is refused before any agent runs', () => {
+      const run = runFabric({ goal, approve: false, replies: { build: BUILD_OK, ...allReviewers(CLEAN) } });
+      assertEscalated(run, /does not match approval record/);
+      assert.deepEqual(run.calls, []);
+    });
+
+    test('the same finding on two different nodes keeps both nodes in the repair loop', () => {
+      const run = runFabric({
+        goal,
+        replies: {
+          build: BUILD_OK,
+          ...allReviewers(CLEAN),
+          'reviewer-1': envelope({ findings: [finding('A1', 'engineering', 'Missing input validation')], blockingCount: 1 }),
+          'reviewer-2': envelope({ findings: [finding('B1', 'ui_ux', 'Missing input validation')], blockingCount: 1 }),
         },
       });
+      assertEscalated(run, /No progress/);
+      // two build nodes in the first pass and the same two in the repair pass; one merged finding would repair one node
+      assert.equal(run.calls.filter((c) => c === 'build').length, 4, `got: ${run.calls.join(', ')}`);
+    });
 
-      assert.equal(r.status, 0, `exit status should be 0, got ${r.status}. stderr: ${r.stderr}`);
-      const output = JSON.parse(r.stdout);
-      // When shipping shim fails (agy missing), dispatcher should escalate instead of passing
-      assert.equal(output.phase, 'escalated', `phase should be 'escalated' when shipping executor fails, got '${output.phase}'`);
-      assert.ok(output.calls.some(c => c.startsWith('shipping-')), `shipping should have been called, got calls: ${output.calls.join(', ')}`);
+    test('positive control: profile build ids pass and the run reaches ready_to_ship', () => {
+      const run = runFabric({
+        goal: `--profile=kicad ${goal}`,
+        replies: { build: BUILD_OK, ...allReviewers(CLEAN), shipping: gatePass(['erc', 'drc', 'constraints']) },
+      });
+      assert.equal(run.result.phase, 'ready_to_ship', JSON.stringify(run.result));
+      assert.equal(run.calls.filter((c) => c === 'build').length, 2, 'pcb and firmware both build');
+    });
+
+    test('positive control: the default pipeline reaches ready_to_ship', () => {
+      const run = runFabric({
+        goal,
+        replies: { build: BUILD_OK, ...allReviewers(CLEAN), shipping: gatePass(GATE_KEYS) },
+      });
+      assert.equal(run.result.phase, 'ready_to_ship', JSON.stringify(run.result));
     });
   });
 });

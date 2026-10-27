@@ -13,6 +13,7 @@
 
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -226,7 +227,10 @@ describe('canvas dispatcher e2e (app annotation)', () => {
     const approve = out.items.find(i => i.kind === 'verdict');
     assert.equal(approve.route, 'build');
     assert.notEqual(approve.target?.origin, 'app');
-    assert.equal(git('status', '--porcelain'), '', 'locate + approve never edits by itself');
+    const sidecar = JSON.parse(fs.readFileSync(path.join(repo, 'docs', 'plan.approval.json'), 'utf8'));
+    assert.equal(sidecar.verdict, 'approve');
+    assert.equal(sidecar.contentHash, createHash('sha256').update(fs.readFileSync(plan)).digest('hex'), 'the approval record binds to the plan content');
+    assert.equal(git('status', '--porcelain', '--', ':!*.approval.json'), '', 'locate + approve never edits by itself; only the approval record is added');
   });
 
   test('approve of a plan with {#id} components calls the ensure spawner with the fake binary only', async () => {

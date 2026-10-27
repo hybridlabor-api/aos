@@ -72,7 +72,7 @@ test('verifyPlanApproval with missing sidecar', () => {
 
     const result = verifyPlanApproval(planPath);
     assert.strictEqual(result.valid, false, 'should fail when sidecar missing');
-    assert.match(result.reason, /could not read/, 'should report read failure');
+    assert.match(result.reason, /could not read/i, 'should report read failure');
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -90,7 +90,7 @@ test('verifyPlanApproval with malformed JSON', () => {
 
     const result = verifyPlanApproval(planPath);
     assert.strictEqual(result.valid, false, 'should fail on malformed JSON');
-    assert.match(result.reason, /could not read/, 'should report parse error');
+    assert.match(result.reason, /could not read/i, 'should report parse error');
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -121,33 +121,83 @@ test('deduplicateFindings normalizes titles', () => {
   assert.strictEqual(deduped[0].sources.length, 2, 'should list both sources');
 });
 
-test('checkNoProgress detects same blocking IDs', () => {
-  const currentFindings = [
-    { id: 'F001', severity: 'blocking', status: 'open', node: 'eng', summary: 'Bug' },
+test('checkNoProgress detects the same blocking findings even when the ids differ', () => {
+  const previous = [
+    { id: 'reviewer-1-F1', severity: 'blocking', status: 'open', node: 'eng', summary: 'Bug' },
+    { id: 'reviewer-2-F7', severity: 'blocking', status: 'open', node: 'ui', summary: 'Error!' },
+  ];
+  const current = [
+    { id: 'F001', severity: 'blocking', status: 'open', node: 'eng', summary: 'bug' },
     { id: 'F002', severity: 'blocking', status: 'open', node: 'ui', summary: 'Error' },
   ];
-  const previousIds = new Set(['F001', 'F002']);
+  const previousKeys = new Set(previous.map(normalizeComparisonKey));
 
-  const noProgress = checkNoProgress(currentFindings, previousIds);
-  assert.ok(noProgress, 'should detect identical blocking IDs');
+  assert.ok(checkNoProgress(current, previousKeys), 'same node and title means no progress');
 });
 
 test('checkNoProgress allows new findings', () => {
-  const currentFindings = [
+  const previousKeys = new Set([
+    normalizeComparisonKey({ node: 'eng', summary: 'Bug' }),
+    normalizeComparisonKey({ node: 'ui', summary: 'Error' }),
+  ]);
+  const current = [
     { id: 'F001', severity: 'blocking', status: 'open', node: 'eng', summary: 'Bug' },
     { id: 'F003', severity: 'blocking', status: 'open', node: 'ui', summary: 'New issue' },
   ];
-  const previousIds = new Set(['F001', 'F002']);
 
-  const noProgress = checkNoProgress(currentFindings, previousIds);
-  assert.ok(!noProgress, 'should allow progress when new findings appear');
+  assert.ok(!checkNoProgress(current, previousKeys), 'should allow progress when new findings appear');
+});
+
+test('checkNoProgress ignores findings that are fixed or only advisory', () => {
+  const previousKeys = new Set([normalizeComparisonKey({ node: 'eng', summary: 'Bug' })]);
+  const current = [
+    { id: 'F001', severity: 'blocking', status: 'fixed', node: 'eng', summary: 'Bug' },
+    { id: 'F002', severity: 'advisory', status: 'open', node: 'eng', summary: 'Bug' },
+  ];
+
+  assert.ok(!checkNoProgress(current, previousKeys), 'nothing blocking and open is left');
 });
 
 test('normalizeComparisonKey uses node and title', () => {
   const finding = { node: 'engineering', summary: 'Missing Error Handler!!' };
   const key = normalizeComparisonKey(finding);
-  assert.match(key, /^engineering:/, 'should include node');
-  assert.match(key, /missingerrorhandler/, 'should normalize title');
+  assert.equal(key, 'engineering:missing error handler', 'node, then the lowercased title without punctuation');
+});
+
+test('deduplicateFindings keeps the same title on different nodes apart', () => {
+  const findings = [
+    { id: 'A1', node: 'engineering', summary: 'Missing input validation', severity: 'blocking', status: 'open', agent: 'reviewer-1' },
+    { id: 'B1', node: 'ui_ux', summary: 'Missing input validation', severity: 'blocking', status: 'open', agent: 'reviewer-2' },
+  ];
+
+  const deduped = deduplicateFindings(findings);
+  assert.deepStrictEqual(deduped.map((f) => f.node), ['engineering', 'ui_ux'], 'each owning node keeps its finding');
+});
+
+test('deduplicateFindings never lets a duplicate hide an open report', () => {
+  const base = { node: 'engineering', summary: 'Race in the merge step', severity: 'blocking' };
+
+  const fixedThenOpen = deduplicateFindings([
+    { ...base, id: 'A1', status: 'fixed', agent: 'reviewer-1' },
+    { ...base, id: 'B1', status: 'open', agent: 'reviewer-2' },
+  ]);
+  assert.strictEqual(fixedThenOpen.length, 1);
+  assert.strictEqual(fixedThenOpen[0].status, 'open', 'a later open report reopens the merged finding');
+
+  const openThenFixed = deduplicateFindings([
+    { ...base, id: 'A1', status: 'open', agent: 'reviewer-1' },
+    { ...base, id: 'B1', status: 'fixed', agent: 'reviewer-2' },
+  ]);
+  assert.strictEqual(openThenFixed[0].status, 'open', 'a later fixed report does not close it');
+});
+
+test('deduplicateFindings reads a missing or unknown status as open', () => {
+  const deduped = deduplicateFindings([
+    { id: 'A1', node: 'engineering', summary: 'No status', severity: 'blocking' },
+    { id: 'A2', node: 'engineering', summary: 'Odd status', severity: 'blocking', status: 'resolved' },
+  ]);
+
+  assert.deepStrictEqual(deduped.map((f) => f.status), ['open', 'open']);
 });
 
 test('verifyPlanApproval hashes the correct source file (plan.mdx)', () => {

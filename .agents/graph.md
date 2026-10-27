@@ -147,6 +147,7 @@ The dispatcher accepts `/fabric-graph --plan <file>` to use an already-approved 
 - If the record is missing, malformed, or the hash doesn't match: the dispatcher escalates and refuses the shortcut
 - Without valid approval: refuse with a clear error (exit non-zero); never fall back to "approved"
 - On success: record in `state.json` that the plan came pre-approved (`pre_approved: true`, `approval_source: <plan-file>`, `approval_hash: <hash>`)
+- Without Architect there is no `needsMedia` or `skipNodes` decision: the default pipeline builds with UI_UX and Engineering only, and a `--profile` run builds every node of the profile, optional ones included
 
 This mechanism is for CI pipelines and workflows that have already obtained human sign-off outside the dispatcher. An approval record is ephemeral and carries no weight across runs.
 
@@ -159,9 +160,9 @@ The Reviewer node (marked with `"parallelReviewers"` in nodes.json) invokes 4 re
 3. **code-reviewer**: code health & maintainability — architecture, error handling, performance
 4. **devils-advocate**: hunts unstated assumptions, missing failure modes, case where the approach is wrong
 
-Findings are deduplicated by `(file, line, summary)` — identical findings from multiple reviewers merge to one, keeping the highest severity and listing all sources. The deduplication step (role `merge_review`, model from `pipeline.json`) runs after all four return, before the dispatcher decides whether to loop or proceed.
+Findings are deduplicated in code (`lib/fabric-review-dedupe.mjs`) by `(node, normalized summary, file, line)` — identical findings from multiple reviewers merge to one, keeping the highest severity, staying `open` if any reviewer reports it open, and listing all sources. The same node with the same title is one finding; the same title on two different nodes stays two findings, so each owning node is repaired. The merge runs after all four return, before the dispatcher decides whether to loop or proceed.
 
-Max 2 review repair rounds (Reviewer cycles 1 and 2) before escalation via the no-progress guard: if Reviewer reports the same blocking finding IDs twice in a row, stop and escalate rather than trying to fix unfixable issues. Repair rounds count toward the iteration budget together with all other rounds (Architect loops, gate fixes).
+Max 2 review repair rounds (Reviewer cycles 1 and 2) before escalation via the no-progress guard: if Reviewer reports the same blocking findings (same node and normalized title; reviewers mint different ids) twice in a row, stop and escalate rather than trying to fix unfixable issues. Repair rounds count toward the iteration budget together with all other rounds (Architect loops, gate fixes).
 
 ## Workers and scopes
 
