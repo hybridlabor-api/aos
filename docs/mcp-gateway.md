@@ -71,6 +71,11 @@ Only these shipped servers are shared through the gateway (`GATEWAY_SERVERS` in 
 
 Pair labels come from `README.de.md:303-309` ("Primär- und Fallback-Paare für Redundanz"). No file documents a switch condition.
 
+## Direct by design and unverified rows
+
+- **Direct by design** (`DIRECT_SERVERS` in `lib/gateway/config.js`): servers that keep one copy per session (memory, recursion guards, computer-use, native or per-session tools) and are never served by the gateway. `aos-gateway doctor` reports a direct copy of one of these as "direct by design", not as a duplicate.
+- **Not managed by the gateway (unverified)**: harness rows in `lib/harnesses.json` with `verified: false`. Their config files are never rewritten; `aos-gateway doctor` lists them by id.
+
 ## Harness support tiers for `enable` (checked 2026-10-08)
 
 The harness table is driven by `lib/harnesses.json`; adding a harness = one row + one test.
