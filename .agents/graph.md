@@ -132,11 +132,40 @@ this discipline exists to prevent:
    clean result exits the build/review loop immediately, so Reviewer is never
    asked to re-confirm an already-clean artifact twice in a row. What the
    script implements instead, in the same spirit: if a repair round reports
-   the **exact same blocking finding ID(s)** Reviewer already flagged before
-   the build node was re-invoked to fix them, the dispatcher escalates
+   the **same blocking finding(s)** Reviewer already flagged before
+   the build node was re-invoked to fix them (the same ids for the single Reviewer; the same
+   node and normalized title for the parallel reviewers, who mint their own ids), the dispatcher escalates
    immediately rather than burning the remaining iterations on a cycle that
    isn't making progress. Same intent (don't keep trusting a loop that isn't
    working), a form this control flow can actually reach.
+
+## Pre-approved plans (`--plan` flag)
+
+The dispatcher accepts `/fabric-graph --plan <file>` to use an already-approved plan, skipping both Architect and TechLead/human approval. This is safe only when the plan carries a verifiable approval record that binds to its content:
+
+- The approval record is a `.approval.json` sidecar file (same directory, same basename) containing: `{ "verdict": "approve", "contentHash": "<sha256>", "timestamp": <iso-8601 or unix-ms> }`
+- The approval record's `contentHash` must match the SHA-256 hash of the plan file's **current content**
+- If the record is missing, malformed, or the hash doesn't match: the dispatcher escalates and refuses the shortcut
+- Without valid approval: the dispatcher escalates before any agent runs and the CLI exits non-zero; it never falls back to "approved". The same holds for a bad `--plan` value (given twice, no value, not .md/.mdx/.markdown, file missing) and for `--plan` together with `--workstreams`
+- On success: the dispatcher starts the run state the Architect would have started (`run_id`, `goal`, `phase: build`, `iteration`, `max_iterations`, `gate`, `findings`, `approvals`, `artifacts.plan`; a `needs_human`, `phase` or finding left by an earlier run is reset) and records that the plan came pre-approved (`pre_approved: true`, `approval_source: <plan-file>`, `approval_hash: <hash>`). A failed state write escalates
+- Without Architect there is no `needsMedia` or `skipNodes` decision: the default pipeline builds with UI_UX and Engineering only, and a `--profile` run builds every node of the profile, optional ones included
+
+This mechanism is for CI pipelines and workflows that have already obtained human sign-off outside the dispatcher. The record binds to the exact plan content, so editing the plan invalidates it; the check is made once, at the start of the run, and needs module loading (`lib/fabric-plan-approval.mjs`, found next to the checkout or under `~/.agents/lib`), without which `--plan` is refused. A hash may be upper or lower case and the record may carry a UTF-8 BOM.
+
+## Reviewer: 4 parallel reviewers with deduplication
+
+The Reviewer node (marked with `"parallelReviewers"` in nodes.json) invokes 4 reviewers in parallel for broader coverage:
+
+1. **reviewer-1**: correctness focus — logic errors, broken edge cases, contract mismatches
+2. **reviewer-2**: security & operability — injection, leaked secrets, auth gaps, rollback hazards
+3. **code-reviewer**: code health & maintainability — architecture, error handling, performance
+4. **devils-advocate**: hunts unstated assumptions, missing failure modes, case where the approach is wrong
+
+Findings are deduplicated in code (`lib/fabric-review-dedupe.mjs`) by `(node, normalized summary, file, line)` — identical findings from multiple reviewers merge to one, keeping the highest severity, staying `open` if any reviewer reports it open, and listing all sources. The same node with the same title is one finding; the same title on two different nodes stays two findings, so each owning node is repaired. The merge runs after all four return, before the dispatcher decides whether to loop or proceed.
+
+The four reviewers are read-only and return their findings as JSON; the dispatcher records the merged review itself (`state.findings`, limited to `id`, `severity`, `node`, `summary`, `status`, and `production_artifacts/review_findings.md`). A reviewer that fails, times out or returns anything but a findings list for the review schema escalates the run, and so does an unknown severity, status or node: a review is never read as clean by default. Without module loading (`lib/fabric-review-dedupe.mjs`, found next to the checkout or under `~/.agents/lib`) the dispatcher runs the single Reviewer as before.
+
+Max 2 review rounds: blocking findings still open after the second review escalate to the human instead of triggering another unreviewed repair. Before that, the no-progress guard: if Reviewer reports the same blocking findings (same node and normalized title; reviewers mint different ids) twice in a row, stop and escalate rather than trying to fix unfixable issues. Repair rounds count toward the iteration budget together with all other rounds (Architect loops, gate fixes).
 
 ## Workers and scopes
 
@@ -162,8 +191,8 @@ never inside a node's own prompt.
 | TechLead | plan rejected (capability map not approved) | `iteration++`, invoke Architect again |
 | TechLead | plan approved | invoke UI_UX, Engineering, Media_EventTech (parallel — each is an independent dispatcher call, not one node fanning out to the others) |
 | any build node | *(after all three return, or the ones the goal needs)* | invoke Reviewer |
-| Reviewer | any `blocking` finding open, and it's a **new** finding ID | `iteration++`, invoke the owning build node (only that one, not all three) |
-| Reviewer | the **same** `blocking` finding ID(s) as the previous cycle | set `needs_human: true`, `phase: escalated` — **stop** (no-progress guard, see above) |
+| Reviewer | any `blocking` finding open, and it's a **new** finding | `iteration++`, invoke the owning build node (only that one, not all three) |
+| Reviewer | the **same** `blocking` finding(s) as the previous cycle | set `needs_human: true`, `phase: escalated` — **stop** (no-progress guard, see above) — and after the second review, blocking findings still open escalate too (max 2 review rounds) |
 | Reviewer | zero blocking findings | invoke Shipping |
 | Shipping | any `gate.*` is `fail` | `iteration++`, invoke whichever build node(s) Shipping's own structured output names as owning the failing check(s) — the dispatcher does not guess a lint/test-to-node mapping itself |
 | Shipping | all `gate.*` are `pass`/`skip` | `phase: ready_to_ship`, stop — surface "ready to ship, needs GO" to the user. The dispatcher does not itself check `approvals` for a prior GO here (see the Harness section's noted exception); the actual push/version/publish is a separate GO-gated step, enforced by `go-gate.mjs`, which does the GO check at the point it matters. |
@@ -260,11 +289,12 @@ Channels and limits per hop: `docs/orchestrator-chain.md`, `docs/a2a.md`, `docs/
 ## Auxiliary agents are not nodes
 
 `.agents/AGENTS.md` also defines auxiliary specialists (for example
-`pcb-design-assistant`, `devils-advocate`, `reviewer-1`, `reviewer-2`). They are
-never in `.agents/nodes.json`, have no edges above, and the dispatcher reads none
-of them. The dispatcher or the user may call one directly, outside this graph;
-`reviewer-1`/`reviewer-2` are independent second opinions, not replacements for
-the Reviewer node.
+`pcb-design-assistant`). They are never nodes in `.agents/nodes.json`, have no
+edges above, and the dispatcher reads none of them. The dispatcher or the user may
+call one directly, outside this graph. The one exception is the Reviewer step:
+`reviewer-1`, `reviewer-2`, `code-reviewer` and `devils-advocate` are listed under the
+Reviewer node as `parallelReviewers` and the dispatcher runs them as that step (see
+"Reviewer: 4 parallel reviewers"); they are still not nodes of their own.
 
 ## Advisor checkpoints (optional, auxiliary)
 

@@ -93,6 +93,20 @@ if (typeof process !== 'undefined') {
   } catch {}
 }
 
+// Repo checkout: <repo>/.claude/workflows -> ../../lib. Installed copies (~/.claude/workflows and the other harness
+// dirs) find the lib under ~/.agents/lib. null = no module loading in this runtime.
+async function importLib(file) {
+  if (typeof process === 'undefined') return null;
+  try { return await import(new URL(`../../lib/${file}`, import.meta.url).href); } catch {}
+  try {
+    const { pathToFileURL } = await import('node:url');
+    const { homedir } = await import('node:os');
+    return await import(pathToFileURL(`${homedir()}/.agents/lib/${file}`).href);
+  } catch { return null; }
+}
+const dedupeReviewMod = await importLib('fabric-review-dedupe.mjs');
+const planApprovalMod = await importLib('fabric-plan-approval.mjs');
+
 export const AGENT_ALIASES = workstreamMod?.AGENT_ALIASES || Object.freeze({
   'engineering': 'godmode-engineering',
   'godmode-engineering': 'engineering',
@@ -439,7 +453,7 @@ if (typeof globalThis.agent === 'undefined') {
       const missing = [];
       const suggestions = [];
 
-      const skillNames = mandatorySkills || [];
+      const skillNames = Array.isArray(options?.skills) ? options.skills : [];
       const home = os ? os.homedir() : '';
       const candidateRoots = [
         path ? path.join(home, '.claude', 'skills') : '',
@@ -552,20 +566,26 @@ if (typeof globalThis.agent === 'undefined') {
       let state = {};
       try {
         if (fs.existsSync(statePath)) {
-          state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+          const raw = fs.readFileSync(statePath, 'utf8');
+          state = JSON.parse(raw);
         }
-      } catch {}
+      } catch (err) {
+        return { merged: 0, skipped: [`state.json parse failed: ${err.message}`], needsHuman: true };
+      }
       state.artifacts = state.artifacts || {};
       state.findings = state.findings || [];
 
       let mergedCount = 0;
       const skipped = [];
       let needsHuman = false;
+      const toUnlink = [];
 
       let fragmentFiles = [];
       try {
         fragmentFiles = fs.readdirSync(stateDDir).filter((f) => f.endsWith('.json'));
-      } catch {}
+      } catch (err) {
+        return { merged: 0, skipped: [`state.d read failed: ${err.message}`], needsHuman: true };
+      }
 
       for (const file of fragmentFiles) {
         const fPath = path.join(stateDDir, file);
@@ -590,7 +610,7 @@ if (typeof globalThis.agent === 'undefined') {
           }
           if (fragment.needs_human) needsHuman = true;
           mergedCount++;
-          fs.unlinkSync(fPath);
+          toUnlink.push(fPath);
         } catch (err) {
           skipped.push(`${file} (${err.message})`);
         }
@@ -602,9 +622,20 @@ if (typeof globalThis.agent === 'undefined') {
       try {
         fs.mkdirSync(path.dirname(statePath), { recursive: true });
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
-      } catch {}
+      } catch (err) {
+        process.stderr?.write?.(`[fabric-dispatch] state.json write failed: ${err.message}\n`);
+        return { merged: 0, skipped: [`state.json write failed: ${err.message}`], needsHuman: true };
+      }
 
-      return { merged: mergedCount, skipped, needsHuman: !!state.needs_human };
+      for (const fPath of toUnlink) {
+        try {
+          fs.unlinkSync(fPath);
+        } catch (err) {
+          skipped.push(`unlink failed for ${path.basename(fPath)}: ${err.message}`);
+        }
+      }
+
+      return { merged: mergedCount, skipped, needsHuman };
     }
 
     // Deterministic step: escalate
@@ -621,9 +652,30 @@ if (typeof globalThis.agent === 'undefined') {
           state.iteration = iteration;
           fs.mkdirSync(path.dirname(statePath), { recursive: true });
           fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
-        } catch {}
+        } catch (err) {
+          process.stderr?.write?.(`[fabric-dispatch] escalate state write failed: ${err?.message || err}\n`);
+        }
       }
       return { phase: 'escalated' };
+    }
+
+    // Deterministic step: record-review. The parallel reviewers are read-only, so the dispatcher records their merged review.
+    if (label.startsWith('record-review')) {
+      if (!fs || !path) return { error: 'no filesystem to record the review' };
+      try {
+        const findings = Array.isArray(options?.findings) ? options.findings : [];
+        const dir = path.resolve('production_artifacts');
+        const statePath = path.join(dir, 'state.json');
+        const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
+        state.findings = findings;
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+        const lines = findings.map((f) => `- [${f.status}] ${f.severity} (${f.node}) ${f.id}: ${f.summary}`);
+        fs.writeFileSync(path.join(dir, 'review_findings.md'), `# Review findings\n\n${lines.join('\n') || 'No findings.'}\n`);
+        return { recorded: findings.length };
+      } catch (err) {
+        return { error: `could not record the review: ${err.message}` };
+      }
     }
 
     if (label.startsWith('archify-verify')) {
@@ -669,6 +721,7 @@ if (typeof globalThis.agent === 'undefined') {
     }
 
     // LLM Agent Steps: runner adapter / graceful execution
+    let agyExecutorError = null;
     if (child_process) {
       try {
         const agyRes = child_process.spawnSync('agy', ['--print', prompt, '--output-format', 'json', '--print-timeout', '30s'], {
@@ -678,69 +731,104 @@ if (typeof globalThis.agent === 'undefined') {
           windowsHide: true,
           env: options.trail ? { ...process.env, AOS_TRAIL_NODE: options.trail.node, AOS_TRAIL_PLAN: options.trail.plan } : process.env,
         });
+        if (agyRes.error) throw agyRes.error;
         if (agyRes.status === 0 && agyRes.stdout) {
           const jsonMatch = agyRes.stdout.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            return JSON.parse(jsonMatch[0]);
+            const envelope = JSON.parse(jsonMatch[0]);
+            // agy --output-format json wraps the response: { conversation_id, status, response: <string> }
+            if (envelope.response && typeof envelope.response === 'string') {
+              try {
+                const parsed = JSON.parse(envelope.response);
+                return validateRoleResponse(parsed, label, options);
+              } catch {
+                return validateRoleResponse(envelope, label, options);
+              }
+            }
+            return validateRoleResponse(envelope, label, options);
           }
         }
-      } catch {}
+        // agy failed or returned no parseable JSON: fail closed instead of canned success
+        const code = agyRes.status;
+        const stderr = typeof agyRes.stderr === 'string' ? agyRes.stderr.slice(0, 200) : '';
+        agyExecutorError = code === null ? 'agy process timeout' : `agy exited ${code}${stderr ? `: ${stderr}` : ''}`;
+      } catch (err) {
+        agyExecutorError = `agy spawn failed: ${err?.code === 'ENOENT' ? 'agy not found on PATH' : (err?.code === 'ETIMEDOUT' ? 'agy call timeout' : (err?.message || String(err)).slice(0, 100))}`;
+      }
+    } else {
+      agyExecutorError = 'no process runtime (not in Node environment)';
     }
 
-    if (label.startsWith('architect')) {
-      const baseRes = {
-        planPath: 'production_artifacts/00_execution_plan.md',
-        needsMedia: false,
-        architectureSpec: 'production_artifacts/00_architecture.json',
-        architectureHtml: 'production_artifacts/00_architecture.html',
-        deliverOk: true
-      };
-      if (prompt.includes('execution_manifest')) {
-        baseRes.execution_manifest = {
-          createdBy: 'architect',
-          workstreams: [
-            { id: 'ws_core', agentType: 'godmode-engineering', skills: ['godmode-engineering'], artifactKey: 'backend' },
-            { id: 'ws_ui', agentType: 'godmode-ui-ux', skills: ['godmode-ui-ux'], artifactKey: 'frontend' }
-          ]
+    function validateRoleResponse(obj, roleLabel, opts) {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { escalate: true, error: `invalid response type: ${typeof obj}` };
+      // Only build nodes (registry, profile and workstream ids alike) are dispatched with `trail`.
+      if (opts?.trail) return obj;
+      if (roleLabel.startsWith('reviewer')) {
+        if (!Array.isArray(obj.findings)) return { findings: [], blockingCount: 0, escalate: true, error: 'findings is not an array' };
+        const nodes = opts?.schema?.properties?.findings?.items?.properties?.node?.enum;
+        const valid = (f) => f && typeof f === 'object' && typeof f.summary === 'string' &&
+          ['blocking', 'advisory'].includes(f.severity) && ['open', 'fixed', 'wont_fix'].includes(f.status) && (!nodes || nodes.includes(f.node));
+        if (!obj.findings.every(valid)) return { findings: [], blockingCount: 0, escalate: true, error: 'a finding does not match the review schema (summary, severity, status, node)' };
+        const blockingCount = obj.findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
+        return { ...obj, blockingCount };
+      }
+      if (roleLabel.startsWith('shipping')) {
+        if (!obj.gate || typeof obj.gate !== 'object') return { gate: {}, blockingNodes: [], escalate: true, error: 'gate is not an object' };
+        return obj;
+      }
+      if (roleLabel.startsWith('techlead')) {
+        if (typeof obj.approved !== 'boolean') return { approved: false, reason: 'invalid response', escalate: true };
+        return obj;
+      }
+      if (roleLabel.startsWith('architect')) {
+        if (!obj.planPath || typeof obj.planPath !== 'string') return { planPath: '', needsMedia: false, deliverOk: false, error: 'invalid response', escalate: true };
+        return obj;
+      }
+      // Unknown role: escalate to be safe
+      return { escalate: true, error: `unknown role label: ${roleLabel}` };
+    }
+
+    // Executor failed: return explicit failure that dispatcher escalates on, never canned success
+    if (agyExecutorError) {
+      process.stderr?.write?.(`[fabric-dispatch] executor failed: ${agyExecutorError}\n`);
+
+      if (label.startsWith('architect')) {
+        return { planPath: '', needsMedia: false, deliverOk: false, error: agyExecutorError, escalate: true };
+      }
+      if (label.startsWith('techlead')) {
+        return { approved: false, reason: `executor failed: ${agyExecutorError}`, escalate: true };
+      }
+      if (label.startsWith('reviewer')) {
+        return {
+          findings: [{
+            id: 'executor-failed',
+            severity: 'blocking',
+            node: 'reviewer',
+            summary: 'executor unavailable (agy call failed)',
+            status: 'open'
+          }],
+          blockingCount: 1,
+          error: agyExecutorError,
+          escalate: true
         };
       }
-      return baseRes;
-    }
-    if (label.startsWith('techlead')) {
-      return { approved: true, reason: 'Approved capability map' };
-    }
-    if (label.startsWith('reviewer')) {
-      return { findings: [], blockingCount: 0 };
-    }
-    if (label.startsWith('shipping')) {
-      const gateObj = { lint: 'pass', typecheck: 'pass', tests: 'pass', a11y: 'pass', seo: 'pass', security: 'pass' };
-      if (options?.schema?.properties?.gate?.required) {
-        for (const k of options.schema.properties.gate.required) {
-          gateObj[k] = 'pass';
+      if (label.startsWith('shipping')) {
+        const gateObj = {};
+        if (options?.schema?.properties?.gate?.required) {
+          for (const k of options.schema.properties.gate.required) {
+            gateObj[k] = 'fail';
+          }
+        } else {
+          for (const k of ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security']) {
+            gateObj[k] = 'fail';
+          }
         }
+        return { gate: gateObj, blockingNodes: [], error: agyExecutorError, escalate: true };
       }
-      return {
-        gate: gateObj,
-        blockingNodes: [],
-      };
-    }
-    if (label.startsWith('ws_') || ['ui_ux', 'engineering', 'media_eventtech'].includes(label)) {
-      if (fs) {
-        try {
-          const stateDDir = path ? path.resolve('production_artifacts', 'state.d') : 'production_artifacts/state.d';
-          fs.mkdirSync(stateDDir, { recursive: true });
-          const fragPath = path.join(stateDDir, `${label}.json`);
-          fs.writeFileSync(fragPath, JSON.stringify({
-            node: label,
-            artifacts: { [label]: `production_artifacts/${label}_spec.md` },
-            findings: []
-          }, null, 2) + '\n');
-        } catch {}
-      }
-      return { needsHuman: false };
+      // For every other label when executor fails, escalate
+      return { escalate: true, error: agyExecutorError };
     }
 
-    return { needsHuman: false };
   };
 }
 
@@ -818,10 +906,13 @@ function dispatchNote(node, soloWriter = false) {
 // never inside a pipeline() fan-out -- so writing state.json directly here
 // is not part of the CHANGE 1 race and this function is left untouched by
 // that fix.
-function reviewerStateNote() {
-  return (
+function reviewerStateNote(readOnly = false) {
+  const discipline =
     'Do NOT read state.goal or any other node\'s reasoning/claims from production_artifacts/state.json -- ' +
-    'your review must be based only on the plan/contract and artifact files named below, nothing else. ' +
+    'your review must be based only on the plan/contract and artifact files named below, nothing else. ';
+  if (readOnly) return discipline + 'Return your review as the JSON below; you do not write production_artifacts/state.json.';
+  return (
+    discipline +
     'You may open production_artifacts/state.json purely to merge your update into it without clobbering ' +
     'unrelated fields (or create it fresh per .agents/state.schema.json if missing), but that file access is ' +
     `for the write, not for forming your judgment. Set state.iteration to ${iteration} in your update.`
@@ -1042,6 +1133,18 @@ async function mergeStateD() {
   );
 }
 
+// The parallel reviewers are read-only, so the dispatcher records their merged review itself (one writer, like escalate()).
+// Finding items in state.json allow only these five keys.
+async function recordReview(findings) {
+  const items = findings.map(({ id, severity, node, summary, status }) => ({ id, severity, node, summary, status }));
+  return await agent(
+    'You are recording the merged /fabric-graph review -- a deterministic write, not a reasoning task. ' +
+      'In production_artifacts/state.json set "findings" to exactly this array (replace the whole array, change no other field), and write the same ' +
+      `findings as a readable list to production_artifacts/review_findings.md (create production_artifacts/ if missing): ${JSON.stringify(items)}`,
+    { label: `record-review-${iteration}`, ...modelOpt('merge_state'), findings: items }
+  );
+}
+
 async function verifyArchifyArtifacts() {
   return await agent(
     'You are the dedicated /fabric-graph archify-verify step -- a deterministic check, not a reasoning task. ' +
@@ -1106,6 +1209,7 @@ const REGISTRY_SCHEMA = {
           writes: { type: ['string', 'null'] },
           optional: { type: 'boolean' },
           skills: { type: 'array', items: { type: 'string' } },
+          parallelReviewers: { type: 'array', items: { type: 'string' } },
           instructions: { type: ['string', 'null'] },
         },
       },
@@ -1185,6 +1289,45 @@ const activeRoleRegistry = roleRegistry || {
 // mechanism for injecting a skill this script has never heard of (a user's
 // own private skill, never part of .agents/nodes.json's registry) -- see
 // .agents/graph.md's "Mandatory Skill Injection" section.
+function extractPlanFlag(text) {
+  const flagPattern = /--plan(?:=|\s+)("[^"]+"|'[^']+'|[^\s]+)/g;
+  let plan = null;
+  let malformed = 0;
+  let duplicates = 0;
+  const goal = text
+    .replace(flagPattern, (_, val) => {
+      if (val === undefined) { malformed++; return ''; }
+      const unquoted =
+        (val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))
+          ? val.slice(1, -1)
+          : val;
+      if (unquoted.trim() === '') { malformed++; return ''; }
+      if (plan !== null) duplicates++;
+      plan = unquoted;
+      return '';
+    })
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // Check if --plan token survives in goal (malformed extraction)
+  if (goal.match(/--plan(?:=|\s|$)/)) {
+    return { plan: null, goal: text, invalid: 'Malformed --plan flag: could not extract value' };
+  }
+
+  // Validate plan file: must exist and end with .md/.mdx/.markdown
+  let invalid = null;
+  if (plan) {
+    const ext = plan.toLowerCase();
+    if (!/(\.md|\.mdx|\.markdown)$/.test(ext)) {
+      invalid = 'Plan file must end with .md, .mdx, or .markdown extension';
+    } else if (fs && !fs.existsSync(plan)) {
+      invalid = `Plan file does not exist: ${plan}`;
+    }
+  }
+
+  return { plan, goal, malformed, duplicates, invalid };
+}
+
 function extractProfileFlag(text) {
   const flagPattern = /--profile=("[^"]+"|'[^']+'|\S+)|--profile=(?=\s|$)/g;
   let profile = null;
@@ -1327,7 +1470,25 @@ if (profile) {
     }
   }
 }
-const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(goalAfterProfile);
+const { plan: planFromFlag, goal: goalAfterPlan, malformed: planMalformed, duplicates: planDuplicates, invalid: planInvalid } = extractPlanFlag(goalAfterProfile);
+// A refused --plan is a clear error for a CI step: the CLI exits non-zero (see the end of this file).
+const refusePlan = (reason) => escalate(reason, { exitCode: 1 });
+if (planDuplicates > 0) {
+  return await refusePlan('--plan was given more than once. Provide exactly one plan file path.');
+}
+if (planMalformed > 0) {
+  return await refusePlan(
+    `--plan was given with an empty value (${planMalformed} time(s)). Write --plan=<path>, e.g. --plan=production_artifacts/plan/plan.mdx.`
+  );
+}
+if (planInvalid) {
+  return await refusePlan(`--plan validation failed: ${planInvalid}`);
+}
+if (hasWorkstreamsFlag && planFromFlag) {
+  return await refusePlan('--workstreams and --plan flags cannot be used together. Choose one: either a pre-approved --plan to skip Architect, or --workstreams to run the full pipeline.');
+}
+
+const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(goalAfterPlan);
 if (malformed > 0) {
   return await escalate(
     `--skill was given with an empty value (${malformed} time(s)). Write --skill=<name>, e.g. --skill=my-custom-skill. ` +
@@ -1366,6 +1527,7 @@ if (mandatorySkillNames.length > 0) {
     {
       label: 'validate-mandatory-skills',
       ...modelOpt('validate_skills'),
+      skills: mandatorySkillNames,
       schema: {
         type: 'object',
         required: ['found', 'missing', 'store_matches'],
@@ -1378,7 +1540,18 @@ if (mandatorySkillNames.length > 0) {
       },
     }
   );
+  const found = skillCheckResult?.found ?? [];
   const missing = skillCheckResult?.missing ?? [];
+  const reported = new Set([...found, ...missing]);
+  const unreported = mandatorySkillNames.filter(s => !reported.has(s));
+
+  if (unreported.length > 0) {
+    return await escalate(
+      `Skill validation returned incomplete results: ${unreported.join(', ')} not reported in found or missing. ` +
+      'Every requested skill must appear in the validation result.'
+    );
+  }
+
   if (missing.length > 0) {
     const storeMatches = skillCheckResult?.store_matches ?? [];
     const near = skillCheckResult?.suggestions ?? [];
@@ -1396,7 +1569,32 @@ if (mandatorySkillNames.length > 0) {
       'Refusing to silently proceed without a mandated skill.';
     return await escalate(message);
   }
-  mandatorySkills = skillCheckResult?.found ?? mandatorySkillNames;
+  mandatorySkills = found;
+}
+
+// Validate --plan approval record if provided. Must have a valid
+// .approval.json sidecar with matching content hash before Architect/TechLead
+// are skipped. Fail fast: wrong hash, missing record, or malformed JSON → escalate.
+let preApprovedPlan = null;
+let planApprovalRecord = null;
+if (planFromFlag) {
+  let approvalResult = null;
+  if (planApprovalMod?.verifyPlanApproval && typeof process !== 'undefined') {
+    // Call verifyPlanApproval directly from lib
+    const approval = planApprovalMod.verifyPlanApproval(planFromFlag);
+    approvalResult = { valid: approval.valid, reason: approval.reason, planFile: planFromFlag, approval: approval.approval };
+  } else {
+    return await refusePlan('Plan approval module unavailable (needs module loading and lib/fabric-plan-approval.mjs); cannot validate --plan flag.');
+  }
+  if (!approvalResult || !approvalResult.valid) {
+    return await refusePlan(
+      `--plan flag provided but approval record is not valid: ${approvalResult?.reason || 'unknown error'}. ` +
+        `Plan file: ${planFromFlag}. Expected a .approval.json sidecar next to the plan with verdict "approve" and matching contentHash. ` +
+        'Refusing to proceed without a valid approval record.'
+    );
+  }
+  preApprovedPlan = approvalResult.planFile;
+  planApprovalRecord = approvalResult.approval;
 }
 
 // ---------------------------------------------------------------------
@@ -1407,6 +1605,7 @@ if (mandatorySkillNames.length > 0) {
 // one call), so this works on every harness, not just Claude Code.
 // AOS_PLAN_APPROVAL=auto is the CI-only escape: it skips the canvas wait
 // and proceeds without a human verdict. Never set it for an interactive run.
+// `--plan` bypass: if a pre-approved plan is provided, skip this entire loop.
 // ---------------------------------------------------------------------
 
 // BEGIN canvas-verdict (extracted verbatim by tests/fabric-human-gate.test.mjs)
@@ -1513,7 +1712,12 @@ const profileNote = profile
 let approved = false;
 let lastRejectionReason = '';
 
-while (!approved) {
+// Skip Architect/TechLead loop if --plan provides a pre-approved plan
+if (preApprovedPlan) {
+  planPath = preApprovedPlan;
+  approved = true;
+  process.stderr.write(`[fabric-dispatch] Using pre-approved plan from --plan flag: ${planPath}\n`);
+} else while (!approved) {
   await ensureNodeSkills(architectNode);
   const architectResult = await agent(
     `You are acting as the ${architectNode.label} agent (${architectNode.personaFile}). ${dispatchNote(architectNode)}${skillsNote(architectNode)}\n\n` +
@@ -1587,6 +1791,13 @@ while (!approved) {
       },
     }
   );
+
+  if (architectResult?.escalate || architectResult?.error) {
+    return await escalate(
+      `Architect executor failed: ${architectResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
 
   planPath = architectResult?.planPath;
   needsMedia = !!architectResult?.needsMedia;
@@ -1708,6 +1919,13 @@ while (!approved) {
     }
   );
 
+  if (techLeadResult?.escalate || techLeadResult?.error) {
+    return await escalate(
+      `TechLead executor failed: ${techLeadResult?.error || techLeadResult?.reason || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
   approved = !!techLeadResult?.approved;
   lastRejectionReason = techLeadResult?.reason ?? '';
 
@@ -1741,6 +1959,35 @@ while (!approved) {
     }
     lastRejectionReason = `The human requested changes in the plan canvas -- address this feedback: ${humanGate.feedback}`;
     continue;
+  }
+}
+
+// --plan skips the Architect, who would have started the run state: start it here (a fresh run, so a needs_human, phase or findings
+// left by an earlier run must not leak in; AO scaffold keys stay) and record that the plan came pre-approved. A failed write is fatal.
+if (preApprovedPlan && planApprovalRecord) {
+  try {
+    const statePath = path.resolve('production_artifacts', 'state.json');
+    const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
+    state.run_id ??= `fabric-${Date.now()}`;
+    state.max_iterations ??= MAX_ITERATIONS;
+    state.approvals ??= [];
+    Object.assign(state, {
+      goal,
+      phase: 'build',
+      iteration: 0,
+      gate: {},
+      findings: [],
+      needs_human: false,
+      mandatory_skills: mandatorySkills,
+      artifacts: { ...state.artifacts, plan: planPath },
+      pre_approved: true,
+      approval_source: preApprovedPlan,
+      approval_hash: String(planApprovalRecord.contentHash).toLowerCase(),
+    });
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+  } catch (err) {
+    return await escalate(`Could not record the pre-approved plan in production_artifacts/state.json: ${err.message}`);
   }
 }
 
@@ -1790,7 +2037,8 @@ try {
 let findings = [];
 let reviewedClean = false;
 let nodesToRun = BUILD_NODES; // first pass: everyone applicable
-let previousBlockingIds = new Set(); // for the no-progress guard below
+let previousBlockingKeys = new Set(); // for the no-progress guard: normalized keys (node + title)
+let reviewRound = 0; // dedicated counter for reviewer cycles, separate from overall iteration
 
 while (!reviewedClean) {
   const isSolo = nodesToRun.length === 1;
@@ -1815,10 +2063,13 @@ while (!reviewedClean) {
   });
 
   if (isSolo) {
-    if (pipelineResults[0]?.needsHuman) {
-      return await escalate(`Build node ${nodesToRun[0].id} requested human input.`);
+    if (pipelineResults[0]?.escalate || pipelineResults[0]?.error || pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${nodesToRun[0].id} failed: escalate=${!!pipelineResults[0]?.escalate} error=${pipelineResults[0]?.error || ''} needsHuman=${!!pipelineResults[0]?.needsHuman}`);
     }
   } else {
+    if (pipelineResults.some((r) => r?.escalate || r?.needsHuman || r?.error)) {
+      return await escalate(`One or more build nodes failed: ${pipelineResults.map((r, i) => `node ${i}: escalate=${!!r?.escalate} needsHuman=${!!r?.needsHuman} error=${r?.error || ''}`).join('; ')}`);
+    }
     // Barrier: every build node in this pass has returned and written only its
     // own production_artifacts/state.d/<id>.json fragment (dispatchNote()'s
     // build-role branch). Fold them into state.json now, before Reviewer (or
@@ -1840,14 +2091,27 @@ while (!reviewedClean) {
   // Reviewer: ARTIFACT + CONTRACT only, per .agents/graph.md's discipline --
   // reviewerStateNote() (not dispatchNote()) is what actually enforces this;
   // see that function's own comment for why the distinction matters.
+
+  reviewRound++;
+
   const reviewerArtifactsNote = hasWorkstreamsFlag && executionManifest?.workstreams
     ? executionManifest.workstreams.map((ws) => `state.artifacts.${ws.artifactKey || ws.id}`).join(', ')
     : (profile && profile.artifacts ? Object.values(profile.artifacts).join(', ') : `production_artifacts/01_frontend_spec.md, 02_backend_schema.md${needsMedia ? ', 03_media_pipeline.md' : ''}`);
 
   await ensureNodeSkills(reviewerNode);
-  const reviewResult = await agent(
-    `You are acting as the ${reviewerNode.label} agent (${reviewerNode.personaFile}). ${reviewerStateNote()}${skillsNote(reviewerNode)}\n\n` +
-      `Read the plan/contract at ${planPath} and the artifacts it produced ` +
+
+  // Parallel reviewers (reviewer-1, reviewer-2, code-reviewer, devils-advocate) when the registry lists them and the dedupe lib is
+  // loaded to merge their reviews; without the lib (no module loading in this runtime) the single Reviewer runs, as before.
+  const canMerge = typeof dedupeReviewMod?.deduplicateFindings === 'function' && typeof dedupeReviewMod?.normalizeComparisonKey === 'function';
+  const wantsParallel = Array.isArray(reviewerNode.parallelReviewers) && reviewerNode.parallelReviewers.length > 0;
+  const parallelReviewers = canMerge && wantsParallel ? reviewerNode.parallelReviewers : null;
+  if (wantsParallel && !canMerge && reviewRound === 1) {
+    console.error('[fabric-graph] parallel reviewers need lib/fabric-review-dedupe.mjs, which cannot be loaded here: running the single Reviewer');
+  }
+
+  let reviewResult;
+  if (parallelReviewers && parallelReviewers.length > 0) {
+    const reviewerPrompt = `Read the plan/contract at ${planPath} and the artifacts it produced ` +
       `(${reviewerArtifactsNote}, and the actual code). ` +
       `Do an adversarial review against the contract: find what is wrong, do not validate, do not summarize. ` +
       `Do not assume the implementation is correct just because it exists. ` +
@@ -1862,38 +2126,135 @@ while (!reviewedClean) {
       `reuse the exact same "id" you gave it last time; only mint a new id for a genuinely new issue. This id ` +
       `stability is what lets the dispatcher detect a repair round that made no real progress, so do not renumber ` +
       `findings between cycles just because this is a fresh review call.\n` +
-      `Write production_artifacts/review_findings.md and update state.findings.\n\n` +
-      `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number } (blockingCount must count ONLY findings whose status is "open").`,
-    {
-      label: `reviewer-${iteration}`,
-      agentType: reviewerNode.agentType,
-      ...nodeModelOpt(reviewerNode),
-      schema: {
-        type: 'object',
-        required: ['findings', 'blockingCount'],
-        properties: {
-          findings: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['id', 'severity', 'node', 'summary', 'status'],
-              properties: {
-                id: { type: 'string' },
-                severity: { type: 'string', enum: ['blocking', 'advisory'] },
-                node: { type: 'string', enum: NODE_ENUM },
-                summary: { type: 'string' },
-                status: { type: 'string', enum: ['open', 'fixed', 'wont_fix'] },
-              },
+      `You are read-only: write no file. The dispatcher merges the parallel reviews and records them itself.\n\n` +
+      `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number } (blockingCount must count ONLY findings whose status is "open").`;
+
+    const reviewSchema = {
+      type: 'object',
+      required: ['findings', 'blockingCount'],
+      properties: {
+        findings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id', 'severity', 'node', 'summary', 'status'],
+            properties: {
+              id: { type: 'string' },
+              severity: { type: 'string', enum: ['blocking', 'advisory'] },
+              node: { type: 'string', enum: NODE_ENUM },
+              summary: { type: 'string' },
+              status: { type: 'string', enum: ['open', 'fixed', 'wont_fix'] },
             },
           },
-          blockingCount: { type: 'number' },
         },
+        blockingCount: { type: 'number' },
       },
-    }
-  );
+    };
 
-  findings = reviewResult?.findings ?? [];
-  const blockingCount = reviewResult?.blockingCount ?? findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
+    // Spawn 4 reviewers in parallel
+    const reviewerResults = await pipeline(parallelReviewers.map((reviewerId) => {
+      return { id: reviewerId, agentType: reviewerId };
+    }), (n) => {
+      return ensureNodeSkills({ id: n.agentType, label: n.agentType, skills: [] }).then(() => agent(
+        `You are acting as the ${n.agentType} agent. ${reviewerStateNote(true)}` +
+          (n.id !== 'reviewer-1' && n.id !== 'reviewer-2' && n.id !== 'code-reviewer' && n.id !== 'devils-advocate'
+            ? ''
+            : `\n\nReviewer specialty: ${n.id === 'reviewer-1' ? 'correctness (logic, edge cases, contract misread)' : n.id === 'reviewer-2' ? 'security and operability (injection, secrets, rollback hazards)' : n.id === 'code-reviewer' ? 'code health and maintainability' : 'adversarial: hunts unstated assumptions and missing failure modes'}\n`) +
+          `\n\n${reviewerPrompt}`,
+        {
+          label: `reviewer-parallel-${n.id}-${iteration}`,
+          agentType: n.agentType,
+          ...nodeModelOpt(reviewerNode),
+          schema: reviewSchema,
+        }
+      ));
+    });
+
+    // Fail closed: every reviewer must answer with a findings array. The findings of those that did stay with the escalation.
+    const allFindings = [];
+    let reviewerFailure = null;
+    reviewerResults.forEach((r, i) => {
+      const reviewerId = parallelReviewers[i];
+      if (r?.escalate || r?.error) {
+        reviewerFailure ??= `Reviewer ${reviewerId} escalated: ${r?.error || 'unknown executor failure'}. Run /fabric-graph again once all reviewers are available.`;
+      } else if (!r || typeof r !== 'object' || !Array.isArray(r.findings)) {
+        reviewerFailure ??= `Reviewer ${reviewerId} returned invalid result: expected object with findings array. ` +
+          `Got: ${typeof r}${r && typeof r === 'object' ? ` (${Object.keys(r).join(', ')})` : ''}. Run /fabric-graph again once all reviewers are available.`;
+      } else {
+        for (const f of r.findings) allFindings.push({ ...f, agent: reviewerId });
+      }
+    });
+
+    const deduplicatedFindings = dedupeReviewMod.deduplicateFindings(allFindings);
+    if (reviewerFailure) return await escalate(reviewerFailure, { findings: deduplicatedFindings });
+    const recorded = await recordReview(deduplicatedFindings);
+    if (recorded?.error) return await escalate(recorded.error, { findings: deduplicatedFindings });
+    reviewResult = {
+      findings: deduplicatedFindings,
+      blockingCount: deduplicatedFindings.filter((f) => f.severity === 'blocking' && f.status === 'open').length,
+    };
+  } else {
+    // Fallback: single reviewer if parallelReviewers is not configured
+    reviewResult = await agent(
+      `You are acting as the ${reviewerNode.label} agent (${reviewerNode.personaFile}). ${reviewerStateNote()}${skillsNote(reviewerNode)}\n\n` +
+        `Read the plan/contract at ${planPath} and the artifacts it produced ` +
+        `(${reviewerArtifactsNote}, and the actual code). ` +
+        `Do an adversarial review against the contract: find what is wrong, do not validate, do not summarize. ` +
+        `Do not assume the implementation is correct just because it exists. ` +
+        (mandatorySkills.length > 0
+          ? `The user explicitly required these skill(s) to be used this run, via /fabric-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
+            `If an artifact shows no sign of applying a mandated skill's guidance, that is a contract misread finding (blocking), owned by whichever build node should have applied it. ` +
+            `A mandated skill being merely available is not enough -- check for it actually being used.\n`
+          : '') +
+        `Classify every finding by precedence: contract misread > valid & actionable (blocking) > valid trade-off (advisory) > noise (discard). ` +
+        `Each finding must name which node owns fixing it: ${NODE_NAMES} -- no other value is valid. ` +
+        `If you are re-reviewing after a repair round and an issue you flagged before is still present and still unfixed, ` +
+        `reuse the exact same "id" you gave it last time; only mint a new id for a genuinely new issue. This id ` +
+        `stability is what lets the dispatcher detect a repair round that made no real progress, so do not renumber ` +
+        `findings between cycles just because this is a fresh review call.\n` +
+        `Write production_artifacts/review_findings.md and update state.findings.\n\n` +
+        `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number } (blockingCount must count ONLY findings whose status is "open").`,
+      {
+        label: `reviewer-${iteration}`,
+        agentType: reviewerNode.agentType,
+        ...nodeModelOpt(reviewerNode),
+        schema: {
+          type: 'object',
+          required: ['findings', 'blockingCount'],
+          properties: {
+            findings: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'severity', 'node', 'summary', 'status'],
+                properties: {
+                  id: { type: 'string' },
+                  severity: { type: 'string', enum: ['blocking', 'advisory'] },
+                  node: { type: 'string', enum: NODE_ENUM },
+                  summary: { type: 'string' },
+                  status: { type: 'string', enum: ['open', 'fixed', 'wont_fix'] },
+                },
+              },
+            },
+            blockingCount: { type: 'number' },
+          },
+        },
+      }
+    );
+  }
+
+  if (reviewResult?.escalate || reviewResult?.error) {
+    return await escalate(
+      `Reviewer executor failed: ${reviewResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
+  if (!Array.isArray(reviewResult?.findings)) {
+    return await escalate('Reviewer returned no findings array: refusing to read that as a clean review.');
+  }
+  findings = reviewResult.findings;
+  const blockingCount = findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
 
   if (blockingCount === 0) {
     // Clean. Note on .agents/graph.md's original "doubt theater" guard (2
@@ -1906,27 +2267,32 @@ while (!reviewedClean) {
     // genuinely reach.
     reviewedClean = true;
   } else {
-    const blockingIds = new Set(findings.filter((f) => f.severity === 'blocking' && f.status === 'open').map((f) => f.id));
-    const sameAsLastTime =
-      iteration > 0 &&
-      blockingIds.size > 0 &&
-      blockingIds.size === previousBlockingIds.size &&
-      [...blockingIds].every((id) => previousBlockingIds.has(id));
+    // Parallel reviewers mint their own ids, so their findings are compared by node + title; the single Reviewer reuses its ids.
+    const keyOf = parallelReviewers ? dedupeReviewMod.normalizeComparisonKey : (f) => f.id;
+    const blockingKeys = new Set(findings.filter((f) => f.severity === 'blocking' && f.status === 'open').map((f) => keyOf(f)));
+    const noProgress = iteration > 0 && blockingKeys.size > 0 && blockingKeys.size === previousBlockingKeys.size &&
+      [...blockingKeys].every((key) => previousBlockingKeys.has(key));
 
-    if (sameAsLastTime) {
+    if (noProgress) {
       // No-progress guard: the build node(s) supposedly addressed these
-      // exact findings last round, and Reviewer is reporting the identical
-      // finding IDs again. Depends on Reviewer actually reusing IDs for
-      // still-open issues (see the prompt instruction above) -- escalate
-      // now instead of burning the remaining iterations on an identical
-      // repeat.
+      // exact findings last round, and Reviewer is reporting the same
+      // normalized findings (node + title) again. Escalate now instead of
+      // burning the remaining iterations on an identical repeat.
       return await escalate(
-        'No progress: Reviewer reported the exact same blocking finding(s) after a repair round that was supposed to address them. Escalating rather than repeating an identical cycle.',
+        'No progress: Reviewer reported the same blocking finding(s) after a repair round that was supposed to address them. Escalating rather than repeating an identical cycle.',
         { findings }
       );
     }
 
-    previousBlockingIds = blockingIds;
+    // Max 2 review rounds: blocking findings still open after the second review go to the human, not into another unreviewed repair.
+    if (reviewRound >= 2) {
+      return await escalate(
+        `Reviewer round ${reviewRound}: blocking findings still open after ${reviewRound} review cycles. Escalating rather than repairing again without a review.`,
+        { findings }
+      );
+    }
+
+    previousBlockingKeys = blockingKeys;
     nodesToRun = BUILD_NODES.filter((n) => findings.some((f) => f.node === n.id && f.status === 'open'));
     if (nodesToRun.length === 0) {
       // Findings exist but none map to a known node -- Reviewer mis-tagged
@@ -1994,8 +2360,20 @@ while (!allGatesPass) {
     }
   );
 
+  if (shipResult?.escalate || shipResult?.error) {
+    return await escalate(
+      `Shipping executor failed: ${shipResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
   lastGate = shipResult?.gate ?? {};
-  const failing = Object.entries(lastGate).filter(([, v]) => v === 'fail');
+  if (Object.keys(lastGate).length === 0) {
+    return await escalate('Shipping returned an empty gate object.');
+  }
+  const failing = GATE_KEYS
+    .map((k) => [k, lastGate[k]])
+    .filter(([, v]) => v !== 'pass' && v !== 'skip');
 
   if (failing.length === 0) {
     allGatesPass = true;
@@ -2037,10 +2415,13 @@ while (!allGatesPass) {
   });
 
   if (isSolo) {
-    if (pipelineResults[0]?.needsHuman) {
-      return await escalate(`Build node ${blockingNodes[0].id} requested human input during gate fix.`);
+    if (pipelineResults[0]?.escalate || pipelineResults[0]?.error || pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${blockingNodes[0].id} failed during gate fix: escalate=${!!pipelineResults[0]?.escalate} error=${pipelineResults[0]?.error || ''} needsHuman=${!!pipelineResults[0]?.needsHuman}`);
     }
   } else {
+    if (pipelineResults.some((r) => r?.escalate || r?.needsHuman || r?.error)) {
+      return await escalate(`One or more build nodes failed during gate-fix repair: ${pipelineResults.map((r, i) => `node ${i}: escalate=${!!r?.escalate} needsHuman=${!!r?.needsHuman} error=${r?.error || ''}`).join('; ')}`);
+    }
     // Same barrier as the build/review loop above: this pipeline() call just
     // ran build nodes concurrently, each writing only its own state.d
     // fragment. Fold them in before Shipping re-checks the gate.
@@ -2091,7 +2472,7 @@ if (!isClaudeWorkflow && typeof process !== 'undefined' && process.exit) {
   } else if (result && process.stdout) {
     console.log(JSON.stringify(result, null, 2));
   }
-  process.exit(0);
+  process.exit(!isHookInvocation && result?.exitCode ? 1 : 0);
 }
 
 export default result;

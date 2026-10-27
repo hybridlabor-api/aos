@@ -580,11 +580,40 @@ function addRoutes(result, file, trail) {
   if (!Array.isArray(result.items)) return;
   const { routeFor } = require('./lib/plan-canvas/route');
   let planHasComponents = false;
-  if (result.items.some(item => item && item.kind === 'verdict' && item.verdict === 'approve')) {
+  const hasApproveVerdict = result.items.some(item => item && item.kind === 'verdict' && item.verdict === 'approve');
+  if (hasApproveVerdict) {
     try {
       planHasComponents = require('./lib/plan-canvas/trail-on-approve').planComponents(file).length > 0;
     } catch {
       planHasComponents = false;
+    }
+    // Write approval.json sidecar when plan is approved
+    try {
+      const crypto = require('crypto');
+      // Find the source plan.mdx file: if file is plan.builder.html, look for plan.mdx in same dir
+      let sourceFile = file;
+      if (path.basename(file) === 'plan.builder.html') {
+        const dir = path.dirname(file);
+        const mdxFile = path.join(dir, 'plan.mdx');
+        if (fs.existsSync(mdxFile)) {
+          sourceFile = mdxFile;
+        }
+      }
+      const fileContent = fs.readFileSync(sourceFile, 'utf8');
+      const contentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
+      const parsed = path.parse(sourceFile);
+      const approvalPath = path.join(parsed.dir, `${parsed.name}.approval.json`);
+      const approval = {
+        schema: 'aos.plan-approval/1',
+        verdict: 'approve',
+        contentHash: contentHash,
+        timestamp: new Date().toISOString(),
+        source: 'plan-canvas'
+      };
+      fs.writeFileSync(approvalPath, JSON.stringify(approval, null, 2) + '\n');
+      process.stderr.write(`[plan-canvas] approval record written to ${approvalPath}\n`);
+    } catch (e) {
+      process.stderr.write(`[plan-canvas] warning: could not write approval record: ${e.message}\n`);
     }
   }
   let appItems = 0;
