@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -154,15 +154,45 @@ test("parentPid death unregisters within 12s", async (t) => {
   s.stop();
 });
 
-// Codex (shared host): an owner pid that is already gone must not stop the sidecar; only the idle reaper ends it.
-test("a codex sidecar with an exited parentPid stays up (owner watch skipped)", async () => {
+// 5.4.2: a codex sidecar follows its real Codex process (the hook resolves it past shell wrappers): owner gone -> exit,
+// unregister and drop its pidfile. agy (shared app host) keeps the idle reaper only.
+test("a codex sidecar stops, unregisters and removes its pidfile when the owner exits", async () => {
+  const child = spawn(process.execPath, ["-e", "setTimeout(()=>{},60000)"]);
+  const { sessionsDir } = reg;
+  const pidfile = join(sessionsDir(), "s-codex-owner.pid");
+  mkdirSync(sessionsDir(), { recursive: true });
+  const s = await sidecar.startSidecar({ name: "s-codex-owner", harness: "codex", profile: profile(), parentPid: child.pid });
+  writeFileSync(pidfile, String(process.pid));
+  assert.ok(reg.list().some((e) => e.name === "s-codex-owner"));
+  child.kill("SIGKILL");
+  const deadline = Date.now() + 12000;
+  while (Date.now() < deadline && existsSync(join(sessionsDir(), "s-codex-owner.json"))) await new Promise((r) => setTimeout(r, 300));
+  try {
+    assert.ok(!existsSync(join(sessionsDir(), "s-codex-owner.json")), "registration removed");
+    assert.ok(!existsSync(pidfile), "pidfile removed");
+    assert.ok(!reg.list({ includeStale: true }).some((e) => e.name === "s-codex-owner"));
+  } finally { s.stop(); }
+});
+
+test("an agy sidecar with an exited parentPid stays up (shared host, idle reaper only)", async () => {
   const child = spawn(process.execPath, ["-e", "0"]);
   await new Promise((r) => child.once("exit", r));
-  const s = await sidecar.startSidecar({ name: "s-codex-dead", harness: "codex", profile: profile(), parentPid: child.pid });
+  const s = await sidecar.startSidecar({ name: "s-agy-dead", harness: "agy", profile: profile(), parentPid: child.pid });
   try {
     await new Promise((r) => setTimeout(r, 6500));
-    assert.ok(reg.list().some((e) => e.name === "s-codex-dead"), "codex sidecar must survive a dead owner pid");
+    assert.ok(reg.list().some((e) => e.name === "s-agy-dead"), "agy sidecar must survive a dead owner pid");
   } finally { s.stop(); }
+});
+
+test("list hides and prunes a live sidecar whose owner pid is dead (codex), but not agy", async () => {
+  const child = spawn(process.execPath, ["-e", "0"]);
+  await new Promise((r) => child.once("exit", r));
+  reg.register({ name: "s-orphan-codex", harness: "codex", pid: process.pid, parentPid: child.pid, url: "http://127.0.0.1:1/", cardUrl: "http://127.0.0.1:1/c" });
+  reg.register({ name: "s-orphan-agy", harness: "agy", pid: process.pid, parentPid: child.pid, url: "http://127.0.0.1:1/", cardUrl: "http://127.0.0.1:1/c" });
+  const names = reg.list({ prune: true }).map((e) => e.name);
+  assert.ok(!names.includes("s-orphan-codex"));
+  assert.ok(names.includes("s-orphan-agy"));
+  reg.unregister("s-orphan-agy");
 });
 
 test("AOS_A2A_SIDECAR=off rejects", async () => {
