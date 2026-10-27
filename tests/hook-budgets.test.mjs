@@ -159,7 +159,8 @@ test('agy a2a-inbox: a ps that never answers cannot hold PreInvocation', { skip:
 test('trail-relay: an agenttrail port that accepts and never answers costs the hook nothing', async () => {
   const home = tmp();
   const sockets = [];
-  const server = net.createServer((s) => { sockets.push({ s, closed: false }); s.on('close', () => { sockets.find((x) => x.s === s).closed = true; }); });
+  // Reads (and drops) the request so the worker's FIN surfaces as end/close, but never answers.
+  const server = net.createServer((s) => { s.resume(); sockets.push({ s, closed: false }); s.on('close', () => { sockets.find((x) => x.s === s).closed = true; }); });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
     await expectFailOpen('.claude/hooks/trail-relay.mjs', ['--agent', 'claude'], 1500, {
@@ -167,8 +168,8 @@ test('trail-relay: an agenttrail port that accepts and never answers costs the h
       payload: { hook_event_name: 'PreToolUse', tool_name: 'Read', session_id: 'budget-6', cwd: home },
     });
     // The worker is detached and slow to start on a loaded machine; what matters is that it gives up on its own.
-    assert.ok(await waitFor(() => sockets.length > 0, 8000), 'the detached relay worker reached the port');
-    assert.ok(await waitFor(() => sockets.every((x) => x.closed), 8000), 'the relay worker gave up on the silent port');
+    assert.ok(await waitFor(() => sockets.length > 0, 5000), 'the detached relay worker reached the port');
+    assert.ok(await waitFor(() => sockets.every((x) => x.closed), 5000), 'the relay worker gave up on the silent port');
   } finally {
     for (const { s } of sockets) s.destroy();
     server.close();
