@@ -59,7 +59,9 @@ export function runBounded(cmd, args, { timeout = 3000, ...opts } = {}) {
     const done = (v) => { clearTimeout(timer); children.delete(child); resolve(v); };
     const timer = setTimeout(() => { if (child?.pid) killTree(child); done(''); }, timeout);
     try {
-      child = spawn(cmd, args, { ...opts, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, detached: process.platform !== 'win32' });
+      // A shell gets one command line (an args array with shell:true is DEP0190); callers pass only shell-inert words.
+      const [file, argv] = opts.shell ? [[cmd, ...args].join(' '), []] : [cmd, args];
+      child = spawn(file, argv, { ...opts, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, detached: process.platform !== 'win32' });
     } catch { return done(''); }
     children.add(child);
     child.stdout.setEncoding('utf8');
