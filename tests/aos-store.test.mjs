@@ -31,6 +31,16 @@ test('store CLI lists and searches skills', () => {
   assert.match(run(['search', 'django']), /django/);
 });
 
+test('store search finds shipped aos skills by multi-word intent', () => {
+  const hit = (q, name) => assert.match(run(['search', ...q.split(' ')]), new RegExp(`^skill\\t${name}\\t`, 'm'), q);
+  hit('ask tim', 'ask-tim');
+  hit('plan canvas', 'plan-canvas');
+  hit('pcb', 'godmode-hardware-pcb');
+  hit('grandMA3', 'bdb-grandma3-mcp');
+  hit('release aos', 'pb-release-aos');
+  assert.match(run(['search', 'zzzz-no-such-skill']), /No store items found/);
+});
+
 test('store CLI dry-run does not write files', () => {
   const output = run(['install', 'django-patterns', '--project', '--dry-run']);
   assert.match(output, /\[dry-run\] write/);

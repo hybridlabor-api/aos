@@ -52,9 +52,11 @@ node ~/.claude/skills/aos-setup/scripts/aos-doctor.mjs            # from an inst
 ```
 
 Flags: `--json` for machine-readable output, `--net` to also compare the
-installed AOS version against npm.
+installed AOS version against npm. On an installed system `aos doctor` (same
+flags, plus `--resources`) is the maintained checkup; this script is the
+pre-install variant.
 
-It reports up to 29 checks across seven areas, each with the exact fix command.
+It reports about 39 checks across eleven areas, each with the exact fix command.
 The exact number varies by machine: the LaunchAgent rows are macOS-only, the
 OpenWiki integrations row needs the CLI on `PATH`, the npm-version row needs
 `--net`, and the optional-module rows appear only for modules the manifest
@@ -69,6 +71,7 @@ claims are installed.
 | `openwiki` | CLI, `~/.openwiki/.env` credentials, harness integrations, 2-hourly refresh daemon |
 | `synapse` | binary on `PATH`, daemon on `:7781` |
 | `memory` | identity layer (≥ 10 godmode facts), share of raw file chunks, stale paths |
+| `agy`, `deja`, `worktrees`, `tools` | Antigravity wiring, deja session memory, worktree count and orphans, optional tool installs |
 
 Exit code is `0` only when every check passes. **Report the failing rows to the
 user before changing anything**, then work the sections below in order — each
@@ -160,9 +163,21 @@ Antigravity, Codex, OpenCode, Claude Desktop, …), which MCP servers to wire,
 and which optional modules to pull. Non-interactive variants:
 
 ```bash
-npx -y @hybridlabor-api/aos -y --platforms=2      # unattended, one platform
+npx -y @hybridlabor-api/aos -y --platforms=2      # unattended, one platform, no optional modules
+npx -y @hybridlabor-api/aos -y --modules=memb,synapse   # unattended, with these modules (or all)
 npx -y @hybridlabor-api/aos --dry-run             # show what it would do
 ```
+
+Once AOS is installed, the `aos` command takes over: `aos status` (what is
+installed and what has an update), `aos update`, `aos repair`, `aos setup`
+(re-run the wizard), `aos package <id>` (one package), `aos doctor`. All accept
+`--dry-run`; the install flags work too: `--profile minimal|standard|full`
+(saved), `--without ID,ID`, `--no-hooks`, `--coding|--no-coding`.
+
+Interactive runs ask two things once and remember the answer in
+`~/.aos/v5-settings.json`: "Do you use AOS for coding?" and the update mode
+(notify, auto or off). Unattended runs (`-y`, no TTY) never ask. Change either
+later from the `aos` menu under Settings, or re-run with the flag.
 
 Two things worth insisting on when the installer asks:
 
@@ -306,16 +321,20 @@ If no pre-built binary exists for the platform, build it:
 
 ## 8. The dashboard
 
-`aos-dashboard` serves one page on `http://127.0.0.1:7900` showing every BDB
+`aos-dashboard` is an alias of the AOS Hub: it starts the hub on
+`http://127.0.0.1:7900` and opens the services tab, which shows every local
 service live — memB, Synapse, the OpenWiki daemon, AO Orchestrator and RemoteOS
 — with its version, port, LaunchAgent state, start/stop/restart, and its log
-files inline. It polls every five seconds.
+files inline. Agents should not open a browser:
 
 ```bash
-aos-dashboard                 # opens the browser
+aos services status --json    # agent-safe service overview
+aos hub status --json         # is the hub up
 aos-dashboard --no-open       # just serve
 aos-dashboard --port 7901     # if 7900 is taken
 ```
+
+The MCP gateway (`aos-gateway status`) is a separate service on `127.0.0.1:7790`.
 
 It binds to `127.0.0.1` only, and every control action is matched against a
 fixed service table — an id or action the table does not contain is refused,
@@ -339,7 +358,7 @@ report the doctor's own count:
 
 ```bash
 node skills/global_config/aos-setup/scripts/aos-doctor.mjs
-# 26/26 checks pass. AOS is fully wired.
+# N/N checks pass. AOS is fully wired.
 ```
 
 Anything still failing that the user deliberately does not want (no Synapse on
@@ -362,6 +381,7 @@ and per project in `.aos/router.json` (project beats user beats shipped).
   It asks only for your main harness and which targets you have (claude,
   opencode-go, agy, codex, claude-glm), detecting installed CLIs, never guessing.
 - Non-interactive: `--router=default|claude-only|budget` and `--context=<profile>`.
+- Context profile afterwards: `aos context [full|orchestrator|worker|small]`.
 - Inspect and edit afterwards: `aos-router show`, `aos-router test <role>`,
   `aos-router set <role> <target[,target...]> [--project|--user]`.
 - Peers: `aos-a2a list` shows running A2A peers. Read-only information; setup writes no A2A config.

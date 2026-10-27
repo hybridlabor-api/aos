@@ -18,10 +18,9 @@ it will never report a real update again).
 npm view @hybridlabor-api/aos dist-tags --json
 ```
 
-Compare against the locally installed version (`~/.agents/aos/package.json`,
-or wherever the primary install target's `package.json` lives — the
-installer's own `verifyEcosystemInstallation()` status table is the
-authoritative source if you're running from inside an existing install).
+Compare against the locally installed version: `aos version`, or `aos status`
+(read-only; lists every package with its installed version and whether an
+update is available). `aos doctor --net` also compares against npm.
 
 Two dist-tags exist:
 - **`@latest`** — the stable channel. CI (`release-please`) publishes here
@@ -34,8 +33,14 @@ Two dist-tags exist:
 ## 2. Run the update
 
 ```bash
-npx -y @hybridlabor-api/aos@latest
+aos update --dry-run      # preview, writes nothing
+aos update                # installed AOS: updates in place
+npx -y @hybridlabor-api/aos@latest   # no `aos` on PATH, or a first install
 ```
+
+An interactive `aos update` asks the update mode (notify, auto or off) once and
+remembers it; `-y` or no TTY never asks. If something is broken after an update,
+`aos repair` re-applies it.
 
 `-y` runs it fully non-interactively. If an install already exists, this
 takes the **Quick Update** path (refreshes skills, re-syncs installed
@@ -50,8 +55,8 @@ Don't assume Gemini/Antigravity is the only target.
 
 ## 3. Verify the result
 
-After running, `verifyEcosystemInstallation()`'s own status table (printed
-at the end of the run) is the ground truth — it checks each tracked
+After running, `aos status` and the status table printed at the end of the run
+are the ground truth — it checks each tracked
 submodule's actual installed version against its own npm dist-tags
 (`bdb-synapse`, `memB`, `heimdall-token-saver`, `bdb-dev-creator-extension`,
 `bdb-os-remote`, `bdb-dev-tool-installer`, and `aos` itself). Read that

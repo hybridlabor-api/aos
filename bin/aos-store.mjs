@@ -26,10 +26,10 @@ const optionValue = (name) => {
 };
 
 // The local aos source is listed only on request: --source=aos (or all). install always sees it.
-function allItems(type) {
+function allItems(type, { includeLocal = false } = {}) {
   const selected = type === 'agents' || type === 'subagents' ? 'subagents' : 'skills';
   const want = option('--source');
-  const visible = want === 'all' ? sources : sources.filter((src) => (want ? src.id === want : !src.local));
+  const visible = want === 'all' ? sources : sources.filter((src) => (want ? src.id === want : includeLocal || !src.local));
   if (want && want !== 'all' && !visible.length) throw new Error(`Unknown source: ${want} (${sources.map((s) => s.id).join(', ')}, all)`);
   return visible.flatMap((src) => Object.entries(src.index[selected] || {}).map(([name, item]) => ({ name, item, type: selected, src })));
 }
@@ -219,9 +219,12 @@ async function main() {
     return;
   }
   if (command === 'search') {
-    const query = (positional[1] || '').toLowerCase();
-    if (!query) throw new Error('Search requires a query.');
-    const items = allItems(option('--type') || '').filter(({ name, item }) => `${name} ${item.description} ${item.category}`.toLowerCase().includes(query));
+    // Every word must match (any order); '-' and '_' count as spaces. The shipped aos skills are searched too.
+    const norm = (t) => t.toLowerCase().replace(/[-_]/g, ' ');
+    const words = norm(positional.slice(1).join(' ')).split(/\s+/).filter(Boolean);
+    if (!words.length) throw new Error('Search requires a query.');
+    const items = allItems(option('--type') || '', { includeLocal: true })
+      .filter(({ name, item }) => { const hay = ' ' + norm(`${name} ${item.description} ${item.category}`); return words.every((w) => hay.includes(' ' + w)); });
     printItems(items);
     return;
   }
