@@ -123,6 +123,22 @@ test('verify: artifact paths must stay inside the work tree', () => {
   } finally { p.cleanup(); }
 });
 
+test('verify: artifact paths with shell metacharacters or spaces are refused, they would end up in commands in later briefs', () => {
+  const p = tmpProject({ git: false });
+  try {
+    const names = ['plan one.md', 'plan;rm.md', 'plan$(x).md', 'plan`x`.md', 'plan"q".md', "plan'q'.md", 'plan&x.md', 'plan|x.md', 'plan>x.md'];
+    for (const name of names) {
+      fs.writeFileSync(path.join(p.dir, name), 'x');
+      const r = verifyReport({ step: plan(), report: rep({ artifacts: { plan: name } }), cwd: p.dir });
+      assert.deepEqual(r.problems.map((x) => x.id), ['artifact-path'], name);
+      assert.match(r.problems[0].summary, /may use only letters, digits and/);
+    }
+    fs.mkdirSync(path.join(p.dir, 'production_artifacts', 'plan'), { recursive: true });
+    fs.writeFileSync(path.join(p.dir, 'production_artifacts', 'plan', 'plan-v2_final@1+x.mdx'), 'x');
+    assert.deepEqual(verifyReport({ step: plan(), report: rep({ artifacts: { plan: 'production_artifacts/plan/plan-v2_final@1+x.mdx' } }), cwd: p.dir }).problems, []);
+  } finally { p.cleanup(); }
+});
+
 test('verify: Shipping must report every gate key', () => {
   const p = tmpProject({ git: false });
   try {

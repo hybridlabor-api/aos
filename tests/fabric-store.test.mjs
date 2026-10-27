@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { assertRunId, canonical, createStore, digest, EXIT_CODES, FabricError, LOCK_STALE_MS, TERMINAL_PHASES } from '../lib/fabric/store.mjs';
+import { assertRunId, canonical, createStore, digest, EXIT_CODES, FabricError, LOCK_STALE_MS, MAX_REPORT_BYTES, readTextCapped, TERMINAL_PHASES } from '../lib/fabric/store.mjs';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fabric-store-'));
 const state = (over = {}) => ({ run_id: 'r', goal: 'g', phase: 'define', iteration: 0, max_iterations: 3, gate: {}, findings: [], approvals: [], ...over });
@@ -179,4 +179,15 @@ test('atomic writes leave no temp file behind', withDir((root) => {
   const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (e.name.endsWith('.tmp')) leftovers.push(p); } };
   walk(root);
   assert.deepEqual(leftovers, []);
+}));
+
+test('a report file is read only up to the cap, so a runaway executor cannot fill the memory of the driver', withDir((root) => {
+  const small = path.join(root, 'small.json');
+  const big = path.join(root, 'big.json');
+  fs.writeFileSync(small, '{"a":1}');
+  fs.writeFileSync(big, 'x'.repeat(MAX_REPORT_BYTES + 1));
+  assert.equal(readTextCapped(small), '{"a":1}');
+  assert.throws(() => readTextCapped(big), (e) => e.code === 'E2BIG' && /more than the \d+ allowed/.test(e.message));
+  assert.equal(readTextCapped(big, MAX_REPORT_BYTES + 5).length, MAX_REPORT_BYTES + 1);
+  assert.throws(() => readTextCapped(path.join(root, 'missing.json')), (e) => e.code === 'ENOENT');
 }));

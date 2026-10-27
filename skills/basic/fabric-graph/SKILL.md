@@ -52,7 +52,7 @@ state, no Reviewer, no quality gate).
 `aos-fabric status --run <id>` shows phase, iteration, open findings and the lock;
 `aos-fabric cancel --run <id>` ends a run. Exit codes: 0 ok, 1 unexpected, 2 invalid
 input, 3 unknown run or step, 4 conflict, 5 lock busy (retry shortly, at most 5 times),
-6 run is terminal, 7 state corrupt (fail closed: a human reads `events.jsonl`).
+6 run is terminal and takes no such command (`report` on a finished run, `next` on a cancelled one), 7 state corrupt (fail closed: a human reads `events.jsonl`). `next` itself exits 0 when a run ended as `done`, `escalated` or `ready_to_ship`: read `kind`.
 
 **The report is a proposal.** `aos-fabric report` checks it against the work tree:
 the artifacts must exist inside it, and `git status` must show no change outside the

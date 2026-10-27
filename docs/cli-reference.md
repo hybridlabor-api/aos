@@ -943,7 +943,7 @@ aos-fabric drive --run <id> [--executor aos-acp|ao|auto] [--timeout <s>] [--sand
 | Command | Usage | What it does |
 |---|---|---|
 | `start` | `aos-fabric start [--run <id>] (--goal <text> \| --goal-file <f>)` | Create a run and return its first step. The same run id and goal again returns the current state and writes nothing. |
-| `next` | `aos-fabric next --run <id>` | The open step again (same step_id), or the terminal state. Never changes the run. |
+| `next` | `aos-fabric next --run <id>` | The open step again (same step_id), or how the run ended (kind done, escalated, ready_to_ship; exit 0, read kind). Never changes the run. |
 | `report` | `aos-fabric report --run <id> --step <step_id> (--file <report.json> \| --fail <reason>)` | Hand in the report of the open step; returns the next step. The same report twice is a no-op. --fail records the step as failed when the executor left no report. |
 | `status` | `aos-fabric status --run <id>` | Phase, iteration, open findings, last step and lock info. Read-only. |
 | `cancel` | `aos-fabric cancel --run <id> [--reason <text>]` | End the run (phase cancelled). Already cancelled is a no-op. |
@@ -978,7 +978,7 @@ aos-fabric drive --run <id> [--executor aos-acp|ao|auto] [--timeout <s>] [--sand
 | 3 | unknown run or step_id |
 | 4 | conflict: another report for an accepted step, or the same run id with another goal |
 | 5 | run lock busy: retry shortly |
-| 6 | run is terminal (escalated, cancelled, ready_to_ship); drive: escalated or cancelled, a human is needed |
+| 6 | run is terminal and takes no such command: report or cancel on a finished run, next on a cancelled run; drive: escalated or cancelled, a human is needed |
 | 7 | run state is corrupt: inspect events.jsonl |
 
 **JSON:** Every command prints one JSON object (schema aos.fabric.response/1); drive prints one JSON event per line. Errors are one JSON line on stderr.

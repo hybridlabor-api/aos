@@ -27,7 +27,7 @@ aos-fabric report --run demo --step 0-architect-1 --file report.json
 | Command | Does | Idempotent |
 |---|---|---|
 | `start` | Creates the run, returns the first step. `--run` defaults to a hash of the goal. | Same run and goal: returns the state, writes nothing. Same run, other goal: exit 4. |
-| `next` | The open step, or the terminal state. Never changes the run. | The same step_id every time. |
+| `next` | The open step, or how the run ended (`kind` `done`, `escalated`, `ready_to_ship`: exit 0, read `kind`, not only the code; exit 6 only for a cancelled run). Never changes the run. | The same step_id every time. |
 | `report` | Hands in the report of the open step (`--file`), or records a failed step without a file (`--fail <reason>`). Returns the next step. | The same report (same digest) is a no-op, another one for an accepted step is exit 4. |
 | `status` | Phase, iteration, open findings, last step, lock info. Read-only. | Yes. |
 | `cancel` | Phase `cancelled`. | Already cancelled: no-op. |
@@ -35,7 +35,7 @@ aos-fabric report --run demo --step 0-architect-1 --file report.json
 
 Exit codes, the same for every command: `0` ok, `1` unexpected error (or `drive` found no harness), `2` invalid input
 (unknown flag or schema major, broken report), `3` unknown run or step, `4` conflict, `5` lock busy (retry, at most 5
-times), `6` run is terminal, `7` state corrupt (fail closed, a human reads `events.jsonl`).
+times), `6` run is terminal and takes no such command (`report` or `cancel` on a finished run, `next` on a cancelled one), `7` state corrupt (fail closed, a human reads `events.jsonl`).
 
 ### The loop
 
@@ -71,7 +71,7 @@ build nodes the plan needs). A TechLead rejection is `ok` plus blocking findings
 but kept in the event log.
 
 **The report is a proposal.** `report` checks it against reality: `artifacts` must exist inside the work tree (no
-absolute path, no `..`, no link leaving it), Shipping must give every gate key, and `git status` is compared with the
+absolute path, no `..`, no link leaving it, only letters, digits and `. _ - / @ +`, because artifact paths reappear in later briefs and commands), Shipping must give every gate key, and `git status` is compared with the
 snapshot taken when the step was issued: a path changed outside `allowed_writes` (or outside the work tree) turns the
 report into a failed step. A work tree that is no git repository cannot be checked and is noted in the event.
 
@@ -90,7 +90,7 @@ and the phase `cancelled`; older state files stay valid.
 One contract for all: brief and work directory in, report file out, exit 0 on a normal end. The driver enforces
 `timeout_s` (stop signal, hard kill after 10 s, report `fail` with exit code 124), and fails closed: a crash, a
 missing or a broken report is a failed step. A report the executor printed as its last JSON object instead of writing is
-accepted from stdout. The harness is `model_hint.harness`, else the harness this process runs in (the session variables of
+accepted from stdout; a report file above 2 MiB is a broken report. Text of other agents (finding summaries) is put into briefs on one short line. The harness is `model_hint.harness`, else the harness this process runs in (the session variables of
 `aos-gate`), else the first of `claude codex opencode agy` on PATH; none found is exit 1 and the step stays open.
 
 | Harness | Run as | Permissions |

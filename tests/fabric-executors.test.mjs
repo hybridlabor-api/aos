@@ -167,6 +167,13 @@ test('fail closed: crash, missing report, broken report, wrong step id, exit cod
   }
 }));
 
+test('a report file above the size cap is a broken report, not a memory problem', withProject(async (p) => {
+  const r = await fake(p, 'huge');
+  assert.equal(r.report.status, 'fail');
+  assert.equal(r.report.findings[0].id, 'bad-report');
+  assert.match(r.report.findings[0].summary, /the report is too large: the report file is \d+ bytes, more than the 2097152 allowed/);
+}));
+
 test('a report printed as the last JSON object of stdout is accepted when no file was written', withProject(async (p) => {
   const r = await fake(p, 'stdout');
   assert.equal(r.report.status, 'ok');

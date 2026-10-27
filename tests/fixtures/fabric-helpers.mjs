@@ -76,7 +76,7 @@ export function answerBrief(briefText, cwd, scen = 'ok') {
 }
 
 // An executor script for AOS_FABRIC_FAKE_EXECUTOR (`--executor fake`): writes reportFor() output, or misbehaves on request.
-// FAKE_SCEN is one of reportFor's scenarios or: crash | badjson | wrongstep | stdout | slow | exit5
+// FAKE_SCEN is one of reportFor's scenarios or: crash | badjson | wrongstep | stdout | slow | exit5 | huge
 export function writeFakeExecutor(dir) {
   const file = path.join(dir, 'fake-executor.mjs');
   const src = `
@@ -94,6 +94,7 @@ const rep = reportFor(step, process.cwd(), scen);
 const write = (text) => { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, text); };
 if (scen === 'badjson' && node === 'architect') { write('{ not json'); process.exit(0); }
 if (scen === 'wrongstep' && node === 'architect') rep.step_id = '9-architect-9';
+if (scen === 'huge' && node === 'architect') rep.pad = 'x'.repeat(3 * 1024 * 1024);
 if (scen === 'stdout' && node === 'architect') { console.log('working...'); console.log(JSON.stringify(rep)); process.exit(0); }
 write(JSON.stringify(rep));
 if (scen === 'exit5' && node === 'architect') process.exit(5);

@@ -22,7 +22,7 @@ test('--help, -h and help print the usage from the spec and exit 0', withProject
   assert.equal(fs.existsSync(path.join(p.dir, 'production_artifacts')), false, 'help writes nothing');
 }));
 
-test('a whole run by hand: start, next, report ... ends with next exiting 6', withProject((p) => {
+test('a whole run by hand: start, next, report ... ends with next saying ready_to_ship', withProject((p) => {
   const started = cli(p, ['start', '--run', 'demo', '--goal', GOAL]);
   assert.equal(started.code, 0, started.stderr);
   assert.equal(started.lines.length, 1, 'exactly one JSON line on stdout');
@@ -31,12 +31,11 @@ test('a whole run by hand: start, next, report ... ends with next exiting 6', wi
   const seen = [];
   for (let i = 0; i < 20; i++) {
     const n = cli(p, ['next', '--run', 'demo']);
+    assert.equal(n.code, 0, 'next exits 0 for a step and for an end the graph reached');
     if (n.json.kind !== 'step') {
-      assert.equal(n.code, 6);
       assert.equal(n.json.kind, 'ready_to_ship');
       break;
     }
-    assert.equal(n.code, 0);
     const step = n.json.step;
     seen.push(step.step_id);
     const file = path.join(p.base, `${step.step_id}.json`);
@@ -91,7 +90,7 @@ test('usage errors are exit 2 with one JSON line on stderr and nothing on stdout
   assert.equal(fs.existsSync(path.join(p.dir, 'production_artifacts')), false, 'a refused command leaves no run folder');
 }));
 
-test('exit codes: 3 for an unknown run, 4 for a conflicting report, 6 for a finished run, 7 for a corrupt log', withProject((p) => {
+test('exit codes: 3 for an unknown run, 4 for a conflicting report, 6 for a cancelled or finished run, 7 for a corrupt log', withProject((p) => {
   for (const args of [['next', '--run', 'ghost'], ['status', '--run', 'ghost'], ['cancel', '--run', 'ghost'], ['report', '--run', 'ghost', '--step', '0-a-1', '--fail', 'x'], ['drive', '--run', 'ghost']]) {
     const r = cli(p, args);
     assert.equal(r.code, 3, args.join(' '));
