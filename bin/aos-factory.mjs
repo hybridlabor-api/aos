@@ -5,11 +5,14 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const USAGE = `usage: aos-factory --unattended --image <image> [--env NAME]... -- <command...>
+const DEFAULT_IMAGE = "aos-factory:local";
+
+const USAGE = `usage: aos-factory --unattended [--image <image>] [--env NAME]... -- <command...>
   Runs <command> in a Docker/Podman container on a fresh clone of the current branch.
+  --image <image> defaults to ${DEFAULT_IMAGE} (build with: docker build -t aos-factory:local -f docker/factory/Dockerfile .)
   --env NAME passes one host variable by name (e.g. the agent's API key); nothing else enters.`;
 
 const INSTALL = {
@@ -62,7 +65,8 @@ cd /work
 exec "$@"`;
 
 export function buildRunArgv({ runtime, clone, image, cmd, envNames = [], platform = process.platform }) {
-  const argv = [runtime, "run", "--rm", "--entrypoint", "sh",
+  const pull = image === DEFAULT_IMAGE ? ["--pull=never"] : [];
+  const argv = [runtime, "run", "--rm", ...pull, "--entrypoint", "sh",
     "--mount", `type=bind,source=${mountSource(clone, platform)},target=/work`,
     "-w", "/work", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
     "-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=/work"];
@@ -87,6 +91,15 @@ export function parseArgs(args) {
   return o;
 }
 
+export function imageExists(image, runtime, run = sh) {
+  const r = run(runtime, ["image", "inspect", image], { encoding: "utf8" });
+  return r.status === 0;
+}
+
+export function resolveBuildHint(pkgRoot) {
+  return `docker build -t ${DEFAULT_IMAGE} -f ${JSON.stringify(join(pkgRoot, "docker/factory/Dockerfile"))} ${JSON.stringify(pkgRoot)}`;
+}
+
 const git = (cwd, args, run = sh) => {
   const r = run("git", ["-c", `safe.directory=${cwd}`, "-C", cwd, ...args]);
   if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${(r.stderr || r.error?.message || "").trim()}`);
@@ -95,15 +108,24 @@ const git = (cwd, args, run = sh) => {
 
 export function main(args = process.argv.slice(2), {
   platform = process.platform, which = defaultWhich, run = sh, cwd = process.cwd(), home = homedir(),
+  pkgRoot = dirname(dirname(fileURLToPath(import.meta.url))),
   resultsRoot = join(homedir(), ".aos", "factory", "runs"), log = console.log, err = console.error,
 } = {}) {
   let o;
   try { o = parseArgs(args); } catch (e) { err(`aos-factory: ${e.message}\n${USAGE}`); return 2; }
   if (!o.unattended) { err(`aos-factory: only --unattended is a CLI mode; interactive runs use /factory in a session.\n${USAGE}`); return 2; }
-  if (!o.image || !o.cmd.length) { err(`aos-factory: --image and a command after -- are required.\n${USAGE}`); return 2; }
+  if (!o.cmd.length) { err(`aos-factory: a command after -- is required.\n${USAGE}`); return 2; }
 
   const rt = detectRuntime({ platform, which, run });
   if (!rt.ok) { err(`aos-factory: unattended mode refused: ${rt.message}`); return 1; }
+
+  const usesDefaultImage = !o.image || o.image === DEFAULT_IMAGE;
+  o.image = o.image || DEFAULT_IMAGE;
+  if (usesDefaultImage && !imageExists(o.image, rt.runtime, run)) {
+    const hint = resolveBuildHint(pkgRoot);
+    err(`aos-factory: image ${o.image} not found locally. Build it:\n  ${hint}`);
+    return 1;
+  }
 
   let repo, branch, base;
   try {

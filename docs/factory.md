@@ -83,11 +83,29 @@ gate is off, and brings only commits back. The host gate is not changed and has 
 sandbox shortcut: nothing a host session writes or exports loosens it.
 
 ```sh
-node <aos>/bin/aos-factory.mjs --unattended --image <image> --env ANTHROPIC_API_KEY -- claude -p "/factory"
+node <aos>/bin/aos-factory.mjs --unattended [--image <image>] --env ANTHROPIC_API_KEY -- claude -p "/factory"
 ```
 
-The image must contain `sh`, `node`, `git`, the agent CLI and the AOS hooks for
-that agent. AOS ships no image.
+If `--image` is omitted, `aos-factory:local` is used. Build the default image:
+
+```sh
+docker build -t aos-factory:local -f docker/factory/Dockerfile .
+```
+
+Override the default image by passing `--image <your-image>`.
+
+The default image contains the AOS sandbox: Node, git, the AOS hooks and CLIs
+(`bin/`, `lib/`, `.claude/hooks/`). It contains no agent CLI. An agent run such as
+the `claude -p` example needs an image derived from it, passed via `--image`:
+
+```Dockerfile
+FROM aos-factory:local
+USER root
+RUN npm install -g @anthropic-ai/claude-code
+USER aos
+```
+
+The default image is run with `--pull=never`, so it is never fetched from a registry.
 
 **Isolated:**
 
