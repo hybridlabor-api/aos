@@ -58,6 +58,7 @@ Generated from `lib/cli-specs` (`node scripts/build-cli-reference.mjs`); full re
 | `aos-router` | See which worker target a role routes to, or set a role preference. | `aos-router show --json` |
 | `aos-sessions` | See which sessions need input, are working or idle, and which ACP workers run. | `aos-sessions --json --section needs` |
 | `aos-team` | List teams, show one team, or create a team definition from a playbook. | `aos team list --json` |
+| `aos-fabric` | Run /fabric-graph or /factory work in any harness: get the next step, run it with your own executor, report the result back. drive does that loop headless. | `aos-fabric start --run demo --goal "add a status page"` |
 | `aos-bus` | Send text to a running OpenCode session, or list sessions that can receive it. | `aos-bus list` |
 | `go-check` | A runner outside a harness (for example AO) must ask the GO gate before executing a command. | `node ~/.aos/bin/go-check.mjs --session w1 --command "git push"` |
 | `mcsc` | Decide which worker CLI should take a task type, or run it there. | `mcsc route --task-type refactor --json` |

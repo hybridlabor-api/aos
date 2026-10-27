@@ -105,6 +105,7 @@ Never call `aos-uninstall`, `aos-gate`, `aos-cli` unprompted: they are for the h
 - `aos-router` - See which worker target a role routes to, or set a role preference.
 - `aos-sessions` - See which sessions need input, are working or idle, and which ACP workers run.
 - `aos-team` - List teams, show one team, or create a team definition from a playbook.
+- `aos-fabric` - Run /fabric-graph or /factory work in any harness: get the next step, run it with your own executor, report the result back. drive does that loop headless. (side effects)
 - `aos-bus` - Send text to a running OpenCode session, or list sessions that can receive it.
 - `go-check` - A runner outside a harness (for example AO) must ask the GO gate before executing a command.
 - `mcsc` - Decide which worker CLI should take a task type, or run it there. (side effects)
