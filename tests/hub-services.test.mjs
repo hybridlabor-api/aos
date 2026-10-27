@@ -307,9 +307,10 @@ test('log route rejects ../x and unknown names', async () => {
   assert.doesNotMatch(oky.json.text, /abc done/);
 });
 
-test('fixture TCP server -> up:true via the port probe', async () => {
+test('fixture TCP server -> up:true via the port probe', async (t) => {
   const fixture = createServer_fwd((req, res) => { res.writeHead(200); res.end('ok'); });
   await new Promise((ok) => fixture.listen(0, '127.0.0.1', ok));
+  t.after(() => closeServer(fixture));
   const port = fixture.address().port;
   assert.equal(await portOpen(port), true);
   assert.equal(await portOpen(59990), false);
@@ -317,13 +318,13 @@ test('fixture TCP server -> up:true via the port probe', async () => {
   const ctx = recordingCtx({ portOverrides: { memb: port }, wikiRoot: join(tmp, 'no-dev2') });
   const rows = await statusService(ctx);
   assert.equal(rows.find((r) => r.id === 'memb').up, true);
-  await closeServer(fixture);
 });
 
-test('hub row is probed, not assumed up (CLI status runs without the hub)', async () => {
+test('hub row is probed, not assumed up (CLI status runs without the hub)', async (t) => {
   // Identity: the hub answers {service:'aos-hub'} on /api/health; a bare 200 is a foreign listener.
   const fixture = createServer_fwd((req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true,"service":"aos-hub"}'); });
   await new Promise((ok) => fixture.listen(0, '127.0.0.1', ok));
+  t.after(() => closeServer(fixture));
   const port = fixture.address().port;
   const closed = (await statusService(recordingCtx({ portOverrides: { hub: 59991 }, wikiRoot: join(tmp, 'no-dev4') }))).find((r) => r.id === 'hub');
   assert.equal(closed.up, false);
@@ -332,11 +333,10 @@ test('hub row is probed, not assumed up (CLI status runs without the hub)', asyn
   assert.equal(open.foreign, false);
   const bare = createServer_fwd((req, res) => { res.writeHead(200); res.end('ok'); });
   await new Promise((ok) => bare.listen(0, '127.0.0.1', ok));
+  t.after(() => closeServer(bare));
   const foreign = (await statusService(recordingCtx({ portOverrides: { hub: bare.address().port }, wikiRoot: join(tmp, 'no-dev6') }))).find((r) => r.id === 'hub');
   assert.equal(foreign.up, false);
   assert.equal(foreign.foreign, true);
-  await closeServer(bare);
-  await closeServer(fixture);
 });
 
 test('serviceMeta: npm uncheckable -> state uncheckable; force flag supported', async () => {
