@@ -178,6 +178,20 @@ describe('fabric-dispatch standalone shim: fail-closed on executor failure', () 
       assert.deepEqual(run.calls, []);
     });
 
+    test('--plan values that cannot be trusted are refused before any agent runs', () => {
+      const cases = [
+        ['--plan plan.md --plan other.md add a login page', /more than once/],
+        ['--plan notes.txt add a login page', /must end with \.md/],
+        ['--plan missing.md add a login page', /does not exist/],
+        ['--plan= add a login page', /Malformed --plan flag/],
+      ];
+      for (const [badGoal, reason] of cases) {
+        const run = runFabric({ goal: badGoal });
+        assertEscalated(run, reason);
+        assert.deepEqual(run.calls, [], badGoal);
+      }
+    });
+
     test('the same finding on two different nodes keeps both nodes in the repair loop', () => {
       const run = runFabric({
         goal,

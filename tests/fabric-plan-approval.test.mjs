@@ -96,6 +96,31 @@ test('verifyPlanApproval with malformed JSON', () => {
   }
 });
 
+test('verifyPlanApproval refuses a record that is not an approval of this plan', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'fabric-test-'));
+  try {
+    const planPath = path.join(tmpDir, 'plan.md');
+    writeFileSync(planPath, 'Test plan content');
+    const hash = computeHash('Test plan content');
+
+    const cases = [
+      [{ verdict: 'request-changes', contentHash: hash }, /not "approve"/],
+      [{ verdict: 'approve' }, /missing contentHash/],
+      [null, /not a valid JSON object/],
+    ];
+    for (const [record, reason] of cases) {
+      writeFileSync(path.join(tmpDir, 'plan.approval.json'), JSON.stringify(record));
+      const result = verifyPlanApproval(planPath);
+      assert.strictEqual(result.valid, false, JSON.stringify(record));
+      assert.match(result.reason, reason);
+    }
+    assert.strictEqual(verifyPlanApproval(path.join(tmpDir, 'gone.md')).valid, false, 'a missing plan file is refused');
+    assert.strictEqual(verifyPlanApproval('').valid, false, 'no plan path is refused');
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('deduplicateFindings merges by file:line:title', () => {
   const findings = [
     { file: 'src/app.ts', line: 10, summary: 'unused variable', severity: 'advisory', agent: 'reviewer-1' },

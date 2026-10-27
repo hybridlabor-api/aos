@@ -79,6 +79,14 @@ describe('state schema contract', () => {
     assert.equal(schema.properties.harnesses.type, 'object');
   });
 
+  test('declares the --plan pre-approval record the dispatcher writes into state.json', () => {
+    const types = { pre_approved: 'boolean', approval_source: 'string', approval_hash: 'string' };
+    for (const [key, type] of Object.entries(types)) {
+      assert.equal(schema.properties[key]?.type, type, `${key} must be declared as ${type}`);
+      assert.ok(!schema.required.includes(key), `${key} must stay optional`);
+    }
+  });
+
   test('sample AO scaffold state satisfies the required shapes', () => {
     const state = sampleAoState();
     assert.ok(typeof state.run_id === 'string' && state.run_id.length > 0);

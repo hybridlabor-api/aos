@@ -124,6 +124,18 @@
       "default": false,
       "description": "Any node can set this to force an in-loop feedback edge back to the user (per B5's reference diagram), independent of the gate/iteration state."
     },
+    "pre_approved": {
+      "type": "boolean",
+      "description": "True when the run started from a plan passed with --plan whose approval record was verified, so Architect and the plan approval were skipped."
+    },
+    "approval_source": {
+      "type": "string",
+      "description": "Path of the pre-approved plan file (--plan)."
+    },
+    "approval_hash": {
+      "type": "string",
+      "description": "SHA-256 of the pre-approved plan content, as recorded in its approval record."
+    },
     "team": {
       "type": "object",
       "description": "Team configuration driving this run (roles, playbooks, gates, effort).",
