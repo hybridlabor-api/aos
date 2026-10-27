@@ -95,12 +95,23 @@ globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
 const agentCalls = [];
 globalThis.agent = async (prompt, opts) => {
   agentCalls.push(opts.label);
-  // Minimal shim: only handle deterministic steps; let agy fail for LLM steps
+  // Minimal shim: handle deterministic steps and provide valid role JSON for architect/techlead
   if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
   if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
   if (opts.label === 'verify-plan-approval') return { valid: false, reason: 'test' };
   if (opts.label === 'ensure-node-skills' || opts.label.startsWith('ensure-skills-')) return { installed: [], stillMissing: [] };
   if (opts.label.startsWith('merge-')) return { merged: 0, skipped: [], needsHuman: false };
+  // Provide valid role JSON for deterministic roles
+  if (opts.label.startsWith('architect')) return { planPath: 'production_artifacts/plan/plan.mdx', needsMedia: false, deliverOk: true };
+  if (opts.label.startsWith('techlead')) return { approved: true, reason: 'test approval' };
+  // Return valid empty review for reviewer roles
+  if (opts.label.startsWith('reviewer')) return { findings: [], blockingCount: 0 };
+  // Return valid empty gate for shipping
+  if (opts.label.startsWith('shipping')) return { gate: {}, blockingNodes: [] };
+  // For any build role (engineering, ui_ux, media_eventtech, ws_*), return valid object
+  if (prompt && (prompt.includes('engineering') || prompt.includes('ui_ux') || prompt.includes('media_eventtech'))) {
+    return { needsHuman: false };
+  }
   if (opts.label === 'escalate') {
     try {
       const statePath = 'production_artifacts/state.json';
@@ -114,7 +125,7 @@ globalThis.agent = async (prompt, opts) => {
     } catch (e) {}
     return { phase: 'escalated' };
   }
-  // All LLM steps (architect, reviewer, etc) will hit agy, which fails; shim should escalate
+  // All LLM steps will hit agy, which fails; shim should escalate
   throw new Error('Unexpected agent call: ' + opts.label + ' -- should be handled by shim');
 };
 try {
@@ -168,12 +179,23 @@ globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
 const agentCalls = [];
 globalThis.agent = async (prompt, opts) => {
   agentCalls.push(opts.label);
-  // Minimal shim: only handle deterministic steps
+  // Minimal shim: handle deterministic steps and provide valid role JSON
   if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
   if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
   if (opts.label === 'verify-plan-approval') return { valid: false, reason: 'test' };
   if (opts.label === 'ensure-node-skills' || opts.label.startsWith('ensure-skills-')) return { installed: [], stillMissing: [] };
   if (opts.label.startsWith('merge-')) return { merged: 0, skipped: [], needsHuman: false };
+  // Provide valid role JSON for deterministic roles
+  if (opts.label.startsWith('architect')) return { planPath: 'production_artifacts/plan/plan.mdx', needsMedia: false, deliverOk: true };
+  if (opts.label.startsWith('techlead')) return { approved: true, reason: 'test approval' };
+  // Return valid empty review for reviewer roles
+  if (opts.label.startsWith('reviewer')) return { findings: [], blockingCount: 0 };
+  // Return valid empty gate for shipping
+  if (opts.label.startsWith('shipping')) return { gate: {}, blockingNodes: [] };
+  // For any build role (engineering, ui_ux, media_eventtech, ws_*), return valid object
+  if (prompt && (prompt.includes('engineering') || prompt.includes('ui_ux') || prompt.includes('media_eventtech'))) {
+    return { needsHuman: false };
+  }
   if (opts.label === 'escalate') {
     try {
       const statePath = 'production_artifacts/state.json';

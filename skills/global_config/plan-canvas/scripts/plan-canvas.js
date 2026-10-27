@@ -590,9 +590,18 @@ function addRoutes(result, file, trail) {
     // Write approval.json sidecar when plan is approved
     try {
       const crypto = require('crypto');
-      const fileContent = fs.readFileSync(file, 'utf8');
+      // Find the source plan.mdx file: if file is plan.builder.html, look for plan.mdx in same dir
+      let sourceFile = file;
+      if (path.basename(file) === 'plan.builder.html') {
+        const dir = path.dirname(file);
+        const mdxFile = path.join(dir, 'plan.mdx');
+        if (fs.existsSync(mdxFile)) {
+          sourceFile = mdxFile;
+        }
+      }
+      const fileContent = fs.readFileSync(sourceFile, 'utf8');
       const contentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
-      const parsed = path.parse(file);
+      const parsed = path.parse(sourceFile);
       const approvalPath = path.join(parsed.dir, `${parsed.name}.approval.json`);
       const approval = {
         schema: 'aos.plan-approval/1',

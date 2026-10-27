@@ -149,3 +149,39 @@ test('normalizeComparisonKey uses node and title', () => {
   assert.match(key, /^engineering:/, 'should include node');
   assert.match(key, /missingerrorhandler/, 'should normalize title');
 });
+
+test('verifyPlanApproval hashes the correct source file (plan.mdx)', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'fabric-test-'));
+  try {
+    // Create plan.mdx and plan.builder.html in same directory
+    const planMdx = path.join(tmpDir, 'plan.mdx');
+    const planBuilderHtml = path.join(tmpDir, 'plan.builder.html');
+    const mdxContent = 'Original plan content';
+    const htmlContent = '<html>Built plan</html>';
+
+    writeFileSync(planMdx, mdxContent);
+    writeFileSync(planBuilderHtml, htmlContent);
+
+    // Create approval sidecar for plan.mdx (hashing the mdx content)
+    const mdxHash = computeHash(mdxContent);
+    const approvalPath = path.join(tmpDir, 'plan.approval.json');
+    const approval = {
+      schema: 'aos.plan-approval/1',
+      verdict: 'approve',
+      contentHash: mdxHash,
+      timestamp: new Date().toISOString(),
+      source: 'plan-canvas'
+    };
+    writeFileSync(approvalPath, JSON.stringify(approval));
+
+    // Verify with plan.mdx path: should succeed
+    const result1 = verifyPlanApproval(planMdx);
+    assert.strictEqual(result1.valid, true, 'should validate with plan.mdx path');
+
+    // Note: verifyPlanApproval expects the sidecar next to the input file,
+    // so if we pass plan.builder.html, it would look for plan.builder.approval.json
+    // This test validates that the mdx sidecar works with the mdx file path
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

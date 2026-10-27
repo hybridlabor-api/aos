@@ -100,6 +100,13 @@ if (typeof process !== 'undefined') {
   } catch {}
 }
 
+let planApprovalMod = null;
+if (typeof process !== 'undefined') {
+  try {
+    planApprovalMod = await import(new URL('../../lib/fabric-plan-approval.mjs', import.meta.url).href);
+  } catch {}
+}
+
 export const AGENT_ALIASES = workstreamMod?.AGENT_ALIASES || Object.freeze({
   'engineering': 'godmode-engineering',
   'godmode-engineering': 'engineering',
@@ -462,28 +469,7 @@ if (typeof globalThis.agent === 'undefined') {
         const deduplicated = dedupeReviewMod.deduplicateFindings(allFindings);
         return { deduplicated };
       }
-
-      // Fallback: inline deduplication if module load failed
-      const seen = new Map();
-      const result = [];
-      for (const f of allFindings) {
-        const key = `${f.file || ''}:${f.line || ''}:${(f.summary || '').slice(0, 60)}`;
-        if (seen.has(key)) {
-          const existing = seen.get(key);
-          if (f.severity === 'blocking' && existing.severity !== 'blocking') {
-            existing.severity = 'blocking';
-          }
-          const sources = new Set(existing.sources || [existing.agent || existing.node || 'unknown']);
-          sources.add(f.agent || f.node || 'unknown');
-          existing.sources = Array.from(sources);
-        } else {
-          const entry = { ...f };
-          entry.sources = [f.agent || f.node || 'unknown'];
-          seen.set(key, entry);
-          result.push(entry);
-        }
-      }
-      return { deduplicated: result };
+      return { deduplicated: allFindings };
     }
 
     // Deterministic step: load-registry
@@ -804,6 +790,10 @@ if (typeof globalThis.agent === 'undefined') {
       }
       if (roleLabel.startsWith('architect')) {
         if (!obj.planPath || typeof obj.planPath !== 'string') return { planPath: '', needsMedia: false, deliverOk: false, error: 'invalid response', escalate: true };
+        return obj;
+      }
+      // Build roles (engineering, ui_ux, media_eventtech, ws_*): return parsed object without escalating
+      if (roleLabel === 'engineering' || roleLabel === 'ui_ux' || roleLabel === 'media_eventtech' || roleLabel.startsWith('ws_')) {
         return obj;
       }
       // Unknown role: escalate to be safe
@@ -1295,7 +1285,7 @@ const activeRoleRegistry = roleRegistry || {
 // own private skill, never part of .agents/nodes.json's registry) -- see
 // .agents/graph.md's "Mandatory Skill Injection" section.
 function extractPlanFlag(text) {
-  const flagPattern = /--plan\s+("[^"]+"|'[^']+'|[^\s]+)/g;
+  const flagPattern = /--plan(?:=|\s+)("[^"]+"|'[^']+'|[^\s]+)/g;
   let plan = null;
   let malformed = 0;
   let duplicates = 0;
@@ -1313,6 +1303,11 @@ function extractPlanFlag(text) {
     })
     .replace(/\s{2,}/g, ' ')
     .trim();
+
+  // Check if --plan token survives in goal (malformed extraction)
+  if (goal.match(/--plan(?:=|\s+)/)) {
+    return { plan: null, goal: text, invalid: 'Malformed --plan flag: could not extract value' };
+  }
 
   // Validate plan file: must exist and end with .md/.mdx/.markdown
   let invalid = null;
@@ -1576,10 +1571,14 @@ if (mandatorySkillNames.length > 0) {
 let preApprovedPlan = null;
 let planApprovalRecord = null;
 if (planFromFlag) {
-  const approvalResult = await agent(
-    'Validate plan approval record',
-    { label: 'verify-plan-approval', planFile: planFromFlag }
-  );
+  let approvalResult = null;
+  if (planApprovalMod?.verifyPlanApproval && typeof process !== 'undefined') {
+    // Call verifyPlanApproval directly from lib
+    const approval = planApprovalMod.verifyPlanApproval(planFromFlag);
+    approvalResult = { valid: approval.valid, reason: approval.reason, planFile: planFromFlag, approval: approval.approval };
+  } else {
+    return await escalate('Plan approval module unavailable; cannot validate --plan flag.');
+  }
   if (!approvalResult || !approvalResult.valid) {
     return await escalate(
       `--plan flag provided but approval record is not valid: ${approvalResult?.reason || 'unknown error'}. ` +
@@ -2026,7 +2025,7 @@ try {
 let findings = [];
 let reviewedClean = false;
 let nodesToRun = BUILD_NODES; // first pass: everyone applicable
-let previousBlockingIds = new Set(); // for the no-progress guard below
+let previousBlockingKeys = new Set(); // for the no-progress guard: normalized keys (node + title)
 let reviewRound = 0; // dedicated counter for reviewer cycles, separate from overall iteration
 
 while (!reviewedClean) {
@@ -2170,6 +2169,14 @@ while (!reviewedClean) {
       const r = reviewerResults[i];
       const reviewerId = parallelReviewers[i];
 
+      // Fail closed: check for escalate/error first
+      if (r?.escalate || r?.error) {
+        return await escalate(
+          `Reviewer ${reviewerId} escalated: ${r?.error || 'unknown executor failure'}. ` +
+          'Run /fabric-graph again once all reviewers are available.'
+        );
+      }
+
       // Fail closed: each reviewer result MUST be an object with a findings array
       if (!r || typeof r !== 'object' || !Array.isArray(r.findings)) {
         return await escalate(
@@ -2184,13 +2191,10 @@ while (!reviewedClean) {
       }
     }
 
-    // Deduplicate findings
-    const mergeResult = await agent(
-      'Deduplicate findings',
-      { label: 'merge-review', allFindings, parallelReviewers }
-    );
-
-    const deduplicatedFindings = mergeResult?.deduplicated ?? allFindings;
+    // Merge findings using lib function
+    const deduplicatedFindings = dedupeReviewMod?.deduplicateFindings
+      ? dedupeReviewMod.deduplicateFindings(allFindings)
+      : allFindings;
     reviewResult = {
       findings: deduplicatedFindings,
       blockingCount: deduplicatedFindings.filter((f) => f.severity === 'blocking' && f.status === 'open').length,
@@ -2266,27 +2270,27 @@ while (!reviewedClean) {
     // genuinely reach.
     reviewedClean = true;
   } else {
-    const blockingIds = new Set(findings.filter((f) => f.severity === 'blocking' && f.status === 'open').map((f) => f.id));
-    const sameAsLastTime =
-      iteration > 0 &&
-      blockingIds.size > 0 &&
-      blockingIds.size === previousBlockingIds.size &&
-      [...blockingIds].every((id) => previousBlockingIds.has(id));
+    const noProgress = iteration > 0 && dedupeReviewMod?.checkNoProgress
+      ? dedupeReviewMod.checkNoProgress(findings, previousBlockingKeys)
+      : false;
 
-    if (sameAsLastTime) {
+    if (noProgress) {
       // No-progress guard: the build node(s) supposedly addressed these
-      // exact findings last round, and Reviewer is reporting the identical
-      // finding IDs again. Depends on Reviewer actually reusing IDs for
-      // still-open issues (see the prompt instruction above) -- escalate
-      // now instead of burning the remaining iterations on an identical
-      // repeat.
+      // exact findings last round, and Reviewer is reporting the same
+      // normalized findings (node + title) again. Escalate now instead of
+      // burning the remaining iterations on an identical repeat.
       return await escalate(
-        'No progress: Reviewer reported the exact same blocking finding(s) after a repair round that was supposed to address them. Escalating rather than repeating an identical cycle.',
+        'No progress: Reviewer reported the same blocking finding(s) after a repair round that was supposed to address them. Escalating rather than repeating an identical cycle.',
         { findings }
       );
     }
 
-    previousBlockingIds = blockingIds;
+    // Update previous blocking keys for next iteration
+    previousBlockingKeys = new Set(
+      findings
+        .filter((f) => f.severity === 'blocking' && f.status === 'open')
+        .map((f) => dedupeReviewMod?.normalizeComparisonKey ? dedupeReviewMod.normalizeComparisonKey(f) : `${f.node}:${f.summary}`)
+    );
     nodesToRun = BUILD_NODES.filter((n) => findings.some((f) => f.node === n.id && f.status === 'open'));
     if (nodesToRun.length === 0) {
       // Findings exist but none map to a known node -- Reviewer mis-tagged
