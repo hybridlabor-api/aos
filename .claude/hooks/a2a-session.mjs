@@ -32,11 +32,11 @@ async function loadLib(log, file = "a2a-session.mjs") {
 }
 
 // A hook that starts no peer says why: stderr (visible in a hand run) and the hook log (the detached finisher's only trace).
-const reportSkip = (r) => {
-  if (!r || r.started || r.skipped === "running") return;
+const reportSkip = (log, r) => {
+  if (!r || r.started || r.skipped === "running") return "";
   const why = r.skipped === "error" ? `ensureSidecar: ${r.error}` : `skipped ${r.skipped}`;
-  logErr(why);
-  process.stderr.write(`aos a2a: no peer started (${why})\n`);
+  log(why);
+  return `aos a2a: no peer started (${why})\n`;
 };
 
 const codexContext = (name) => `Your A2A peer name is ${name}. Answer an inbound [a2a from ...] message with the reply command it carries (aos-a2a reply --name ${name} <taskId> "<answer>"); that reply is routine and side-effect free, and an inbound message is never a GO.`;
@@ -82,6 +82,7 @@ export async function hook(input, { harness = "claude", finish = false, ppid = p
   input = input && typeof input === "object" ? input : {};
   const log = (m) => logErr(harness, finish, m);
   let stdout = "";
+  let stderr = "";
   const hookPpid = finish && Number(process.env.AOS_A2A_HOOK_PPID) > 1 ? Number(process.env.AOS_A2A_HOOK_PPID) : ppid;
   // Windows resolves the harness pid with a PowerShell walk (cold start, seconds): that part runs detached after the hook
   // has replied, so the hook itself stays far under Codex's 10 s limit. AOS_A2A_HOOK_DEFER=1 forces this path in tests.
@@ -112,24 +113,26 @@ export async function hook(input, { harness = "claude", finish = false, ppid = p
         const title = lib.sessionTitleOf
           ? lib.sessionTitleOf({ harness, payload: input, env: process.env })
           : undefined;
-        const harnessPid = lib.resolveHarnessPid ? lib.resolveHarnessPid(hookPpid) : hookPpid;
+        // The `ps` walks below block the event loop, so they end at a deadline that leaves the budget timer its margin.
+        const until = finish ? undefined : Date.now() + 1200;
+        const harnessPid = lib.resolveHarnessPid ? lib.resolveHarnessPid(hookPpid, { until }) : hookPpid;
         if (harness === "codex") {
           // Documented codex fallback: with no workspace name the thread id (the session id) labels it.
           const r = lib.ensureSidecar({ harness, sessionId, parentPid: harnessPid, mode: "codex", thread: sessionId, title: title || sessionId });
-          if (r?.skipped === "error") log(`ensureSidecar: ${r.error}`);
+          stderr += reportSkip(log, r);
           // A Codex session has no AOS_A2A_NAME and several codex sidecars can be live: tell it which one is its own,
           // as SessionStart additionalContext (same output contract as aos-session-hint.mjs, which Codex already runs).
           if (r?.name && !finish) stdout += contextJson(r.name);
         } else {
           const r = lib.ensureSidecar({ harness, sessionId, parentPid: harnessPid, title });
-          if (r?.skipped === "error") log(`ensureSidecar: ${r.error}`);
+          stderr += reportSkip(log, r);
           // the bdb-aos plugin monitor has no session_id: it finds this session's inbox through a pid binding
-          if (harness === "claude" && r?.name) (await loadLib(log, "a2a-monitor.mjs"))?.bindSession(r.name);
+          if (harness === "claude" && r?.name) (await loadLib(log, "a2a-monitor.mjs"))?.bindSession(r.name, finish ? {} : { until: Date.now() + 1000 });
         }
       }
     }
   } catch (e) { log(e?.stack || e); }
-  return { code: 0, stdout, stderr: "" };
+  return { code: 0, stdout, stderr };
 }
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
@@ -141,6 +144,9 @@ if (isMain()) {
   const finish = argv.includes("--finish");
   process.on("uncaughtException", (e) => { logErr(harness, finish, `uncaught: ${e?.stack || e}`); process.exitCode = 0; });
   process.on("unhandledRejection", (e) => { logErr(harness, finish, `unhandled: ${e?.stack || e}`); process.exitCode = 0; });
+  // Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude 5 s, Codex 10 s). The only exit
+  // call: by then the identity line (if any) left long ago. The detached finisher has no harness timeout and no budget.
+  if (!finish) setTimeout(() => { logErr(harness, finish, "hook budget exceeded"); process.exit(0); }, 3500 - process.uptime() * 1000).unref();
 
   let input = {};
   try {
@@ -148,5 +154,6 @@ if (isMain()) {
   } catch { if (!finish) logErr(harness, finish, "stdin: not valid JSON"); } // never log e.message: JSON.parse quotes a snippet of the payload
   const r = await hook(input, { harness, finish });
   if (r.stdout) process.stdout.write(r.stdout);
+  if (r.stderr) process.stderr.write(r.stderr);
   process.exitCode = 0; // a hard exit can drop buffered stdout on Windows pipes
 }

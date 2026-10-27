@@ -87,6 +87,8 @@ if (isMain()) {
     console.log(keys.length ? keys.map(status).join("\n\n") : "AOS go-gate: no session state; every session runs in soft mode with no grants (behaves like hard).");
     process.exit(0);
   }
+  // Hard wall-clock budget: ~70 % of this hook's 5 s timeout. Past it: exit 0 with nothing recorded, as on bad input.
+  setTimeout(() => process.exit(0), 3500 - process.uptime() * 1000).unref();
   try {
     const r = hook(JSON.parse((await readStdinBounded(2000)) ?? ""));
     if (r.stdout) process.stdout.write(r.stdout);

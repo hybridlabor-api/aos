@@ -166,6 +166,9 @@ export function hook(rawInput, defaultCwd = process.cwd()) {
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
 if (isMain()) {
+  // Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude and agy 10 s). Past it the
+  // stop is allowed, exactly like unreadable hook input (fail open, see the header).
+  setTimeout(() => process.exit(0), 7000 - process.uptime() * 1000).unref();
   // Unreadable stdin or a timeout (null) fails open, as before.
   const r = hook((await readStdinBounded(2000)) ?? "");
   if (r.stderr) process.stderr.write(r.stderr);

@@ -13,6 +13,8 @@ import { pathToFileURL } from "node:url";
 
 const NOOP = JSON.stringify({ injectSteps: [] });
 const done = (out = NOOP) => { process.stdout.write(out + "\n"); process.exit(0); };
+// Hard wall-clock budget: ~70 % of agy's 5 s timeout for this hook; past it, the no-op and exit 0.
+setTimeout(done, 3500 - process.uptime() * 1000).unref();
 
 // Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
 // the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
@@ -58,11 +60,13 @@ async function lib(file) {
 
 // agy runs hooks through `sh -c`, so process.ppid is a short-lived shell: walk up to the agy process itself,
 // otherwise the sidecar (which exits when its parent pid is gone) would stop seconds after it started.
+// Every `ps` blocks the event loop (the budget timer cannot fire meanwhile), so the walk shares one deadline.
 function agyPid() {
   let pid = process.ppid;
-  for (let i = 0; i < 6 && pid > 1; i++) {
+  const until = Date.now() + 1200;
+  for (let i = 0; i < 6 && pid > 1 && Date.now() < until; i++) {
     try {
-      const [ppid, ...comm] = execFileSync("ps", ["-o", "ppid=,comm=", "-p", String(pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().split(/\s+/);
+      const [ppid, ...comm] = execFileSync("ps", ["-o", "ppid=,comm=", "-p", String(pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: Math.max(1, until - Date.now()), windowsHide: true }).trim().split(/\s+/);
       if (/agy/i.test(comm.join(" "))) return pid;
       pid = Number(ppid);
     } catch { break; }

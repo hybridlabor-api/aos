@@ -2429,7 +2429,7 @@ function ensureTauriPilotCli({ exec = execFileSync, has = hasExecutable } = {}) 
     }
     log.step(`Installing the tauri-pilot CLI: ${TAURI_PILOT_INSTALL_CMD} (compiles from source, can take several minutes)`);
     try {
-        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000 });
+        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000, windowsHide: true });
         uninstallRecords.recordCargoCrate(homeDir, 'rustauri', 'tauri-pilot-cli');
         return true;
     } catch (e) {
@@ -3248,11 +3248,13 @@ async function installDeja() {
             log.step('deja-vu is already installed globally; left as it is.');
         } else {
             log.step('Installing deja-vu session memory...');
-            execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
+            // stderr is kept: npm's own reason (EACCES, ETARGET, a network error) is the only useful part of a failure.
+            execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
             uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
         }
     } catch (e) {
-        log.warn(`deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
+        const tail = String((e && e.stderr) || (e && e.message) || '').trim().split(/\r?\n/).filter((l) => l.trim()).slice(-5).join(' | ');
+        log.warn(`deja-vu install failed${tail ? `: ${tail}` : ''}. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
     const dejaOnPath = hasExecutable('deja');
     if (!dejaOnPath) {

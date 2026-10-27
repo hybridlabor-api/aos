@@ -75,6 +75,8 @@ export function hook(input) {
 }
 
 if (isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 5 s timeout. Past it: exit 0 without a token, as on bad input.
+  setTimeout(() => process.exit(0), 3500 - process.uptime() * 1000).unref();
   try {
     hook(JSON.parse((await readStdinBounded(2000)) ?? ""));
   } catch { /* a failing hook must never block the prompt */ }

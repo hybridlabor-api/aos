@@ -167,9 +167,19 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
+// Overall wall-clock budget of one run, under the shortest harness timeout that event is wired with (config/claude-hooks.json).
+const RUN_BUDGET_MS = { PreToolUse: 4500, Stop: 12000, SessionStart: 17000, UserPromptSubmit: 17000 };
+
 if (isMain()) {
   const [event = '', ...rest] = process.argv.slice(2);
   const names = rest.filter((a) => a.endsWith('.mjs'));
+  // Past the run budget the answer is due now: deny only when the run holds go-gate, every other module fails open.
+  // Not unref'd: a run that finishes first exits through flush(), which clears this timer.
+  const budgetMs = names.includes('go-gate.mjs') ? 7000 : (RUN_BUDGET_MS[event] ?? 4500);
+  const overrun = names.some((n) => REGISTRY[n]?.closed)
+    ? { code: 2, stdout: '', stderr: 'Blocked by aos-hooks: the run ran out of its time budget, failing closed.\n' }
+    : NONE;
+  setTimeout(() => flush(overrun), budgetMs - process.uptime() * 1000);
   // Unreadable stdin is not an empty payload: the sentinel is not JSON, so go-gate denies like `node go-gate.mjs` does.
   // A timeout or a read error (null) keeps the sentinel.
   const raw = (await readStdinBounded(2000)) ?? '\0unreadable hook input';

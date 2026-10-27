@@ -143,6 +143,8 @@ export function hook(rawInput) {
 }
 
 async function main() {
+  // Hard wall-clock budget: ~70 % of this hook's 10 s timeout. Past it: exit 0, as for unparseable input.
+  setTimeout(() => process.exit(0), 7000 - process.uptime() * 1000).unref();
   const r = hook((await readStdinBounded(2000)) ?? "");
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);

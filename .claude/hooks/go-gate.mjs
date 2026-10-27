@@ -355,7 +355,7 @@ export function makeBranchResolver(cwd, run) {
     let list = [...FALLBACK_PROTECTED];
     try {
       if (/^[A-Za-z0-9._-]+$/.test(remote) && run) {
-        const r = run("git", ["symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`], { cwd, encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
+        const r = run("git", ["symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`], { cwd, encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
         const head = r && r.status === 0 ? String(r.stdout).trim().replace(new RegExp(`^${remote}/`), "") : "";
         if (/^[A-Za-z0-9._/-]+$/.test(head)) list.push(head);
       }
@@ -3674,7 +3674,8 @@ export function profileAllows(command) {
 }
 
 function main(rawInput) {
-  hookDeadline = Date.now() + SCAN_MS;
+  // Transcript scans are synchronous: they stop themselves (scan limit, a deny) before the hook budget runs out.
+  hookDeadline = Math.min(Date.now() + SCAN_MS, budgetEnd - 1000);
   // Opt-in payload capture for harness debugging; never on by default, never fatal.
   const dbg = process.env.AOS_GATE_DEBUG;
   if (dbg && isAbsolute(dbg)) {
@@ -3828,17 +3829,25 @@ function main(rawInput) {
   respond(isAgy, false, reasons.join("; "), command);
 }
 
-// Never fail open: any exception (bad input shape, unreadable state, a bug) denies.
+// Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude and agy 10 s). A harness that
+// kills a hook at its timeout may let the tool call run; the budget denies before that can happen.
+const HOOK_BUDGET_MS = 7000;
+let budgetEnd = Infinity;
+
+function failClosed(reason) {
+  if (codexMode) codexDeny(`[MECHANICAL GO-GATE BLOCKED] ${reason}`);
+  emitOut(`${JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` })}\n`);
+  emitErr(`Blocked by go-gate hook: ${reason}\n`);
+  leave(2, "deny", reason);
+}
+
+// Never fail open: any exception (bad input shape, unreadable state, a bug) or an overrun budget denies.
 function safeMain(rawInput) {
   try {
     main(rawInput);
   } catch (e) {
     if (e instanceof HookExit) throw e;
-    const reason = `go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}`;
-    if (codexMode) codexDeny(`[MECHANICAL GO-GATE BLOCKED] ${reason}`);
-    emitOut(`${JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` })}\n`);
-    emitErr(`Blocked by go-gate hook: ${reason}\n`);
-    leave(2, "deny", reason);
+    failClosed(`go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}`);
   }
 }
 
@@ -3846,6 +3855,7 @@ function safeMain(rawInput) {
 // Always answers { code, stdout, stderr }; an exit (code 0 included) and any internal error come back as a result, never a throw.
 export function hook(rawInput) {
   embedded = { out: "", err: "" };
+  budgetEnd = Date.now() + HOOK_BUDGET_MS;
   try {
     safeMain(String(rawInput ?? ""));
     return { code: 0, stdout: embedded.out, stderr: embedded.err };
@@ -3859,4 +3869,9 @@ export function hook(rawInput) {
 
 // Run as a hook (node go-gate.mjs); importing it (bin/aos-acp.mjs) must not.
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
-if (invokedAs === fileURLToPath(import.meta.url)) safeMain(await readStdinBounded(2000));
+if (invokedAs === fileURLToPath(import.meta.url)) {
+  // Armed only in the script entry: the in-process hook() must not kill the dispatcher.
+  budgetEnd = Date.now() + HOOK_BUDGET_MS - process.uptime() * 1000;
+  setTimeout(() => failClosed("go-gate ran out of its time budget, failing closed"), budgetEnd - Date.now()).unref();
+  safeMain(await readStdinBounded(2000));
+}

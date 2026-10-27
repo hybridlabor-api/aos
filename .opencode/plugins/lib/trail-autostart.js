@@ -28,6 +28,7 @@ export function trailEnsure({ spawnSync = realSpawnSync, env = process.env, cwd,
       timeout: TRAIL_TIMEOUT_MS,
       killSignal: 'SIGKILL',
       stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
       env,
     });
     if (!res || res.error || res.status !== 0) return null;

@@ -102,6 +102,9 @@ export async function hook(mode, input) {
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
 if (isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 5 s timeout; past it, exit 0 with nothing claimed or printed (claim and
+  // print run synchronously together, so the timer never fires between them).
+  setTimeout(() => process.exit(0), 3500 - process.uptime() * 1000).unref();
   readInput().then((input) => hook(process.argv[2], input)).then(
     (r) => {
       if (r.stdout) process.stdout.write(r.stdout);
