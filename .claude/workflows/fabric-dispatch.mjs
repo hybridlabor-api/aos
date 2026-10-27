@@ -93,19 +93,19 @@ if (typeof process !== 'undefined') {
   } catch {}
 }
 
-let dedupeReviewMod = null;
-if (typeof process !== 'undefined') {
+// Repo checkout: <repo>/.claude/workflows -> ../../lib. Installed copies (~/.claude/workflows and the other harness
+// dirs) find the lib under ~/.agents/lib. null = no module loading in this runtime.
+async function importLib(file) {
+  if (typeof process === 'undefined') return null;
+  try { return await import(new URL(`../../lib/${file}`, import.meta.url).href); } catch {}
   try {
-    dedupeReviewMod = await import(new URL('../../lib/fabric-review-dedupe.mjs', import.meta.url).href);
-  } catch {}
+    const { pathToFileURL } = await import('node:url');
+    const { homedir } = await import('node:os');
+    return await import(pathToFileURL(`${homedir()}/.agents/lib/${file}`).href);
+  } catch { return null; }
 }
-
-let planApprovalMod = null;
-if (typeof process !== 'undefined') {
-  try {
-    planApprovalMod = await import(new URL('../../lib/fabric-plan-approval.mjs', import.meta.url).href);
-  } catch {}
-}
+const dedupeReviewMod = await importLib('fabric-review-dedupe.mjs');
+const planApprovalMod = await importLib('fabric-plan-approval.mjs');
 
 export const AGENT_ALIASES = workstreamMod?.AGENT_ALIASES || Object.freeze({
   'engineering': 'godmode-engineering',
@@ -617,7 +617,7 @@ if (typeof globalThis.agent === 'undefined') {
         }
       }
 
-      return { merged: mergedCount, skipped, needsHuman: !!state.needs_human };
+      return { merged: mergedCount, skipped, needsHuman };
     }
 
     // Deterministic step: escalate
@@ -639,6 +639,25 @@ if (typeof globalThis.agent === 'undefined') {
         }
       }
       return { phase: 'escalated' };
+    }
+
+    // Deterministic step: record-review. The parallel reviewers are read-only, so the dispatcher records their merged review.
+    if (label.startsWith('record-review')) {
+      if (!fs || !path) return { error: 'no filesystem to record the review' };
+      try {
+        const findings = Array.isArray(options?.findings) ? options.findings : [];
+        const dir = path.resolve('production_artifacts');
+        const statePath = path.join(dir, 'state.json');
+        const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
+        state.findings = findings;
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+        const lines = findings.map((f) => `- [${f.status}] ${f.severity} (${f.node}) ${f.id}: ${f.summary}`);
+        fs.writeFileSync(path.join(dir, 'review_findings.md'), `# Review findings\n\n${lines.join('\n') || 'No findings.'}\n`);
+        return { recorded: findings.length };
+      } catch (err) {
+        return { error: `could not record the review: ${err.message}` };
+      }
     }
 
     if (label.startsWith('archify-verify')) {
@@ -726,6 +745,10 @@ if (typeof globalThis.agent === 'undefined') {
       if (opts?.trail) return obj;
       if (roleLabel.startsWith('reviewer')) {
         if (!Array.isArray(obj.findings)) return { findings: [], blockingCount: 0, escalate: true, error: 'findings is not an array' };
+        const nodes = opts?.schema?.properties?.findings?.items?.properties?.node?.enum;
+        const valid = (f) => f && typeof f === 'object' && typeof f.summary === 'string' &&
+          ['blocking', 'advisory'].includes(f.severity) && ['open', 'fixed', 'wont_fix'].includes(f.status) && (!nodes || nodes.includes(f.node));
+        if (!obj.findings.every(valid)) return { findings: [], blockingCount: 0, escalate: true, error: 'a finding does not match the review schema (summary, severity, status, node)' };
         const blockingCount = obj.findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
         return { ...obj, blockingCount };
       }
@@ -863,10 +886,13 @@ function dispatchNote(node, soloWriter = false) {
 // never inside a pipeline() fan-out -- so writing state.json directly here
 // is not part of the CHANGE 1 race and this function is left untouched by
 // that fix.
-function reviewerStateNote() {
-  return (
+function reviewerStateNote(readOnly = false) {
+  const discipline =
     'Do NOT read state.goal or any other node\'s reasoning/claims from production_artifacts/state.json -- ' +
-    'your review must be based only on the plan/contract and artifact files named below, nothing else. ' +
+    'your review must be based only on the plan/contract and artifact files named below, nothing else. ';
+  if (readOnly) return discipline + 'Return your review as the JSON below; you do not write production_artifacts/state.json.';
+  return (
+    discipline +
     'You may open production_artifacts/state.json purely to merge your update into it without clobbering ' +
     'unrelated fields (or create it fresh per .agents/state.schema.json if missing), but that file access is ' +
     `for the write, not for forming your judgment. Set state.iteration to ${iteration} in your update.`
@@ -1087,6 +1113,18 @@ async function mergeStateD() {
   );
 }
 
+// The parallel reviewers are read-only, so the dispatcher records their merged review itself (one writer, like escalate()).
+// Finding items in state.json allow only these five keys.
+async function recordReview(findings) {
+  const items = findings.map(({ id, severity, node, summary, status }) => ({ id, severity, node, summary, status }));
+  return await agent(
+    'You are recording the merged /fabric-graph review -- a deterministic write, not a reasoning task. ' +
+      'In production_artifacts/state.json set "findings" to exactly this array (replace the whole array, change no other field), and write the same ' +
+      `findings as a readable list to production_artifacts/review_findings.md (create production_artifacts/ if missing): ${JSON.stringify(items)}`,
+    { label: `record-review-${iteration}`, ...modelOpt('merge_state'), findings: items }
+  );
+}
+
 async function verifyArchifyArtifacts() {
   return await agent(
     'You are the dedicated /fabric-graph archify-verify step -- a deterministic check, not a reasoning task. ' +
@@ -1151,6 +1189,7 @@ const REGISTRY_SCHEMA = {
           writes: { type: ['string', 'null'] },
           optional: { type: 'boolean' },
           skills: { type: 'array', items: { type: 'string' } },
+          parallelReviewers: { type: 'array', items: { type: 'string' } },
           instructions: { type: ['string', 'null'] },
         },
       },
@@ -1251,7 +1290,7 @@ function extractPlanFlag(text) {
     .trim();
 
   // Check if --plan token survives in goal (malformed extraction)
-  if (goal.match(/--plan(?:=|\s+)/)) {
+  if (goal.match(/--plan(?:=|\s|$)/)) {
     return { plan: null, goal: text, invalid: 'Malformed --plan flag: could not extract value' };
   }
 
@@ -1412,19 +1451,21 @@ if (profile) {
   }
 }
 const { plan: planFromFlag, goal: goalAfterPlan, malformed: planMalformed, duplicates: planDuplicates, invalid: planInvalid } = extractPlanFlag(goalAfterProfile);
+// A refused --plan is a clear error for a CI step: the CLI exits non-zero (see the end of this file).
+const refusePlan = (reason) => escalate(reason, { exitCode: 1 });
 if (planDuplicates > 0) {
-  return await escalate('--plan was given more than once. Provide exactly one plan file path.');
+  return await refusePlan('--plan was given more than once. Provide exactly one plan file path.');
 }
 if (planMalformed > 0) {
-  return await escalate(
+  return await refusePlan(
     `--plan was given with an empty value (${planMalformed} time(s)). Write --plan=<path>, e.g. --plan=production_artifacts/plan/plan.mdx.`
   );
 }
 if (planInvalid) {
-  return await escalate(`--plan validation failed: ${planInvalid}`);
+  return await refusePlan(`--plan validation failed: ${planInvalid}`);
 }
-if (workstreamsFromFlag && planFromFlag) {
-  return await escalate('--workstreams and --plan flags cannot be used together. Choose one: either a pre-approved --plan to skip Architect, or --workstreams to run the full pipeline.');
+if (hasWorkstreamsFlag && planFromFlag) {
+  return await refusePlan('--workstreams and --plan flags cannot be used together. Choose one: either a pre-approved --plan to skip Architect, or --workstreams to run the full pipeline.');
 }
 
 const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(goalAfterPlan);
@@ -1523,10 +1564,10 @@ if (planFromFlag) {
     const approval = planApprovalMod.verifyPlanApproval(planFromFlag);
     approvalResult = { valid: approval.valid, reason: approval.reason, planFile: planFromFlag, approval: approval.approval };
   } else {
-    return await escalate('Plan approval module unavailable; cannot validate --plan flag.');
+    return await refusePlan('Plan approval module unavailable (needs module loading and lib/fabric-plan-approval.mjs); cannot validate --plan flag.');
   }
   if (!approvalResult || !approvalResult.valid) {
-    return await escalate(
+    return await refusePlan(
       `--plan flag provided but approval record is not valid: ${approvalResult?.reason || 'unknown error'}. ` +
         `Plan file: ${planFromFlag}. Expected a .approval.json sidecar next to the plan with verdict "approve" and matching contentHash. ` +
         'Refusing to proceed without a valid approval record.'
@@ -1899,29 +1940,32 @@ if (preApprovedPlan) {
   }
 }
 
-// Persist pre-approved plan metadata to state.json if applicable
-let stateFragmentPatch = null;
+// --plan skips the Architect, who would have started the run state: start it here (a fresh run, so a needs_human, phase or findings
+// left by an earlier run must not leak in; AO scaffold keys stay) and record that the plan came pre-approved. A failed write is fatal.
 if (preApprovedPlan && planApprovalRecord) {
-  stateFragmentPatch = {
-    pre_approved: true,
-    approval_source: preApprovedPlan,
-    approval_hash: planApprovalRecord.contentHash,
-  };
-
-  // Write the pre-approval metadata to state.json before the build loop
-  if (fs && path) {
-    try {
-      const statePath = path.resolve('production_artifacts', 'state.json');
-      let state = {};
-      if (fs.existsSync(statePath)) {
-        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-      }
-      Object.assign(state, stateFragmentPatch);
-      fs.mkdirSync(path.dirname(statePath), { recursive: true });
-      fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
-    } catch (err) {
-      process.stderr?.write?.(`[fabric-dispatch] warning: could not write state.json with approval metadata: ${err.message}\n`);
-    }
+  try {
+    const statePath = path.resolve('production_artifacts', 'state.json');
+    const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
+    state.run_id ??= `fabric-${Date.now()}`;
+    state.max_iterations ??= MAX_ITERATIONS;
+    state.approvals ??= [];
+    Object.assign(state, {
+      goal,
+      phase: 'build',
+      iteration: 0,
+      gate: {},
+      findings: [],
+      needs_human: false,
+      mandatory_skills: mandatorySkills,
+      artifacts: { ...state.artifacts, plan: planPath },
+      pre_approved: true,
+      approval_source: preApprovedPlan,
+      approval_hash: String(planApprovalRecord.contentHash).toLowerCase(),
+    });
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+  } catch (err) {
+    return await escalate(`Could not record the pre-approved plan in production_artifacts/state.json: ${err.message}`);
   }
 }
 
@@ -2026,16 +2070,7 @@ while (!reviewedClean) {
   // reviewerStateNote() (not dispatchNote()) is what actually enforces this;
   // see that function's own comment for why the distinction matters.
 
-  // Max 2 review rounds: if this is the third or later review cycle and blocking findings
-  // are still open, escalate rather than looping indefinitely.
   reviewRound++;
-  if (reviewRound >= 3 && findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length > 0) {
-    return await escalate(
-      `Reviewer round ${reviewRound}: blocking findings still open after ${reviewRound - 1} previous review cycle(s). ` +
-      'Escalating rather than attempting a third or higher review round.',
-      { findings }
-    );
-  }
 
   const reviewerArtifactsNote = hasWorkstreamsFlag && executionManifest?.workstreams
     ? executionManifest.workstreams.map((ws) => `state.artifacts.${ws.artifactKey || ws.id}`).join(', ')
@@ -2043,10 +2078,14 @@ while (!reviewedClean) {
 
   await ensureNodeSkills(reviewerNode);
 
-  // Parallel reviewers: spawn 4 reviewers (reviewer-1, reviewer-2, code-reviewer, devils-advocate) if configured
-  const parallelReviewers = Array.isArray(reviewerNode.parallelReviewers) && reviewerNode.parallelReviewers.length > 0
-    ? reviewerNode.parallelReviewers
-    : null;
+  // Parallel reviewers (reviewer-1, reviewer-2, code-reviewer, devils-advocate) when the registry lists them and the dedupe lib is
+  // loaded to merge their reviews; without the lib (no module loading in this runtime) the single Reviewer runs, as before.
+  const canMerge = typeof dedupeReviewMod?.deduplicateFindings === 'function' && typeof dedupeReviewMod?.normalizeComparisonKey === 'function';
+  const wantsParallel = Array.isArray(reviewerNode.parallelReviewers) && reviewerNode.parallelReviewers.length > 0;
+  const parallelReviewers = canMerge && wantsParallel ? reviewerNode.parallelReviewers : null;
+  if (wantsParallel && !canMerge && reviewRound === 1) {
+    console.error('[fabric-graph] parallel reviewers need lib/fabric-review-dedupe.mjs, which cannot be loaded here: running the single Reviewer');
+  }
 
   let reviewResult;
   if (parallelReviewers && parallelReviewers.length > 0) {
@@ -2065,7 +2104,7 @@ while (!reviewedClean) {
       `reuse the exact same "id" you gave it last time; only mint a new id for a genuinely new issue. This id ` +
       `stability is what lets the dispatcher detect a repair round that made no real progress, so do not renumber ` +
       `findings between cycles just because this is a fresh review call.\n` +
-      `Write production_artifacts/review_findings.md and update state.findings.\n\n` +
+      `You are read-only: write no file. The dispatcher merges the parallel reviews and records them itself.\n\n` +
       `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number } (blockingCount must count ONLY findings whose status is "open").`;
 
     const reviewSchema = {
@@ -2094,8 +2133,8 @@ while (!reviewedClean) {
     const reviewerResults = await pipeline(parallelReviewers.map((reviewerId) => {
       return { id: reviewerId, agentType: reviewerId };
     }), (n) => {
-      return ensureNodeSkills({ label: n.agentType, skills: [] }).then(() => agent(
-        `You are acting as the ${n.agentType} agent. ${reviewerStateNote()}` +
+      return ensureNodeSkills({ id: n.agentType, label: n.agentType, skills: [] }).then(() => agent(
+        `You are acting as the ${n.agentType} agent. ${reviewerStateNote(true)}` +
           (n.id !== 'reviewer-1' && n.id !== 'reviewer-2' && n.id !== 'code-reviewer' && n.id !== 'devils-advocate'
             ? ''
             : `\n\nReviewer specialty: ${n.id === 'reviewer-1' ? 'correctness (logic, edge cases, contract misread)' : n.id === 'reviewer-2' ? 'security and operability (injection, secrets, rollback hazards)' : n.id === 'code-reviewer' ? 'code health and maintainability' : 'adversarial: hunts unstated assumptions and missing failure modes'}\n`) +
@@ -2109,38 +2148,25 @@ while (!reviewedClean) {
       ));
     });
 
-    // Validate all reviewer results before merging
+    // Fail closed: every reviewer must answer with a findings array. The findings of those that did stay with the escalation.
     const allFindings = [];
-    for (let i = 0; i < reviewerResults.length; i++) {
-      const r = reviewerResults[i];
+    let reviewerFailure = null;
+    reviewerResults.forEach((r, i) => {
       const reviewerId = parallelReviewers[i];
-
-      // Fail closed: check for escalate/error first
       if (r?.escalate || r?.error) {
-        return await escalate(
-          `Reviewer ${reviewerId} escalated: ${r?.error || 'unknown executor failure'}. ` +
-          'Run /fabric-graph again once all reviewers are available.'
-        );
+        reviewerFailure ??= `Reviewer ${reviewerId} escalated: ${r?.error || 'unknown executor failure'}. Run /fabric-graph again once all reviewers are available.`;
+      } else if (!r || typeof r !== 'object' || !Array.isArray(r.findings)) {
+        reviewerFailure ??= `Reviewer ${reviewerId} returned invalid result: expected object with findings array. ` +
+          `Got: ${typeof r}${r && typeof r === 'object' ? ` (${Object.keys(r).join(', ')})` : ''}. Run /fabric-graph again once all reviewers are available.`;
+      } else {
+        for (const f of r.findings) allFindings.push({ ...f, agent: reviewerId });
       }
+    });
 
-      // Fail closed: each reviewer result MUST be an object with a findings array
-      if (!r || typeof r !== 'object' || !Array.isArray(r.findings)) {
-        return await escalate(
-          `Reviewer ${reviewerId} returned invalid result: expected object with findings array. ` +
-          `Got: ${typeof r}${r && typeof r === 'object' ? ` (${Object.keys(r).join(', ')})` : ''}. ` +
-          'Run /fabric-graph again once all reviewers are available.'
-        );
-      }
-
-      for (const f of r.findings) {
-        allFindings.push({ ...f, agent: r.agentType || reviewerId });
-      }
-    }
-
-    // Merge findings using lib function
-    const deduplicatedFindings = dedupeReviewMod?.deduplicateFindings
-      ? dedupeReviewMod.deduplicateFindings(allFindings)
-      : allFindings;
+    const deduplicatedFindings = dedupeReviewMod.deduplicateFindings(allFindings);
+    if (reviewerFailure) return await escalate(reviewerFailure, { findings: deduplicatedFindings });
+    const recorded = await recordReview(deduplicatedFindings);
+    if (recorded?.error) return await escalate(recorded.error, { findings: deduplicatedFindings });
     reviewResult = {
       findings: deduplicatedFindings,
       blockingCount: deduplicatedFindings.filter((f) => f.severity === 'blocking' && f.status === 'open').length,
@@ -2202,7 +2228,10 @@ while (!reviewedClean) {
     );
   }
 
-  findings = reviewResult?.findings ?? [];
+  if (!Array.isArray(reviewResult?.findings)) {
+    return await escalate('Reviewer returned no findings array: refusing to read that as a clean review.');
+  }
+  findings = reviewResult.findings;
   const blockingCount = findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
 
   if (blockingCount === 0) {
@@ -2216,9 +2245,11 @@ while (!reviewedClean) {
     // genuinely reach.
     reviewedClean = true;
   } else {
-    const noProgress = iteration > 0 && dedupeReviewMod?.checkNoProgress
-      ? dedupeReviewMod.checkNoProgress(findings, previousBlockingKeys)
-      : false;
+    // Parallel reviewers mint their own ids, so their findings are compared by node + title; the single Reviewer reuses its ids.
+    const keyOf = parallelReviewers ? dedupeReviewMod.normalizeComparisonKey : (f) => f.id;
+    const blockingKeys = new Set(findings.filter((f) => f.severity === 'blocking' && f.status === 'open').map((f) => keyOf(f)));
+    const noProgress = iteration > 0 && blockingKeys.size > 0 && blockingKeys.size === previousBlockingKeys.size &&
+      [...blockingKeys].every((key) => previousBlockingKeys.has(key));
 
     if (noProgress) {
       // No-progress guard: the build node(s) supposedly addressed these
@@ -2231,12 +2262,15 @@ while (!reviewedClean) {
       );
     }
 
-    // Update previous blocking keys for next iteration
-    previousBlockingKeys = new Set(
-      findings
-        .filter((f) => f.severity === 'blocking' && f.status === 'open')
-        .map((f) => dedupeReviewMod?.normalizeComparisonKey ? dedupeReviewMod.normalizeComparisonKey(f) : `${f.node}:${f.summary}`)
-    );
+    // Max 2 review rounds: blocking findings still open after the second review go to the human, not into another unreviewed repair.
+    if (reviewRound >= 2) {
+      return await escalate(
+        `Reviewer round ${reviewRound}: blocking findings still open after ${reviewRound} review cycles. Escalating rather than repairing again without a review.`,
+        { findings }
+      );
+    }
+
+    previousBlockingKeys = blockingKeys;
     nodesToRun = BUILD_NODES.filter((n) => findings.some((f) => f.node === n.id && f.status === 'open'));
     if (nodesToRun.length === 0) {
       // Findings exist but none map to a known node -- Reviewer mis-tagged
@@ -2416,7 +2450,7 @@ if (!isClaudeWorkflow && typeof process !== 'undefined' && process.exit) {
   } else if (result && process.stdout) {
     console.log(JSON.stringify(result, null, 2));
   }
-  process.exit(0);
+  process.exit(!isHookInvocation && result?.exitCode ? 1 : 0);
 }
 
 export default result;

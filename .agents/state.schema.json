@@ -74,7 +74,7 @@
       "type": "integer",
       "minimum": 1,
       "default": 3,
-      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/fabric-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
+      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/fabric-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the same blocking findings Reviewer already flagged (same ids for the single Reviewer, same node and title for the parallel reviewers), the run stops rather than repeating an identical cycle."
     },
     "approvals": {
       "type": "array",

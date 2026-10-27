@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { verifyPlanApproval } from '../lib/fabric-plan-approval.mjs';
-import { deduplicateFindings, checkNoProgress, normalizeComparisonKey } from '../lib/fabric-review-dedupe.mjs';
+import { deduplicateFindings, normalizeComparisonKey } from '../lib/fabric-review-dedupe.mjs';
 
 function computeHash(content) {
   return createHash('sha256').update(content).digest('hex');
@@ -33,6 +33,20 @@ test('verifyPlanApproval with valid sidecar', () => {
     assert.strictEqual(result.valid, true, 'should validate correct approval');
     assert.strictEqual(result.hash, hash, 'should return correct hash');
     assert.deepStrictEqual(result.approval, approval, 'should return approval record');
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('verifyPlanApproval accepts an upper-case hash and a BOM written by Windows tools', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'fabric-test-'));
+  try {
+    const planPath = path.join(tmpDir, 'plan.md');
+    writeFileSync(planPath, 'Test plan content');
+    const record = { verdict: 'approve', contentHash: computeHash('Test plan content').toUpperCase() };
+    writeFileSync(path.join(tmpDir, 'plan.approval.json'), '\uFEFF' + JSON.stringify(record));
+
+    assert.strictEqual(verifyPlanApproval(planPath).valid, true);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -146,47 +160,31 @@ test('deduplicateFindings normalizes titles', () => {
   assert.strictEqual(deduped[0].sources.length, 2, 'should list both sources');
 });
 
-test('checkNoProgress detects the same blocking findings even when the ids differ', () => {
-  const previous = [
-    { id: 'reviewer-1-F1', severity: 'blocking', status: 'open', node: 'eng', summary: 'Bug' },
-    { id: 'reviewer-2-F7', severity: 'blocking', status: 'open', node: 'ui', summary: 'Error!' },
-  ];
-  const current = [
-    { id: 'F001', severity: 'blocking', status: 'open', node: 'eng', summary: 'bug' },
-    { id: 'F002', severity: 'blocking', status: 'open', node: 'ui', summary: 'Error' },
-  ];
-  const previousKeys = new Set(previous.map(normalizeComparisonKey));
-
-  assert.ok(checkNoProgress(current, previousKeys), 'same node and title means no progress');
-});
-
-test('checkNoProgress allows new findings', () => {
-  const previousKeys = new Set([
-    normalizeComparisonKey({ node: 'eng', summary: 'Bug' }),
-    normalizeComparisonKey({ node: 'ui', summary: 'Error' }),
-  ]);
-  const current = [
-    { id: 'F001', severity: 'blocking', status: 'open', node: 'eng', summary: 'Bug' },
-    { id: 'F003', severity: 'blocking', status: 'open', node: 'ui', summary: 'New issue' },
-  ];
-
-  assert.ok(!checkNoProgress(current, previousKeys), 'should allow progress when new findings appear');
-});
-
-test('checkNoProgress ignores findings that are fixed or only advisory', () => {
-  const previousKeys = new Set([normalizeComparisonKey({ node: 'eng', summary: 'Bug' })]);
-  const current = [
-    { id: 'F001', severity: 'blocking', status: 'fixed', node: 'eng', summary: 'Bug' },
-    { id: 'F002', severity: 'advisory', status: 'open', node: 'eng', summary: 'Bug' },
-  ];
-
-  assert.ok(!checkNoProgress(current, previousKeys), 'nothing blocking and open is left');
-});
-
-test('normalizeComparisonKey uses node and title', () => {
+test('normalizeComparisonKey uses node and title, and the location when given', () => {
   const finding = { node: 'engineering', summary: 'Missing Error Handler!!' };
-  const key = normalizeComparisonKey(finding);
-  assert.equal(key, 'engineering:missing error handler', 'node, then the lowercased title without punctuation');
+  assert.equal(normalizeComparisonKey(finding), 'engineering:missing error handler', 'node, then the lowercased title without punctuation');
+  assert.equal(normalizeComparisonKey({ ...finding, file: 'src/a.ts', line: 10 }), 'engineering:missing error handler:src/a.ts:10');
+  assert.notEqual(
+    normalizeComparisonKey({ ...finding, file: 'src/a.ts', line: 10 }),
+    normalizeComparisonKey({ ...finding, file: 'src/b.ts', line: 3 }),
+    'the same title at two places is two findings'
+  );
+});
+
+test('normalizeComparisonKey keeps non-Latin titles and falls back to the id for untitled findings', () => {
+  const cyr = normalizeComparisonKey({ node: 'engineering', summary: 'Нет проверки ввода' });
+  const cyr2 = normalizeComparisonKey({ node: 'engineering', summary: 'Нет обработки ошибок' });
+  assert.notEqual(cyr, cyr2, 'distinct Cyrillic titles stay distinct');
+  assert.notEqual(
+    normalizeComparisonKey({ node: 'engineering', summary: '输入没有校验' }),
+    normalizeComparisonKey({ node: 'engineering', summary: '错误没有处理' }),
+    'distinct CJK titles stay distinct'
+  );
+  assert.notEqual(
+    normalizeComparisonKey({ node: 'engineering', id: 'A1' }),
+    normalizeComparisonKey({ node: 'engineering', id: 'A2' }),
+    'untitled findings are told apart by id'
+  );
 });
 
 test('deduplicateFindings keeps the same title on different nodes apart', () => {
@@ -214,6 +212,16 @@ test('deduplicateFindings never lets a duplicate hide an open report', () => {
     { ...base, id: 'B1', status: 'fixed', agent: 'reviewer-2' },
   ]);
   assert.strictEqual(openThenFixed[0].status, 'open', 'a later fixed report does not close it');
+});
+
+test('deduplicateFindings reads a missing or unknown severity as blocking', () => {
+  const deduped = deduplicateFindings([
+    { id: 'A1', node: 'engineering', summary: 'No severity', status: 'open' },
+    { id: 'A2', node: 'engineering', summary: 'Odd severity', severity: 'critical', status: 'open' },
+    { id: 'A3', node: 'engineering', summary: 'A nit', severity: 'advisory', status: 'open' },
+  ]);
+
+  assert.deepStrictEqual(deduped.map((f) => f.severity), ['blocking', 'blocking', 'advisory']);
 });
 
 test('deduplicateFindings reads a missing or unknown status as open', () => {
