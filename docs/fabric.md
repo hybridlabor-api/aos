@@ -7,6 +7,119 @@ Fabric v2 introduces custom role registries, team configurations, and dynamic wo
 
 ---
 
+## aos-fabric: one loop for every harness (5.4.2)
+
+`/fabric-graph` used to run only where a workflow script runtime exists, because the loop lived in
+`.claude/workflows/fabric-dispatch.mjs`. Every other harness got the rules as prose and had to rebuild the loop.
+`bin/aos-fabric.mjs` turns the loop into a CLI with fixed state and fixed steps. Any harness, or a plain shell,
+fetches the next step, runs it with whatever executor it has and reports the result. The decisions (edges, loop
+brake, escalation) live in one place: `lib/fabric/edges.mjs`. The contract stays `.agents/graph.md`.
+AOS works without AO; AO is only one optional executor.
+
+```sh
+aos-fabric start --run demo --goal-file goal.md        # first step
+aos-fabric drive --run demo                            # headless: next, execute, report until terminal
+# or by hand, with your own executor:
+aos-fabric next   --run demo                           # {kind: step|escalated|ready_to_ship|done|cancelled, step?}
+aos-fabric report --run demo --step 0-architect-1 --file report.json
+```
+
+| Command | Does | Idempotent |
+|---|---|---|
+| `start` | Creates the run, returns the first step. `--run` defaults to a hash of the goal. | Same run and goal: returns the state, writes nothing. Same run, other goal: exit 4. |
+| `next` | The open step, or the terminal state. Never changes the run. | The same step_id every time. |
+| `report` | Hands in the report of the open step (`--file`), or records a failed step without a file (`--fail <reason>`). Returns the next step. | The same report (same digest) is a no-op, another one for an accepted step is exit 4. |
+| `status` | Phase, iteration, open findings, last step, lock info. Read-only. | Yes. |
+| `cancel` | Phase `cancelled`. | Already cancelled: no-op. |
+| `drive` | The loop above. One JSON event per line; exit 0 at `ready_to_ship`/`done`, 6 when a human is needed. | Resumes an open step. |
+
+Exit codes, the same for every command: `0` ok, `1` unexpected error (or `drive` found no harness), `2` invalid input
+(unknown flag or schema major, broken report), `3` unknown run or step, `4` conflict, `5` lock busy (retry, at most 5
+times), `6` run is terminal, `7` state corrupt (fail closed, a human reads `events.jsonl`).
+
+### The loop
+
+```
+architect -> techlead -> human (plan canvas verdict) -> build nodes, one after another -> reviewer -> shipping -> ready_to_ship
+```
+
+- TechLead or the human reject the plan: `iteration++`, Architect again with the reasons as findings.
+- Reviewer reports blocking findings with new ids: `iteration++`, only the owning build nodes run, then Reviewer again.
+- Reviewer reports the same blocking ids after a repair round: `escalated` (loop brake, `last_blocking_ids`).
+- Shipping reports a failing gate: `iteration++`, the nodes named by its blocking findings run, then Shipping again.
+- `iteration >= max_iterations` (default 3): `escalated`. A step that fails `max_attempts` (2) times: `escalated`.
+  A report with `needs_human` or status `escalate`: `escalated`.
+- All gates `pass`/`skip`: `ready_to_ship`. The push is a separate step behind the go-gate; a run never grants a GO.
+
+Build nodes run one after another, so no node and no merge step writes state: `state.d/` and the `merge_state` agent
+are not needed (they stay in the legacy engine of the workflow script).
+
+### Step and report (version 1)
+
+`aos.fabric.step/1` (what the executor must do): `step_id` (`<iteration>-<node>-<attempt>`), `node`, `role` (agent slug),
+`kind` (`plan`, `techlead`, `human`, `build`, `review`, `ship`), `brief` (a Markdown file with the full task, written by the
+CLI; the Reviewer brief holds no goal and no claim of another node), `cwd`, `model_hint` (`{harness?, model?, models?}`
+from `pipeline.json`, never binding), `timeout_s` (per node in `.agents/nodes.json`), `scope`, `allowed_writes`,
+`expected_report`, `attempt`, `max_attempts`.
+
+`aos.fabric.report/1` (what the executor hands back): required are `schema`, `step_id` and `status` (`ok`, `fail`,
+`escalate`). Optional: `exit_code`, `findings[]` (`id`, `severity` blocking|advisory, `node`, `summary`, `status`),
+`artifacts` (`plan` for Architect, the node's `artifactKey` for build nodes), `files_changed`, `needs_human`, `executor`,
+`gate` (Shipping: `lint typecheck tests a11y seo security`, each `pass|fail|skip`), `optional_nodes` (Architect: optional
+build nodes the plan needs). A TechLead rejection is `ok` plus blocking findings for `architect`; a human change request is
+`fail` plus a blocking finding for `architect`. Another major version is exit 2; unknown fields of major 1 are ignored
+but kept in the event log.
+
+**The report is a proposal.** `report` checks it against reality: `artifacts` must exist inside the work tree (no
+absolute path, no `..`, no link leaving it), Shipping must give every gate key, and `git status` is compared with the
+snapshot taken when the step was issued: a path changed outside `allowed_writes` (or outside the work tree) turns the
+report into a failed step. A work tree that is no git repository cannot be checked and is noted in the event.
+
+### State
+
+`production_artifacts/runs/<id>/` holds `events.jsonl` (append-only, the truth; each event carries the state it produced),
+`state.json` (projection), `steps/<step_id>.json` and `briefs/<step_id>.md` (immutable once issued), `reports/` and
+`state.lock`. Only the CLI writes them. A write is: lock (`wx`, pid and time; a lock older than 60 s whose pid is dead is
+taken over), append the event, then rewrite the projection and mirror it to `production_artifacts/state.json`, which the
+graph-gate hook reads. Files are written to a temp file, synced and renamed. A torn last log line is dropped on read, a
+broken line in the middle is exit 7. `.agents/state.schema.json` gained the optional `attempts` and `last_blocking_ids`
+and the phase `cancelled`; older state files stay valid.
+
+### Executors
+
+One contract for all: brief and work directory in, report file out, exit 0 on a normal end. The driver enforces
+`timeout_s` (stop signal, hard kill after 10 s, report `fail` with exit code 124), and fails closed: a crash, a
+missing or a broken report is a failed step. A report the executor printed as its last JSON object instead of writing is
+accepted from stdout. The harness is `model_hint.harness`, else the harness this process runs in (the session variables of
+`aos-gate`), else the first of `claude codex opencode agy` on PATH; none found is exit 1 and the step stays open.
+
+| Harness | Run as | Permissions |
+|---|---|---|
+| claude, opencode, agy | `aos-acp <harness> --name fabric-<run>-<step> --prompt-file <brief> --allow-default scoped|deny --timeout <s>` (the GO gate applies) | `scoped` when the step may write, else `deny`. agy cannot limit write paths per tool call: for a writing step it needs `--sandbox coop|wsl2` (or `AOS_FABRIC_SANDBOX`), else the step fails with `agy-scope`. |
+| codex | `codex exec --sandbox workspace-write|read-only` through `codexInvocation` (as the A2A spawn executor does) | by the same write rule |
+| AO (optional) | `ao spawn --project --name --role --harness --prompt`; completion is the report file | `--executor ao`, or `auto` when `ao` is on PATH and `/health` answers within 1 s. Absent AO falls back to aos-acp and says so in the event log. Unverified against a live AO. |
+
+The `human` step runs `aos-plan-canvas open <plan> --await` and maps the verdict (`approve` -> `ok`, comments or
+request-changes -> `fail` with the feedback, ended session or timeout -> `escalate`); `AOS_PLAN_APPROVAL=auto` skips it
+(CI only, prints a warning). Workers get no proxy variables and run with `AOS_A2A_SIDECAR=off`, like A2A workers.
+`AOS_FABRIC_FAKE_EXECUTOR=<script.js>` with `--executor fake` runs a script instead of a harness: tests only.
+
+### Engines of the workflow script
+
+`.claude/workflows/fabric-dispatch.mjs` keeps its legacy engine (profiles, workstreams, archify boundary check) as the
+default. `--engine=cli` in the goal, or `AOS_FABRIC_ENGINE=cli`, makes it a thin client of `aos-fabric`: `start`, then a loop of
+`next`, an agent as executor and `report` (inside a workflow runtime), or `drive` (anywhere else). The client does not support
+`--profile` and `--workstreams` yet and says so.
+
+### Tests
+
+`tests/fabric-schema`, `-store`, `-edges` (one row per edge plus the nine dispatcher scenarios), `-verify`, `-engine`,
+`-cli`, `-executors`, `-drive`, `-dispatch-client` and `-smoke.test.mjs`. The smoke test drives a whole run for each of
+the four harnesses with fake `claude`, `codex`, `opencode`, `agy` (and `npx`) binaries on PATH that only write a report; it
+runs in the full suite and, on macOS, Linux and Windows, in the `Fabric smoke` CI job.
+
+---
+
 ## What Exists in Version 1 (WP1, WP2 & WP3)
 
 ### 1. Role Registry Engine
@@ -154,7 +267,7 @@ Stored at `.aos/teams/desktop-app.json` or `~/.aos/teams/desktop-app.json`:
 
 ## What is NOT Built Yet (Future Work Packages)
 
-The following components are defined in the architectural plan (`/Users/timrennings/.aos/briefs/plan-fabric.md`) and are intentionally out of scope for WP1, WP2 & WP3:
+The following components are defined in the architectural plan (`~/.aos/briefs/plan-fabric.md`) and are intentionally out of scope for WP1, WP2 & WP3:
 
 1. **Dedicated Dispatcher-Level Loop Orchestrator (WP5, partially shipped):**
    - The loop currently ships as the flow-loop template above, driven by the harness loop mechanism.

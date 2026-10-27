@@ -75,6 +75,24 @@ logs; it lasts for that session, for at most 24 hours.
   policy `manual` by default, so they always stop for a human unless the project
   changes that policy.
 
+## Build runs (aos-fabric)
+
+When a module has to build a change (action policy `implement`), the build itself is an `aos-fabric` run, the same loop
+in every harness and on macOS, Linux and Windows 10+: Architect, TechLead, a human plan verdict, the build nodes,
+Reviewer and Shipping (`docs/fabric.md`). AOS works without AO; AO is only one optional executor.
+
+```sh
+aos-fabric start --run fix-142 --goal-file .agent-factory/goal.md
+aos-fabric drive --run fix-142        # headless; or next / report by hand with your own executor
+```
+
+- `drive` ends at `ready_to_ship` (exit 0) or when a human is needed (exit 6). `ready_to_ship` is not a publish: pushing,
+  merging and releasing stay behind the action policy and the go-gate.
+- The plan verdict is a human step. In an unattended run nobody answers it, so there set `AOS_PLAN_APPROVAL=auto`
+  (it prints a warning and records that no human approved), or the run ends `escalated` after the await timeout.
+- The loop never grants a GO and never changes the gate mode. Its workers run through `aos-acp`, which asks the
+  go-gate for guarded commands.
+
 ## Unattended runs in a sandbox
 
 With no human at the keyboard, nobody can type `gogate off` or GO. For that case
@@ -83,11 +101,13 @@ gate is off, and brings only commits back. The host gate is not changed and has 
 sandbox shortcut: nothing a host session writes or exports loosens it.
 
 ```sh
-node <aos>/bin/aos-factory.mjs --unattended --image <image> --env ANTHROPIC_API_KEY -- claude -p "/factory"
+node <aos>/bin/aos-factory.mjs --unattended --image <image> --env <API_KEY_VARIABLE> -- \
+  sh -c 'aos-fabric start --run factory --goal-file .agent-factory/goal.md && aos-fabric drive --run factory'
 ```
 
-The image must contain `sh`, `node`, `git`, the agent CLI and the AOS hooks for
-that agent. AOS ships no image.
+`aos-fabric drive` runs the build loop on the agent CLIs inside the container, the same way in every
+harness (see "Build runs" below). The image must contain `sh`, `node`, `git`, AOS (the `aos-fabric` and `aos-acp`
+commands) and at least one agent CLI with the AOS hooks for it. AOS ships no image.
 
 **Isolated:**
 
