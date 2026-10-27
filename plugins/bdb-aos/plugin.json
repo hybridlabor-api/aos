@@ -1,6 +1,6 @@
 {
   "name": "bdb-aos",
-  "version": "5.3.0",
+  "version": "5.4.0-beta.1",
   "description": "Full BDB Agent OS suite: commands, 46 subagents and the fabric pipelines for Claude Code. Skills are installed separately by the AOS installer; gate hooks and MCP servers stay in the installer.",
   "author": {
     "name": "Tim Rennings / Hybridlabor Global LLC"

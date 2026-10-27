@@ -1,0 +1,55 @@
+name: npm-publish
+
+# Manual re-publish of an existing release tag, e.g. when the release-please run created
+# the tag but `npm publish` failed (expired token). Same dist-tag rule as release-please.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to publish, e.g. v5.4.0-beta.1'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z]+\.[0-9]+)?$' || { echo "invalid tag: $TAG"; exit 1; }
+
+      - name: Checkout tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          # prepack (scripts/build-shipped-hashes.mjs) needs every v* tag; a shallow clone has none.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Check tag matches package.json
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          [ "v$v" = "$TAG" ] || { echo "package.json is $v, tag is $TAG"; exit 1; }
+
+      - name: Publish to NPM
+        # A prerelease (5.0.0-beta.1) goes to its own dist-tag (beta, rc), never to latest.
+        run: |
+          v=$(node -p "require('./package.json').version")
+          case "$v" in
+            *-*) npm publish --access public --tag "$(echo "$v" | sed -E 's/^[^-]+-([A-Za-z]+).*/\1/')" ;;
+            *) npm publish --access public ;;
+          esac
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
