@@ -1,13 +1,9 @@
 ---
 name: agenttrail
 description: >-
-  agenttrail: live map of a multi-agent build in the browser: which plan component is being
-  worked on, by which agent or harness, what is done and what is stuck. Use
-  when a multi-agent pipeline starts (/startcycle, /startcycle-graph,
-  /teamwork-preview) or after a plan-canvas approve, when the user asks to see
-  what the agents are doing ("live map", "build board", "who is running now"),
-  or by yourself whenever a multi-agent run is under way — no user prompt
-  needed.
+  agenttrail: the live map of a multi-agent build. Use when a /fabric
+  pipeline runs, a plan-canvas approve lands, or agents run for a human to
+  watch.
 category: bdb-core
 metadata:
   version: "0.2.0"
@@ -49,6 +45,16 @@ The plan file uses components and tasks:
 - save the file immediately after each status change; never batch updates to the end
 - Mermaid blocks and prose may stay in the file; the map ignores them.
 
+## Tick the plan
+
+```bash
+aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]   # default --done
+```
+
+Sets exactly one checklist mark: `--doing` = `[~]`, `--done` = `[x]`, `--todo` = `[ ]`. Unknown, already-in-target-state or ambiguous ids exit 1 without touching the file.
+
+**Dispatchers, do this every run:** start every worker with `AOS_TRAIL_NODE=<node-id>` and `AOS_TRAIL_PLAN=<plan-file>` in its environment (`aos-acp --trail-node <id> --trail-plan <file>` does this). Run `aos-trail tick <plan> <task-id> --doing` the moment a worker starts a task and `--done` when it lands. While a stamped worker edits, the map shows its node's first open task as `[~]` in the model only — the plan file is never written automatically and a session end ticks nothing: the dispatcher owns every tick. Never expect the worker to maintain the plan file.
+
 ## Live agent events
 
 The AOS installer registers `.claude/hooks/trail-relay.mjs --agent <harness>` for Claude Code (PreToolUse, PostToolUse, SessionStart, Stop, SubagentStop), Antigravity and Codex (PreToolUse, Stop). The OpenCode plugin and mcsc (for the CLI workers it delegates to) post events directly. Events are fire-and-forget (300 ms cap) and never block a tool call; with no map running they are dropped.
@@ -56,6 +62,20 @@ The AOS installer registers `.claude/hooks/trail-relay.mjs --agent <harness>` fo
 **Automatic node link.** A dispatcher sets `AOS_TRAIL_NODE=<node-id>` and `AOS_TRAIL_PLAN=<plan-file>` when it starts a worker (`aos-acp --trail-node <id> --trail-plan <file>` does this). The relay stamps both onto every event, so the node is live on the map while the worker reports and is shown as touched, not done, after its Stop or SessionEnd. Interactive sessions: `aos-trail emit task.update --task <id> --status doing --plan <file>`.
 
 A component's `url:` may be a path under `production_artifacts/` — the map serves that folder, so e.g. `url: production_artifacts/00_architecture.html` opens the archify diagram from the card.
+
+## Cross-origin reads (local apps)
+
+`GET /model` and `GET /events` (plus their `OPTIONS` preflight) send `Access-Control-Allow-Origin: <origin>` and `Vary: Origin` for loopback origins only: `localhost`, `127.0.0.1`, `[::1]`, any `*.localhost`, and `tauri://localhost` / `(http|https)://tauri.localhost`. Every other route (`/answer`, `/spawn`, `/ask/*`, click/GO) gets no `Access-Control-*` headers. The daemon still binds `127.0.0.1`, and `Host: <name>.localhost:<port>` is accepted on the guarded routes.
+
+To allow more origins, create `~/.aos/agenttrail.json` (read at daemon start, never written or removed by AOS installers):
+
+```json
+{ "corsOrigins": ["http://my-dashboard.example:3000"] }
+```
+
+Entries are exact origins added to the defaults; any entry equal to `"*"` (alone or among others) allows every origin on the two read-only routes. A file over 64 KiB, an unreadable file (EACCES, EISDIR) or malformed JSON logs one line and falls back to the defaults; a missing file is silent. `AOS_TRAIL_CORS_ORIGINS` (comma list) overrides the file.
+
+**What this exposes.** `/model` and `/events` return the full map state: the repo tree, absolute local paths, plan and task text, and ask/todo text. Any web app running on an allowed origin (every localhost port, every `*.localhost` name, plus anything you add or `"*"`) can read it, so only run local apps you trust, and avoid `"*"` unless you accept that. Every route also rejects a `Host` that is not `localhost:<port>`, `127.0.0.1:<port>` or `<name>.localhost:<port>` with 403 (DNS-rebinding guard).
 
 ## Stop
 

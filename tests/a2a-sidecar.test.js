@@ -154,6 +154,17 @@ test("parentPid death unregisters within 12s", async (t) => {
   s.stop();
 });
 
+// Codex (shared host): an owner pid that is already gone must not stop the sidecar; only the idle reaper ends it.
+test("a codex sidecar with an exited parentPid stays up (owner watch skipped)", async () => {
+  const child = spawn(process.execPath, ["-e", "0"]);
+  await new Promise((r) => child.once("exit", r));
+  const s = await sidecar.startSidecar({ name: "s-codex-dead", harness: "codex", profile: profile(), parentPid: child.pid });
+  try {
+    await new Promise((r) => setTimeout(r, 6500));
+    assert.ok(reg.list().some((e) => e.name === "s-codex-dead"), "codex sidecar must survive a dead owner pid");
+  } finally { s.stop(); }
+});
+
 test("AOS_A2A_SIDECAR=off rejects", async () => {
   process.env.AOS_A2A_SIDECAR = "off";
   try {
@@ -164,4 +175,37 @@ test("AOS_A2A_SIDECAR=off rejects", async () => {
   } finally {
     delete process.env.AOS_A2A_SIDECAR;
   }
+});
+
+// B1: a sibling sidecar under the same parent pid is only swept for claude (one process per session). Shared hosts
+// (agy, codex) and opencode (one process, many sessions) keep their live siblings. The sibling is a real process.
+const sleeper = () => spawn(process.execPath, ["-e", "setTimeout(()=>{},60000)"]);
+for (const harness of ["codex", "agy", "opencode"]) {
+  test(`two ${harness} sidecars sharing one parentPid both survive`, async () => {
+    const owner = sleeper();
+    const sibling = sleeper();
+    try {
+      reg.register({ name: `sib-${harness}`, harness, pid: sibling.pid, parentPid: owner.pid, url: "http://127.0.0.1:1/a2a", cardUrl: "http://127.0.0.1:1/c", token: "t" });
+      const s = await sidecar.startSidecar({ name: `new-${harness}`, harness, profile: profile(), parentPid: owner.pid });
+      try {
+        await new Promise((r) => setTimeout(r, 300));
+        assert.doesNotThrow(() => process.kill(sibling.pid, 0), "sibling must not be signalled");
+        assert.equal(sibling.killed, false);
+      } finally { s.stop(); }
+    } finally { owner.kill("SIGKILL"); sibling.kill("SIGKILL"); reg.unregister(`sib-${harness}`); }
+  });
+}
+
+test("a claude sidecar replaces the stale-but-fresh sibling of the same claude process (/clear)", async () => {
+  const owner = sleeper();
+  const sibling = sleeper();
+  try {
+    reg.register({ name: "sib-claude", harness: "claude", pid: sibling.pid, parentPid: owner.pid, url: "http://127.0.0.1:1/a2a", cardUrl: "http://127.0.0.1:1/c", token: "t" });
+    const s = await sidecar.startSidecar({ name: "new-claude", harness: "claude", profile: profile(), parentPid: owner.pid });
+    try {
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline && sibling.exitCode === null && sibling.signalCode === null) await new Promise((r) => setTimeout(r, 50));
+      assert.ok(sibling.signalCode === "SIGTERM" || sibling.exitCode !== null, "claude sibling is swept");
+    } finally { s.stop(); }
+  } finally { owner.kill("SIGKILL"); sibling.kill("SIGKILL"); reg.unregister("sib-claude"); }
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,6 +17,7 @@ const manifests = [
   'plugins/bdb-aos-fleet/.claude-plugin/plugin.json',
   'plugins/bdb-aos-sessions/.claude-plugin/plugin.json',
   'plugins/bdb-aos-alert/.claude-plugin/plugin.json',
+  'plugins/bdb-aos-control/.claude-plugin/plugin.json',
   '.codex-plugin/plugin.json',
   'plugins/bdb-aos-codex/.codex-plugin/plugin.json',
   '.agents/plugins/marketplace.json',
@@ -118,11 +119,29 @@ test('content parity of the generated manifest copies', () => {
   assert.deepEqual(json('plugins/bdb-aos/plugin.json'), json('plugin.json'));
 });
 
-test('the claude manifest lists the full, sorted skill pack', () => {
+test('the claude manifest is slim: no skills key; the full pack lives in skills.sh.json', () => {
   const manifest = json('.claude-plugin/plugin.json');
-  assert.ok(manifest.skills.length > 100, `expected the full skill pack, got ${manifest.skills.length}`);
-  assert.deepEqual(manifest.skills, [...manifest.skills].sort(), 'skills must be sorted for a stable diff');
-  for (const ref of manifest.skills) {
-    assert.ok(existsSync(join(ROOT, ref, 'SKILL.md')), `SKILL.md missing for ${ref}`);
+  assert.equal(manifest.skills, undefined,
+    'the plugin must not bundle skills (the AOS installer installs them from loose copies)');
+  // The installer's registry carries the full, unique skill pack.
+  const skillsSh = json('skills.sh.json');
+  const pack = skillsSh.groupings.flatMap((g) => (Array.isArray(g.skills) ? g.skills : []));
+  assert.ok(pack.length > 100, `expected the full skill pack in skills.sh.json, got ${pack.length}`);
+  for (const g of skillsSh.groupings) {
+    assert.deepEqual(g.skills, [...g.skills].sort(), `skills.sh.json group "${g.title}" must be sorted for a stable diff`);
+  }
+  // every registered skill name resolves to a SKILL.md in the skills/ tree
+  const dirs = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      const full = join(dir, e.name);
+      if (existsSync(join(full, 'SKILL.md'))) dirs.push(e.name); else walk(full);
+    }
+  };
+  walk(join(ROOT, 'skills'));
+  assert.ok(new Set(pack).size === pack.length, 'skills.sh.json lists each skill once');
+  for (const name of pack) {
+    assert.ok(dirs.includes(name), `SKILL.md missing for registered skill ${name}`);
   }
 });

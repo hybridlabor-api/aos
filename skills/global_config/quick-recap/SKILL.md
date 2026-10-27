@@ -1,6 +1,6 @@
 ---
 name: quick-recap
-description: Use when the user wants each agent response to end with a red/yellow/green status line showing whether the work is finished, pending a follow-up, or blocked on input.
+description: Use when each agent response should end with a red/yellow/green status line showing whether work is finished, pending follow-up, or blocked.
 category: bdb-core
 source: BuilderIO/skills
 ---
@@ -8,6 +8,18 @@ source: BuilderIO/skills
 # Quick Recap
 
 Make completion state obvious at the end of every response.
+
+## Plan first
+
+For finished work that needs a quick visual summary, build a `recap` page:
+
+```bash
+aos-plan-canvas new recap <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Status Block
 

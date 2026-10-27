@@ -1,6 +1,6 @@
 ---
 name: pr-recap
-description: Use when a PR or git range needs a visual recap page for a reviewer, with a changed-files tree, per-file notes, a Verified vs Not verified table, risks, and optional before/after images. Local and informational; never posts to GitHub.
+description: "Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts."
 category: engineering-method
 user-invocable: true
 ---
@@ -8,6 +8,18 @@ user-invocable: true
 # PR Recap
 
 Turns a PR or a git range into a Plan Builder recap page (`kind: recap`, the `recap-review` shape). The page is a local review aid. It is informational and does not gate anything.
+
+## Plan first
+
+A recap page uses the `recap-review` shape. The script in this skill writes the same shape (frontmatter, `FileTree`, `ImplementationMap`, verification table) from the real diff, but generates its own `plan.mdx` rather than copying the template. By hand:
+
+```bash
+aos-plan-canvas new recap-review <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## When to use
 

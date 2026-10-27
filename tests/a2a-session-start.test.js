@@ -7,7 +7,7 @@ import { test } from "node:test";
 
 process.env.AOS_SESSIONS_DIR = mkdtempSync(join(tmpdir(), "aos-a2a-sess-"));
 
-const { ensureSidecar, sessionName } = await import("../lib/a2a-session.mjs");
+const { ensureSidecar, sessionName, resolveHarnessPid } = await import("../lib/a2a-session.mjs");
 const { sessionsDir } = await import("../lib/a2a-registry.mjs");
 
 const SESSION_ID = "ABCD1234-efgh";
@@ -166,4 +166,23 @@ test("Codex SessionStart hook prints the session's own peer name as additionalCo
   const off = spawnSync(process.execPath, [hook, "--harness", "codex"], { env: { ...env, AOS_A2A_SIDECAR: "off" }, input: JSON.stringify({ session_id: "01A13768-5405-78a1" }), encoding: "utf8" });
   assert.equal(off.status, 0);
   assert.equal(off.stdout, "", "sidecar off: no identity line");
+});
+
+test("resolveHarnessPid: win32 skips the shell wrapper and returns the harness pid", () => {
+  const chain = () => "400,cmd.exe\r\n300,bash.exe\r\n200,claude.exe\r\n100,explorer.exe\r\n";
+  assert.equal(resolveHarnessPid(400, { platform: "win32", chain }), 200);
+});
+
+test("resolveHarnessPid: falls back to ppid on query failure, empty or shell-only output", () => {
+  assert.equal(resolveHarnessPid(400, { platform: "win32", chain: () => { throw new Error("timeout"); } }), 400);
+  assert.equal(resolveHarnessPid(400, { platform: "win32", chain: () => "" }), 400);
+  assert.equal(resolveHarnessPid(400, { platform: "win32", chain: () => "400,cmd.exe" }), 400);
+  assert.equal(resolveHarnessPid(400, { platform: "linux", chain: () => { throw new Error("ps missing"); } }), 400);
+  assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,sh\n" }), 400);
+});
+
+test("resolveHarnessPid: POSIX skips a shell wrapper (sh, zsh, login -zsh) and returns the harness pid", () => {
+  assert.equal(resolveHarnessPid(400, { platform: "linux", chain: () => "400,sh\n300,claude\n100,systemd\n" }), 300);
+  assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,-zsh\n300,node\n" }), 300);
+  assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,node\n" }), 400, "a non-shell ppid is already the harness");
 });

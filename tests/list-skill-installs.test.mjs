@@ -49,8 +49,8 @@ async function fixtureRepo() {
   const root = await mkdtemp(join(tmpdir(), 'list-skill-installs-test-'));
   const sub = `${root}-${Math.random().toString(36).slice(2)}`;
   await mkdir(sub, { recursive: true });
-  await writeSkill(sub, 'basic/startcycle', 'startcycle', 'pipeline');
-  await writeSkill(sub, 'basic/startcycle-graph', 'startcycle-graph', 'pipeline');
+  await writeSkill(sub, 'basic/fabric', 'fabric', 'pipeline');
+  await writeSkill(sub, 'basic/fabric-graph', 'fabric-graph', 'pipeline');
   await writeSkill(sub, 'global_config/ao-orchestrator', 'ao-orchestrator', 'bdb-core');
   await writeSkill(sub, 'global_config/bdb-memb', 'bdb-memb', 'memb');
   await writeSkill(sub, 'workspace_agents/pb-bug-fix', 'pb-bug-fix', 'playbook');
@@ -71,8 +71,8 @@ test('tiers, ordering, uniqueness, exact commands', async () => {
     assert.equal(exitCode, 0);
     const lines = out.split('\n').filter(Boolean);
     assert.deepEqual(lines, [
-      'npx skills add hybridlabor-api/aos --skill startcycle -y',
-      'npx skills add hybridlabor-api/aos --skill startcycle-graph -y',
+      'npx skills add hybridlabor-api/aos --skill fabric -y',
+      'npx skills add hybridlabor-api/aos --skill fabric-graph -y',
       'npx skills add hybridlabor-api/aos --skill ao-orchestrator -y',
       'npx skills add hybridlabor-api/aos --skill bdb-memb -y',
       'npx skills add hybridlabor-api/aos --skill pb-bug-fix -y',
@@ -80,8 +80,8 @@ test('tiers, ordering, uniqueness, exact commands', async () => {
     ]);
     const names = lines.map((l) => l.split('--skill ')[1]);
     assert.equal(new Set(names).size, names.length, 'each skill exactly once');
-    // tier ordering: startcycle* (1), ao-orchestrator bdb-core (2), bdb- (3), pb- (4), plain (5)
-    assert.ok(lines[0].includes('startcycle ') && lines[2].includes('ao-orchestrator'));
+    // tier ordering: fabric* (1), ao-orchestrator bdb-core (2), bdb- (3), pb- (4), plain (5)
+    assert.ok(lines[0].includes('fabric ') && lines[2].includes('ao-orchestrator'));
     assert.ok(lines[4].startsWith('npx skills add hybridlabor-api/aos --skill pb-'));
   } finally {
   }
@@ -91,8 +91,8 @@ test('folded description frontmatter is parsed; name only matters', async () => 
   const fx = await fixtureRepo();
   try {
     const { out } = await runScript(['--root', fx.root]);
-    assert.ok(out.includes('--skill startcycle -y'));
-    assert.ok(!out.includes('startcycle-graph-user'), 'only fixture skills appear');
+    assert.ok(out.includes('--skill fabric -y'));
+    assert.ok(!out.includes('fabric-multigraph'), 'only fixture skills appear');
     assert.equal(out.split('\n').filter((l) => l.includes('description')).length, 0);
   } finally {
   }
@@ -121,7 +121,7 @@ test('--tier filters', async () => {
   try {
     const { out } = await runScript(['--root', fx.root, '--tier', '2']);
     assert.ok(out.includes('--skill ao-orchestrator -y'));
-    assert.ok(!out.includes('--skill startcycle -y'));
+    assert.ok(!out.includes('--skill fabric -y'));
     assert.ok(!out.includes('--skill bdb-memb -y'));
   } finally {
   }
@@ -161,7 +161,7 @@ test('--out writes to a new file', async () => {
     const { exitCode } = await runScript(['--root', fx.root, '--out', target]);
     assert.equal(exitCode, 0);
     const content = await readFile(target, 'utf8');
-    assert.ok(content.includes('npx skills add hybridlabor-api/aos --skill startcycle -y'));
+    assert.ok(content.includes('npx skills add hybridlabor-api/aos --skill fabric -y'));
   } finally {
   }
 });

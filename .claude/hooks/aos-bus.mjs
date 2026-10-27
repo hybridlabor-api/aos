@@ -139,6 +139,10 @@ const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSy
 
 if (isMain()) {
   const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd === "help" || cmd === "-h" || cmd === "--help") {
+    console.log("aos-bus - master to session message bus (inbox files)\nUsage:\n  aos-bus send <name> <text...> [--from x] [--wake]\n  aos-bus list\nExit: 0 ok, 2 usage error or send refused. Details: aos help aos-bus");
+    process.exit(0);
+  }
   const opts = {}; const words = [];
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === "--from") opts.from = rest[++i];

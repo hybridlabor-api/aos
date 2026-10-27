@@ -61,7 +61,7 @@ test('installOpencodePlugin calls the flag writer and records it', () => {
     const body = src.slice(src.indexOf('function installOpencodePlugin('));
     const end = body.indexOf('\nfunction ', 10);
     const fn = body.slice(0, end);
-    assert.match(fn, /writeProfileFlag\(opencodeDir, contextHooksOn, memoryOn\)/);
+    assert.match(fn, /writeProfileFlag\(opencodeDir, contextHooksOn, memoryOn, gateEffective\)/);
     assert.match(fn, /recordOpencodeProfile\(targetHome/);
 });
 
@@ -99,6 +99,6 @@ test('no gate or A2A call site depends on contextHooks', () => {
 });
 
 test('only context hooks are skipped by the profile (list sanity)', () => {
-    assert.deepStrictEqual([...profile.CONTEXT_HOOKS].sort(), ['aos-session-hint.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'trail-autostart.mjs', 'trail-relay.mjs']);
+    assert.deepStrictEqual([...profile.CONTEXT_HOOKS].sort(), ['aos-session-hint.mjs', 'memb-inject.mjs', 'memb-session-save.mjs', 'rules-inject.mjs', 'trail-autostart.mjs', 'trail-relay.mjs']);
     for (const g of ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'graph-gate.mjs']) assert.ok(profile.ALWAYS_HOOKS.includes(g));
 });

@@ -4,10 +4,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { parsePlan } from './plan.mjs'
+import { parsePlan, firstOpenTaskId } from './plan.mjs'
 import { repoIdOf, fingerprint, planKey, groupInstances, ownerOf, classifyInstances } from './identity.mjs'
 import { lifecycle, stalledTasks, branchState, defaultBranchOf, CONFIG_DEFAULTS } from './stale.mjs'
-import { waitingList } from './sessions.mjs'
+import { waitingList, autoActiveTask } from './sessions.mjs'
 import { listWorktrees, selectPlan } from '../bin/repoid.mjs'
 
 // Card layout helpers. Pure and exported so the hub tests can table-drive them
@@ -103,14 +103,43 @@ function activityFor(instances, sessionTable) {
 
 // A session's task.update names a plan node by id and points at its plan file.
 // Only the plan it names counts, so the same id in another plan stays untouched.
+//
+// Auto state (model-only, the plan file is never written): a worker stamped with
+// a node id (AOS_TRAIL_NODE + AOS_TRAIL_PLAN, or the brief marker) that has made
+// its first file edit reads its node's FIRST OPEN task as [~] in the model.
+// When the worker's session ends, the overlay simply disappears — nothing is
+// auto-ticked; the dispatcher owns every tick.
 function liveTasksFor(primary, sessions, now, cfg) {
   const live = new Map()
+  const taskIds = new Set(primary.plan.nodes.filter((n) => n.level === 'task').map((n) => n.id))
+  const componentIds = new Set(primary.plan.nodes.filter((n) => n.level === 'component').map((n) => n.id))
+  const admit = (taskId, s, auto = false) => {
+    live.set(taskId, {
+      status: auto ? 'doing' : (s.currentTask && s.currentTask.status) || 'doing',
+      ...(auto ? { auto: true } : {}),
+      harness: s.harness || '',
+      name: s.name || '',
+      at: new Date(s.lastEventAt || 0).toISOString(),
+    })
+  }
   for (const s of sessions) {
-    const task = s.currentTask
-    if (!task || !task.id || !task.plan || s.done) continue
-    if (now - (s.lastEventAt || 0) >= cfg.liveMs) continue
-    if (path.resolve(primary.path, task.plan) !== primary.planPath) continue
-    live.set(task.id, { status: task.status, harness: s.harness || '', name: s.name || '', at: new Date(s.lastEventAt || 0).toISOString() })
+    const direct = s.currentTask
+    if (direct && direct.id && !s.done && now - (s.lastEventAt || 0) < cfg.liveMs) {
+      // A session stamped via env names its plan outright; a brief-marker session
+      // may carry no plan — the hub then adopts the checkout's primary plan.
+      const planResolved = direct.plan
+        ? path.resolve(primary.path, direct.plan) === primary.planPath
+        : primary.plan.nodes.some((n) => n.id === direct.id)
+      if (planResolved && taskIds.has(direct.id)) {
+        admit(direct.id, s)
+        continue
+      }
+    }
+    const claimed = autoActiveTask(s, { now, liveMs: cfg.liveMs })
+    if (!claimed || path.resolve(primary.path, claimed.plan) !== primary.planPath) continue
+    if (!componentIds.has(claimed.id) || taskIds.has(claimed.id)) continue
+    const openId = firstOpenTaskId(primary.plan.nodes, claimed.id)
+    if (openId && !live.has(openId)) admit(openId, s, true)
   }
   return live
 }
@@ -139,7 +168,7 @@ export function buildModel({
   for (const entry of repos) {
     const stat = statSafe(entry.root)
     if (!stat || !stat.isDirectory()) continue
-    const repoId = repoIdOf(entry.root)
+    const repoId = memo(`id|${entry.root}`, () => repoIdOf(entry.root), TTL.defaultBranch)
     const worktrees = memo(`wt|${repoId}`, () => listWorktrees(repoId, 24), TTL.worktrees)
     // One git call per repo for the default branch, then reuse it for every plan:
     // branchState spawns 2-3 processes, and a model build runs once per request.
@@ -212,8 +241,21 @@ const live = inPrimary.some((s) => now - (s.lastEventAt || 0) < cfg.liveMs && !s
         owner: { path: primary.path, branch: primary.branch },
         mirrors: mirrors.map((m) => ({ path: m.path, branch: m.branch })),
         divergent: divergent.map((m) => ({ path: m.path, branch: m.branch, tasks: differingTasks(m, primary) })),
-        components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files, needs: c.needs, links: c.links, tech: c.tech })),
-        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent, live: liveTasks.get(t.id) || null, touchedAt: touchedTasks.get(t.id) || null })),
+        components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files, needs: c.needs, links: c.links, tech: c.tech, by: c.by })),
+        tasks: tasks.map((t) => {
+          const liveTask = liveTasks.get(t.id) || null
+          return {
+            id: t.id,
+            title: t.title,
+            // Auto state reads as [~] without the file being touched: an overlay
+            // entry from a node-stamped worker overrides a pending plan status
+            // in the model only.
+            status: liveTask && liveTask.auto ? 'active' : t.status,
+            parent: t.parent,
+            live: liveTask,
+            touchedAt: touchedTasks.get(t.id) || null,
+          }
+        }),
         progress: { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length, stalled: stalled.size, live: tasks.filter((t) => liveTasks.has(t.id)).length },
         lastActivity: new Date(lastActivity).toISOString(),
       }

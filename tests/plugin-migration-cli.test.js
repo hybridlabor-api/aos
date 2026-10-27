@@ -69,14 +69,15 @@ function staleUpdateRunner(h, { bumpTo }) {
 const migrate = (h, manifest, extra) => pm.migrate({ home: h, manifest, detected: ['claudecode'], version: '9.9.9', ...extra });
 const mutating = (calls) => calls.filter((c) => /marketplace (add|remove)|plugin (install|update)/.test(c));
 
-test('add + install succeed, loose copies retired in the SAME run, second run is a no-op', () => {
+test('add + install succeed, loose copies stay, second run is a no-op', () => {
   const h = home();
   const { manifest, file } = seedLoose(h);
   const f = fake(h);
   const r = migrate(h, manifest, { cli: f.runner });
   assert.deepEqual(mutating(f.calls), [`plugin marketplace add ${OWN}`, 'plugin install bdb-aos@bdb-marketplace']);
-  assert.ok(r.covered.has('claudecode'));
-  assert.ok(!fs.existsSync(file));
+  assert.equal(r.covered.size, 0, 'the slim plugin does not retire loose copies');
+  assert.ok(fs.existsSync(file), 'loose copy stays');
+  assert.ok(r.lines.some((l) => /bdb-aos@bdb-marketplace installed/.test(l)));
   const f2 = fake(h, { marketplaces: { 'bdb-marketplace': OWN }, plugins: { 'bdb-aos@bdb-marketplace': '9.9.9' } });
   migrate(h, {}, { cli: f2.runner });
   assert.deepEqual(mutating(f2.calls), []);
@@ -88,7 +89,7 @@ test('claude missing: one manual line, copies kept, nothing thrown', () => {
   const r = migrate(h, manifest, { cli: fake(h, { missing: true }).runner });
   assert.equal(r.covered.size, 0);
   assert.ok(fs.existsSync(file));
-  const l = r.lines.filter((x) => /not on PATH/.test(x));
+  const l = r.lines.filter((x) => /not found on PATH/.test(x));
   assert.equal(l.length, 1);
   assert.match(l[0], /claude plugin marketplace add hybridlabor-api\/aos ; claude plugin install bdb-aos@bdb-marketplace/);
 });
@@ -122,7 +123,8 @@ test('external marketplace replaced in settings: removed, own added, plugin inst
   const f = fake(h, { marketplaces: { 'bdb-marketplace': EXT } });
   const r = migrate(h, {}, { cli: f.runner });
   assert.deepEqual(mutating(f.calls), ['plugin marketplace remove bdb-marketplace', `plugin marketplace add ${OWN}`, 'plugin install bdb-aos@bdb-marketplace']);
-  assert.ok(r.covered.has('claudecode'));
+  assert.ok(r.lines.some((l) => /bdb-aos@bdb-marketplace installed/.test(l)));
+  assert.ok(!pm.pluginStepFailed(r));
 });
 
 test('external marketplace that other plugins use is never removed', () => {
@@ -169,7 +171,7 @@ test('install reporting "already installed" with a non-zero exit is not a failur
   seedInstalled(h);
   const f = fake(h, { marketplaces: { 'bdb-marketplace': OWN }, installOut: { ok: false, stderr: 'Plugin bdb-aos@bdb-marketplace is already installed' } });
   const r = migrate(h, {}, { cli: f.runner });
-  assert.ok(r.covered.has('claudecode'));
+  assert.ok(r.lines.some((l) => /was already installed/.test(l)));
   assert.ok(!r.lines.some((x) => /Run these two commands/.test(x)));
 });
 
@@ -221,19 +223,66 @@ test('CLAUDE_CONFIG_DIR is honoured for settings and plugin detection', () => {
 test('pluginInstalled follows plugin.json skills and nested layouts, and requires every wanted skill', () => {
   const h = home();
   const installPath = path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '2.0.0');
-  for (const rel of ['skills/basic/startcycle', 'skills/global_config/memb-skill', 'extra/other-skill']) {
+  for (const rel of ['skills/basic/fabric', 'skills/global_config/memb-skill', 'extra/other-skill']) {
     fs.mkdirSync(path.join(installPath, rel), { recursive: true });
     fs.writeFileSync(path.join(installPath, rel, 'SKILL.md'), 'x');
   }
   fs.mkdirSync(path.join(installPath, 'skills', 'node_modules', 'ghost'), { recursive: true });
   fs.writeFileSync(path.join(installPath, 'skills', 'node_modules', 'ghost', 'SKILL.md'), 'x');
-  fs.writeFileSync(path.join(installPath, 'plugin.json'), JSON.stringify({ name: 'bdb-aos', skills: ['./skills/basic/startcycle', './skills/global_config', '../outside'] }));
+  fs.writeFileSync(path.join(installPath, 'plugin.json'), JSON.stringify({ name: 'bdb-aos', skills: ['./skills/basic/fabric', './skills/global_config', '../outside'] }));
   fs.writeFileSync(path.join(h, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'bdb-aos@bdb-marketplace': [{ installPath }] } }));
-  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['memb-skill', 'startcycle']);
-  assert.equal(pm.pluginInstalled(h, ['startcycle', 'memb-skill']), true);
-  assert.equal(pm.pluginInstalled(h, ['startcycle', 'not-delivered']), false, 'one missing wanted skill blocks it');
+  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['fabric', 'memb-skill']);
+  assert.equal(pm.pluginInstalled(h, ['fabric', 'memb-skill']), true);
+  assert.equal(pm.pluginInstalled(h, ['fabric', 'not-delivered']), false, 'one missing wanted skill blocks it');
   assert.equal(pm.pluginInstalled(h, ['other-skill']), false, 'not declared in plugin.json');
   assert.equal(pm.pluginInstalled(h, ['ghost']), false, 'node_modules is skipped');
   fs.writeFileSync(path.join(installPath, 'plugin.json'), JSON.stringify({ name: 'bdb-aos' }));
-  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['memb-skill', 'startcycle'], 'default ./skills is walked recursively');
+  assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['fabric', 'memb-skill'], 'default ./skills is walked recursively');
+});
+
+// Issue #54: ONE summary line for the end of the install/update output when the plugin step failed.
+test('pluginFixSummary: null on success, null without a result, one line with both shell fixes on failure', () => {
+  const good = { lines: ['claudecode: bdb-aos plugin registered.', 'claude: bdb-aos@bdb-marketplace installed.'] };
+  assert.equal(pm.pluginFixSummary(good), null);
+  assert.equal(pm.pluginFixSummary(null), null);
+  assert.equal(pm.pluginFixSummary({ lines: [] }), null);
+
+  const miss = pm.pluginFixSummary({ lines: ['claude: the claude CLI was not found on PATH or in a known install location; loose copies kept. Run these two commands: claude plugin marketplace add hybridlabor-api/aos ; claude plugin install bdb-aos@bdb-marketplace'] });
+  assert.match(miss, /⚠️/);
+  assert.match(miss, /NOT installed/);
+  assert.match(miss, /not found on PATH/);
+  assert.match(miss, /PowerShell: claude plugin marketplace add hybridlabor-api\/aos; claude plugin install bdb-aos@bdb-marketplace/);
+  assert.match(miss, /bash: claude plugin marketplace add hybridlabor-api\/aos && claude plugin install bdb-aos@bdb-marketplace/);
+  assert.equal(miss.split('\n').length, 1, 'exactly one line');
+
+  const reg = pm.pluginFixSummary({ lines: ['claudecode: plugin registration failed (settings.json not readable); loose copies kept.'] });
+  assert.match(reg, /reason: plugin registration failed \(settings\.json not readable\)/);
+});
+
+test('pluginStepFailed matches every failure shape, nothing else', () => {
+  assert.equal(pm.pluginStepFailed({ lines: ['claude: `claude plugin list` failed; loose copies kept. Run these two commands: x'] }), true);
+  assert.equal(pm.pluginStepFailed({ lines: ['claude: `claude plugin install bdb-aos@bdb-marketplace` timed out; loose copies kept. Run these two commands: x'] }), true, 'timed out lines come from manual()');
+  assert.equal(pm.pluginStepFailed({ lines: ['[check] claudecode: would register the bdb-aos plugin'] }), false);
+  assert.equal(pm.pluginStepFailed(undefined), false);
+});
+
+test('doctorPluginRow: missing, installed+disabled, installed+enabled, CLI failure', () => {
+  const list = (status) => `  ❯ bdb-aos@bdb-marketplace\n    Version: 5.4.0\n    Status: ${status}\n`;
+  const missing = pm.doctorPluginRow({ status: 0, stdout: '  ❯ other@x\n    Status: enabled\n' });
+  assert.equal(missing.ok, false);
+  assert.match(missing.detail, /does not show bdb-aos@bdb-marketplace/);
+  const off = pm.doctorPluginRow({ status: 0, stdout: list('disabled') });
+  assert.deepEqual([off.ok, off.fix], [false, 'claude plugin enable bdb-aos@bdb-marketplace']);
+  assert.match(off.detail, /installed, disabled \(version 5\.4\.0\)/);
+  const on = pm.doctorPluginRow({ status: 0, stdout: list('enabled') });
+  assert.deepEqual([on.ok, on.fix], [true, null]);
+  assert.match(pm.doctorPluginRow({ status: 1, stderr: 'boom\nmore', stdout: '' }).detail, /failed \(boom\)/);
+});
+
+test('ensureClaudePlugin with a missing CLI produces the summary line through migrate', () => {
+  const h = home();
+  const r = migrate(h, seedLoose(h).manifest, { cli: () => ({ ok: false, missing: true }) });
+  const line = pm.pluginFixSummary(r);
+  assert.ok(line, `expected a fix line, got: ${JSON.stringify(r.lines)}`);
+  assert.match(line, /not found on PATH/);
 });

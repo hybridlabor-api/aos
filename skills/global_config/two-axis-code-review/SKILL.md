@@ -1,6 +1,6 @@
 ---
 name: two-axis-code-review
-description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\"."
+description: "Two-axis review since a fixed point: Standards (repo standards) and Spec (matches the issue) in parallel sub-agents. Use to review a branch, PR or WIP changes."
 category: engineering-method
 source: "adapted from mattpocock/skills (MIT) — https://github.com/mattpocock/skills/tree/main/skills/engineering/code-review"
 ---
@@ -13,6 +13,18 @@ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
 Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
 
 If the originating issue lives in a tracker, fetch it with `gh issue view` (GitHub) or read it from `production_artifacts/`. For an adversarial single-axis review of build output, `requesting-code-review` and the `reviewer` agents remain the pipeline path; this skill is the two-axis (Standards + Spec) report.
+
+## Plan first
+
+Open the review from the `recap-review` template so both axes land in one document the author can point at:
+
+```bash
+aos-plan-canvas new recap-review <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Process
 

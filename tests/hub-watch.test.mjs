@@ -126,3 +126,28 @@ test('a restart that throws records lastError and still counts', async () => {
   const parsed = JSON.parse(readFileSync(statusFile, 'utf8'));
   assert.equal(parsed.services.memb.lastError, 'launchd blew up');
 });
+
+test('a service the user disabled in settings is never started or restarted', async () => {
+  const { w, restarts } = mk(() => [row('memb', false), row('synapse', false)], { isDisabled: (id) => id === 'memb' });
+  await w.tick();
+  await w.tick();
+  assert.deepEqual(restarts.map((r) => r.id), ['synapse']);
+});
+
+test('unloaded launchd job with a plist is started (reboot case); unloaded without plist is left alone', async () => {
+  const rows = () => [
+    row('ao', false, { loaded: false, status: 'service not loaded' }),
+    row('memb', false, { loaded: false }),
+  ];
+  const { w, restarts } = mk(rows);
+  await w.tick();
+  await w.tick();
+  assert.deepEqual(restarts.map((r) => [r.id, r.action]), [['ao', 'start']]);
+});
+
+test('onRows gets every round and a throwing hook never breaks the round', async () => {
+  const got = [];
+  const { w } = mk(() => [row('memb', true)], { onRows: async (rows) => { got.push(rows.length); throw new Error('disk full'); } });
+  await w.tick();
+  assert.deepEqual(got, [1]);
+});

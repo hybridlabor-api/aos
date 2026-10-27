@@ -24,6 +24,7 @@ const readline = require('readline');
 const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
+const mcpCopyMarker = require('./lib/mcp-copy-marker');
 const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
@@ -35,11 +36,20 @@ const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
-const { pruneRetiredSkills } = require('./lib/retired-skills');
+const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs, LEGACY_CODEX_DISPATCH } = require('./lib/retired-skills');
+const coreSkills = require('./lib/core-skills');
+const skillPacks = require('./lib/skill-packs');
+const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
+const { writeManagedRulesFile } = require('./lib/harness-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
 const { gatewayCovered } = require('./lib/gateway/config');
+
+function reloadLaunchAgent(plistPath) {
+    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+}
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -169,10 +179,40 @@ try {
 let contextHooksOn = true;
 let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
+// `skillSet` setting: "core" installs only lib/core-skills.json and leaves the rest to `aos store install`.
+let skillSet = coreSkills.DEFAULT_SKILL_SET;
+// Pack selection: array of pack names from ~/.aos/v5-settings.json ("packs", next to skillSet).
+// null = no selection ever stored — everything is installed/kept, no silent removal.
+let packSelection = null;
+// Packs this run's own setup choices bring, on top of the stored selection: the Pro MEDIA tier
+// (live-show), the Creator Extension / Hardware & PCB modules, and the pack checkboxes of the
+// module picker. Additive only — see skillPacks.impliedPacks for the manifest-derived part.
+const runImpliedPacks = [];
+const addImpliedPack = (id) => { if (skillPacks.knownPack(id, srcDir) && !runImpliedPacks.includes(id)) runImpliedPacks.push(id); };
+
+// The selection exclusion and install follow: the explicit selection plus every pack the last
+// install manifest implies and this run's choices imply. null explicit selection stays null.
+function effectivePackSelection(meta = readJsonFile(path.join(homeDir, '.agents', '.bdb-manifest.json'))) {
+    return skillPacks.mergeSelection(
+        packSelection,
+        [...runImpliedPacks, ...skillPacks.impliedPacks(meta, srcDir)],
+        srcDir,
+    );
+}
 // Unified memory (docs/unified-memory.md): off when memb is excluded; then no memb_mcp, deja MCP or memb-inject is wired.
 let memoryOn = true;
-const droppedHook = (cmd) => typeof cmd === 'string'
-    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs')));
+// `gate` setting (Settings menu): off = go-gate, go-token, go-grant and graph-gate are not registered; the script files stay on disk.
+let gateOn = true;
+// Harness keys whose config is AOS-wired but registers no gate hook any more (removed there by hand).
+// gateReenableStep fills this on non-interactive runs so an update never silently re-enables the gate.
+const gateHoldKeys = new Set();
+// Effective per harness: the setting, minus a hold for exactly the harness the user disabled by hand.
+const gateOnFor = (key) => gateOn && !gateHoldKeys.has(key);
+// `key` names the harness whose config is being merged, so a hold in one harness never deletes
+// gate hooks another harness still has. Without a key (no harness context) only the setting decides.
+const droppedHook = (cmd, key = null) => typeof cmd === 'string'
+    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && /memb-inject\.mjs|memb-session-save\.mjs/.test(cmd))
+        || ((key ? !gateOnFor(key) : !gateOn) && v5Profile.GATE_HOOKS.some((n) => cmd.includes(n))));
 
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
@@ -262,25 +302,12 @@ const conditionalMcpConfigKeys = [
     { key: 'bdb_after_effects_mcp_fallback', requires: 'go', hint: 'https://go.dev/dl/' }
 ];
 
-function hasExecutable(binary) {
-    try {
-        if (process.platform === 'win32') {
-            execFileSync('where.exe', [binary], { stdio: 'ignore', windowsHide: true });
-        } else {
-            if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(binary)) return false;
-            execSync(`command -v ${binary}`, { stdio: 'ignore', windowsHide: true });
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
 function checkSystemPrereqs({
     which = hasExecutable,
     platform = process.platform,
     logger = log,
     exitOnError = true,
+    isElevated: isElevatedOpt,
 } = {}) {
     const isWin = platform === 'win32';
     const isMac = platform === 'darwin';
@@ -288,11 +315,11 @@ function checkSystemPrereqs({
     const gitOk = Boolean(which('git'));
     const ghOk = Boolean(which('gh'));
 
-    const gitInstruction = isWin
-        ? 'Install Git via git-scm.com or winget install Git.Git'
-        : isMac
-            ? 'Install Git via brew install git / xcode-select --install'
-            : 'Install Git via your package manager (e.g. apt install git / dnf install git)';
+    const elevated = isElevatedOpt !== undefined
+        ? Boolean(isElevatedOpt)
+        : (isWin ? isElevated({ platform }) : false);
+
+    const gitInstruction = getGitInstallInstruction({ platform, elevated });
 
     const ghInstruction = isWin
         ? 'Install GitHub CLI: winget install GitHub.cli'
@@ -413,6 +440,10 @@ let _uvBin;
 const uvBin = () => (_uvBin === undefined ? (_uvBin = findUv()) : _uvBin) || 'uv';
 
 const MEMB_MIN_PYTHON = [3, 10];
+// ~/CLAUDE.md as the installer writes it: the whole file when it was empty, else this line in front of the user's text.
+const CLAUDE_POINTER_LINE = '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**';
+const CLAUDE_POINTER = `# AOS Rules\n\n${CLAUDE_POINTER_LINE}\n`;
+const CLAUDE_PREFIX = '**Read [AGENTS.md](AGENTS.md) first.**\n\n';
 const MEMB_PYTHON_FIX = 'memB needs Python >= 3.10; install uv (https://docs.astral.sh/uv/) or python 3.12, then run: aos package install memb';
 const parsePyVersion = (s) => { const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(String(s || '')); return m ? [Number(m[1]), Number(m[2])] : null; };
 const pyAtLeast = (v, min) => Boolean(v) && (v[0] > min[0] || (v[0] === min[0] && v[1] >= min[1]));
@@ -457,7 +488,7 @@ function ensurePythonVenv(dir, opts = {}) {
         if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
         log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
     }
-    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: 'ignore', cwd: dir, windowsHide: true, ...o }));
+    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], cwd: dir, windowsHide: true, ...o }));
     const hasUv = opts.hasUv !== undefined ? opts.hasUv : (() => { try { execFileSync(uvBin(), ['--version'], { stdio: 'ignore', windowsHide: true }); return true; } catch (e) { return false; } })();
     const sys = (opts.pick || pickPython)(MEMB_MIN_PYTHON);
     if (!sys && !hasUv) {
@@ -474,7 +505,17 @@ function ensurePythonVenv(dir, opts = {}) {
             if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
         }
     }
-    run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+    try {
+        run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+    } catch (e) {
+        // Rename, never delete: the half-built venv stays as .venv.broken-<stamp> (as lib/v5/packages.js does).
+        if (path.isAbsolute(dir)) try { fs.renameSync(path.join(dir, '.venv'), path.join(dir, `.venv.broken-${Date.now()}`)); } catch (_) { /* nothing half-built */ }
+        const why = String((e && e.stderr) || (e && e.message) || e).trim().split(/\r?\n/).slice(-3).join(' | ');
+        const fix = process.platform === 'win32' ? 'install Python from https://www.python.org/downloads/ (with pip and venv)'
+            : process.platform === 'darwin' ? 'brew install python'
+                : 'Debian/Ubuntu: sudo apt install python3-venv (matching your python3.x-venv)';
+        throw new Error(`python venv failed (${why}); fix: ${fix}, then run: aos package install memb`);
+    }
     return { created: true, viaUv: false };
 }
 
@@ -703,52 +744,7 @@ function readJsonFile(filePath) {
     }
 }
 
-function isNewerVersion(local, remote) {
-    const parse = (v) => {
-        const dashIdx = v.indexOf('-');
-        if (dashIdx === -1) return { main: v.split('.').map(Number), pre: null };
-        const main = v.slice(0, dashIdx).split('.').map(Number);
-        const pre = v.slice(dashIdx + 1).split('.').map(part => {
-            const num = Number(part);
-            return isNaN(num) ? part : num;
-        });
-        return { main, pre };
-    };
-
-    const l = parse(local);
-    const r = parse(remote);
-
-    for (let i = 0; i < Math.max(l.main.length, r.main.length); i++) {
-        const lv = l.main[i] || 0;
-        const rv = r.main[i] || 0;
-        if (rv > lv) return true;
-        if (lv > rv) return false;
-    }
-
-    if (l.pre === null && r.pre !== null) return false;
-    if (l.pre !== null && r.pre === null) return true;
-    if (l.pre === null && r.pre === null) return false;
-
-    for (let i = 0; i < Math.max(l.pre.length, r.pre.length); i++) {
-        const lp = l.pre[i];
-        const rp = r.pre[i];
-        
-        if (rp === undefined) return false; 
-        if (lp === undefined) return true;
-
-        if (typeof lp === 'number' && typeof rp === 'number') {
-            if (rp > lp) return true;
-            if (lp > rp) return false;
-        } else if (typeof lp === 'string' && typeof rp === 'string') {
-            if (rp > lp) return true;
-            if (lp > rp) return false;
-        } else {
-            if (typeof rp === 'number') return false;
-            return true;
-        }
-    }
-    return false;
-}
+const { isNewerVersion } = require('./lib/update-check');
 
 // Newest dist-tag of `pkg` that is ahead of `localVer`: {tag, version}, or null when none is
 // ahead or npm cannot be reached. `view` is injectable for tests.
@@ -884,6 +880,7 @@ const timestamp = now.getFullYear().toString() +
 const backupDir = path.join(geminiDir, `skills_backup_${timestamp}`);
 
 const CORE_MCP = 'memb-mcp';
+const VERSION_FOR_MARKER = () => { try { return require('./package.json').version; } catch { return null; } };
 
 // ─── Install-Manifest Store ──────────────────────────────────────────────────
 // Tracks every file this installer places. Stored at
@@ -979,13 +976,26 @@ const keptUserEdits = [];
 // A stale gate is a security defect, so these are never left behind as <file>.new: the old copy is moved
 // to <file>.bak and the shipped one installed.
 const GUARD_FILES = new Set(['aos-gate.mjs', 'gate-profile.mjs', 'go-gate.mjs']);
+// Runtime scripts nobody is meant to edit. A copy from an untagged pre-release matches no shipped hash and, without a
+// manifest entry, looked like a user edit (Windows: five .new files after every update); same replace-with-.bak rule.
+const RUNTIME_FILES = new Set(['fabric-dispatch.mjs', 'stop-module-processes.js']);
 
 function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
-    if (GUARD_FILES.has(path.basename(targetPath))) {
-        fs.copyFileSync(targetPath, `${targetPath}.bak`);
+    const base = path.basename(targetPath);
+    if (GUARD_FILES.has(base) || RUNTIME_FILES.has(base)) {
+        // Never overwrite an earlier backup: it may hold the only copy of a user's edit.
+        let bak = `${targetPath}.bak`;
+        if (fs.existsSync(bak)) bak = `${targetPath}.${Date.now()}.bak`;
+        fs.copyFileSync(targetPath, bak);
         fs.copyFileSync(sourcePath, targetPath);
+        // A .new the user was told to merge stays unless it is just this shipped version.
+        const stale = `${targetPath}.new`;
+        if (fs.existsSync(stale)) {
+            if (computeFileHash(stale) === sourceHash) { try { fs.rmSync(stale, { force: true }); } catch { /* noise only */ } }
+            else log.warn(`${stale} differs from the shipped version and was kept; merge or delete it.`);
+        }
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
-        log.warn(`Gate file ${targetPath} differed from every shipped version; replaced it (previous copy: ${targetPath}.bak).`);
+        log.warn(`${GUARD_FILES.has(base) ? 'Gate file' : 'AOS runtime file'} ${targetPath} differed from every shipped version; replaced it (previous copy: ${bak}).`);
         return 'wrote';
     }
     fs.copyFileSync(sourcePath, `${targetPath}.new`);
@@ -1162,20 +1172,112 @@ function globalSkillDestRoots() {
         path.join(homeDir, '.codex', 'skills'),
         path.join(homeDir, '.cursor', 'skills'),
         path.join(homeDir, '.roo', 'skills'),
+        path.join(homeDir, '.config', 'opencode', 'skills'),
+        path.join(homeDir, '.windsurf', 'bdb-skills'),
+        path.join(homeDir, '.aider', 'bdb-skills'),
         path.join(geminiDir, 'config', 'skills'),
     ];
 }
 
 // Retires skills the package no longer ships (lib/retired-skills.js). Edited or foreign files are
 // copied to the backup dir before the skill folder is removed.
+// Roo used to get a second copy under ~/.roo/bdb-skills. Once ~/.roo/skills exists, the AOS copies there are removed
+// (manifest-listed files); edited or foreign files are backed up first, never silently lost.
+function migrateRooBdbSkills(manifest, home = homeDir) {
+    const root = path.join(home, '.roo', 'bdb-skills');
+    if (!manifest || !fs.existsSync(root) || !fs.existsSync(path.join(home, '.roo', 'skills'))) return;
+    const names = new Set();
+    for (const f of Object.keys(manifest)) {
+        if (typeof f === 'string' && f.startsWith(root + path.sep)) names.add(f.slice(root.length + 1).split(path.sep)[0]);
+    }
+    if (!names.size) return;
+    pruneRetiredSkills({
+        home, manifest, roots: [root], names: [...names], what: 'duplicate Roo',
+        backupDir: path.join(home, '.agents', 'backups', `roo-bdb-skills-${timestamp}`),
+        log,
+    });
+}
+
 function pruneRemovedSkills(manifest) {
+    migrateRooBdbSkills(manifest);
     pruneRetiredSkills({
         home: homeDir,
         manifest,
         roots: globalSkillDestRoots(),
         backupDir: path.join(homeDir, '.agents', 'backups', `retired-skills-${timestamp}`),
         log,
+        keep: storeProtectedDirs(homeDir),
     });
+    pruneRetiredFiles({
+        home: homeDir,
+        claudeDir: claudeConfigDir(homeDir),
+        manifest,
+        backupDir: path.join(homeDir, '.agents', 'backups', `retired-files-${timestamp}`),
+        log,
+    });
+}
+
+// "core" skill set: installed copies of moved skills are removed (lib/core-skills.js) and the move is announced.
+function applySkillSet(manifest) {
+    if (skillSet !== 'core') return;
+    try {
+        coreSkills.pruneMoved({
+            root: srcDir,
+            home: homeDir,
+            manifest,
+            roots: globalSkillDestRoots(),
+            backupDir: path.join(homeDir, '.agents', 'backups', `skill-set-core-${timestamp}`),
+            log,
+        });
+    } catch (e) { log.warn(`Skill set "core" skipped: ${e.message}`); }
+}
+
+// Populates the local library (~/.aos/library/skills) with every shipped skill and writes the
+// pack index. The library is AOS's own full copy that no harness reads directly: harness dirs
+// get base+packs, while `aos store install` copies single skills or whole packs from here, offline.
+function populateSkillLibrary(home = homeDir) {
+    const dest = skillPacks.librarySkillsDir(home);
+    const dirs = skillPacks.shippedSkillDirs(srcDir);
+    if (DRY_RUN) {
+        log.step(`[dry-run] would copy ${dirs.size} skills into ${dest}`);
+        return;
+    }
+    installStep('populate the skill library (~/.aos/library)', () => {
+        fs.mkdirSync(dest, { recursive: true });
+        for (const [name, abs] of dirs) copyDirRecursiveSync(abs, path.join(dest, name), []);
+        const def = skillPacks.loadPacks(srcDir);
+        fs.mkdirSync(path.dirname(skillPacks.libraryIndexFile(home)), { recursive: true });
+        fs.writeFileSync(skillPacks.libraryIndexFile(home), JSON.stringify({
+            version: pkg.version,
+            generatedAt: new Date().toISOString(),
+            base: def.base || [],
+            packs: def.packs || {},
+        }, null, 2));
+        uninstallRecords.recordGeneratedFiles(home, [skillPacks.libraryIndexFile(home)]);
+        log.step(`Skill library populated: ${dirs.size} skills at ${dest}`);
+    }, 'The library is incomplete; pack installs from it fall back to the package copy.');
+}
+
+// A stored pack selection removes installed copies of skills outside base+packs from the harness
+// dirs. Manifest-aware (lib/retired-skills.js): only dirs the install manifest lists are touched,
+// edited files are backed up first, and the exact copies the store wrote (installs.jsonl targets)
+// are left alone. A user skill is never in the manifest, so it can never be removed here.
+function applyPackSelection(manifest) {
+    if (!Array.isArray(packSelection)) return;
+    const names = skillPacks.excludedByPacks(srcDir, effectivePackSelection());
+    if (!names.length) return;
+    try {
+        pruneRetiredSkills({
+            home: homeDir,
+            manifest,
+            roots: globalSkillDestRoots(),
+            backupDir: path.join(homeDir, '.agents', 'backups', `pack-deselect-${timestamp}`),
+            log,
+            names,
+            what: 'deselected-pack',
+            keep: storeProtectedDirs(homeDir),
+        });
+    } catch (e) { log.warn(`Pack deselection prune skipped: ${e.message}`); }
 }
 
 function flushSessionManifest() {
@@ -1208,6 +1310,12 @@ function reportKeptUserEdits() {
 // placeholder for it.
 function retireObsoleteLegacyDir(targetLegacyDir) {
     if (!targetLegacyDir || !fs.existsSync(targetLegacyDir)) return;
+    // Roo reads ~/.roo/skills as a skill dir, so a `legacy` folder there may be the user's own: retire it
+    // only when the install manifest lists files in it.
+    if (path.resolve(targetLegacyDir) === path.join(homeDir, '.roo', 'skills', 'legacy')) {
+        const prefix = path.resolve(targetLegacyDir) + path.sep;
+        if (!Object.keys(_sessionManifest || {}).some((f) => path.resolve(f).startsWith(prefix))) return;
+    }
     if (fs.existsSync(path.join(srcDir, 'skills', 'global_legacy'))) {
         fs.mkdirSync(targetLegacyDir, { recursive: true });
         return;
@@ -1394,11 +1502,149 @@ function defaultPlatformValue() {
     return hit ? hit[1] : '2';
 }
 
+// Which active harnesses have AOS hooks wired but no gate hook any more (removed there by hand).
+// Reads only. A config that is absent or has no AOS wiring at all proves nothing — nothing to preserve there.
+// Launcher support files Kernel.update copies (not written by the harness step).
+function kernelFileProblems({ home = homeDir } = {}) {
+    return [path.join(home, '.agents', 'bin', 'aos-doctor.mjs'), path.join(home, '.agents', 'lib', 'uninstall-records.js')]
+        .filter((f) => !fs.existsSync(f)).map((f) => `missing ${f}`);
+}
+
+// What `aos repair` and the update plan check for the wiring quickUpdateHarnesses writes: hooks and settings merges
+// (Claude, Antigravity, Codex) and the compiled Antigravity/Codex agents. Reads only. A harness whose config dir
+// does not exist is not installed there and proves nothing. For Claude the plugin counts as wiring too.
+function harnessWiringProblems({ home = homeDir, keys = activeHarnessKeys() } = {}) {
+    const read = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
+    const hasFiles = (dir) => { try { return fs.readdirSync(dir).length > 0; } catch { return false; } };
+    const problems = [];
+    const claudeDir = claudeConfigDir(home);
+    if (keys.has('claudecode') && fs.existsSync(claudeDir)) {
+        const settings = read(path.join(claudeDir, 'settings.json'));
+        const viaPlugin = /bdb-aos@/.test(settings) || /bdb-aos@/.test(read(path.join(home, '.claude', 'plugins', 'installed_plugins.json')));
+        let parsed = true;
+        try { if (settings) JSON.parse(settings.replace(/^\uFEFF/, '')); } catch { parsed = false; }
+        if (!parsed) problems.push(`${path.join(claudeDir, 'settings.json')} is not valid JSON`);
+        else if (!viaPlugin && !v5Profile.HOOK_SCRIPTS.some((n) => settings.includes(n))) problems.push('Claude Code settings.json has no AOS hooks');
+    }
+    const geminiHome = home === homeDir ? geminiDir : path.join(home, '.gemini');
+    if (keys.has('antigravity') && fs.existsSync(path.join(geminiHome, 'config'))) {
+        if (!/aos-/.test(read(path.join(geminiHome, 'config', 'hooks.json')))) problems.push('Antigravity hooks.json has no AOS hooks');
+        if (!hasFiles(path.join(geminiHome, 'config', 'agents'))) problems.push('Antigravity has no AOS agents');
+    }
+    if (keys.has('codex') && fs.existsSync(path.join(home, '.codex'))) {
+        if (!/go-gate\.mjs|graph-gate\.mjs|conventional-commits\.mjs/.test(read(path.join(home, '.codex', 'config.toml')))) problems.push('Codex config.toml has no AOS hooks');
+        if (!hasFiles(path.join(home, '.codex', 'agents'))) problems.push('Codex has no AOS agents');
+    }
+    return problems;
+}
+
+function gateMissingInHarnesses({ home = homeDir } = {}) {
+    const read = (p) => { try { return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''; } catch { return ''; } };
+    const missing = [];
+    const claude = read(path.join(claudeConfigDir(home), 'settings.json'));
+    if (claude && /conventional-commits\.mjs|env-file-protection\.mjs|memb-inject\.mjs/.test(claude)
+        && !v5Profile.GATE_HOOKS.some((n) => claude.includes(n))) missing.push('claudecode');
+    const agyHooks = read(path.join(home === homeDir ? geminiDir : path.join(home, '.gemini'), 'config', 'hooks.json'));
+    if (agyHooks && /aos-conventional-commits|aos-env-protection/.test(agyHooks)
+        && !/aos-go-gate|aos-graph-gate/.test(agyHooks)) missing.push('antigravity');
+    const codexToml = read(path.join(home, '.codex', 'config.toml'));
+    if (codexToml.includes('# AOS:HOOKS:START')
+        && !/go-gate\.mjs|graph-gate\.mjs/.test(codexToml)) missing.push('codex');
+    return missing;
+}
+
+// The go-gate was turned off by hand in a harness config while the `gate` setting still says on. An update must
+// not silently re-enable it: an interactive TTY asks once and stores the answer in the gate setting; without a
+// TTY this run keeps the current state (setting untouched, hooks stay absent in exactly those harnesses) and
+// prints one line saying so. ask: null means non-interactive.
+async function gateReenableStep({ home = homeDir, ask = null, write = (s) => process.stdout.write(s) } = {}) {
+    if (!gateOn || gateHoldKeys.size) return;
+    const missing = gateMissingInHarnesses({ home });
+    if (!missing.length) return;
+    const labels = missing.map((k) => HARNESS_LABELS[k] || k).join(', ');
+    if (typeof ask === 'function') {
+        const yes = await ask(`The go-gate is off in ${labels}. Turn it back on? (y/N)`);
+        if (yes) return;
+        if (!DRY_RUN) {
+            try { v5Profile.writeSettings(home, { ...v5Profile.readSettings(home), gate: 'off' }); } catch (e) { log.warn(`Could not save the gate choice: ${e.message}`); }
+        }
+        gateOn = false;
+        write(`Go-gate stays off in ${labels}. Change it any time: run aos, Settings, Go-gate.\n`);
+        return;
+    }
+    for (const k of missing) gateHoldKeys.add(k);
+    write(`Go-gate: not re-registered in ${labels} (removed there by hand); the gate setting is unchanged. Decide in aos, Settings, Go-gate.\n`);
+}
+
+// Same interactivity rule as applyCodingModeStep: stdin must be a TTY, -y and CI never prompt.
+function gateReenableAsk() {
+    if (isAutoYes || !process.stdin.isTTY || process.env.CI) return null;
+    return async (message) => { const a = await askConfirm({ message, initialValue: false }); return isCancel(a) ? false : Boolean(a); };
+}
+
 function harnessSummaryLine() {
     const keys = new Set(detectPlatforms().map((d) => d.key));
     if (keys.size === 0) keys.add('claudecode');
     const names = (want) => Object.keys(HARNESS_LABELS).filter((k) => keys.has(k) === want).map((k) => HARNESS_LABELS[k]).join(', ') || '-';
     return `Installed for: ${names(true)}  Skipped (not found): ${names(false)}`;
+}
+
+const { KNOWN_TARGETS: ROUTER_TARGETS, KNOWN_ROLES: ROUTER_ROLES } = require('./lib/router/table.js');
+const ROUTER_TARGET_LABELS = {
+    claude: 'Claude (Claude Code / Desktop)',
+    'opencode-go': 'OpenCode (glm-5.3-flash)',
+    agy: 'Google Antigravity (agy)',
+    codex: 'ChatGPT Codex CLI',
+    'claude-glm': 'Claude via GLM bridge',
+};
+
+// Map installed harnesses to router targets. Never guess: a target is only
+// preselected when its CLI or app bundle is actually present.
+function detectRouterTargets() {
+    const detected = new Set();
+    for (const d of detectPlatforms()) {
+        if (d.chosen) continue; // chosen = explicitly selected but not detected
+        if (d.key === 'claudecode' || d.key === 'claudedesktop') detected.add('claude');
+        if (d.key === 'codex') detected.add('codex');
+        if (d.key === 'opencode') detected.add('opencode-go');
+        if (d.key === 'antigravity') detected.add('agy');
+    }
+    return ROUTER_TARGETS.map((key) => ({ key, detected: detected.has(key) }));
+}
+
+function orderTargets(first, selected) {
+    return [first, ...selected.filter((t) => t !== first)];
+}
+
+
+function buildRouterPreferences(mainHarness, selectedTargets, preset = 'default') {
+    const has = (t) => selectedTargets.includes(t);
+    if (preset === 'claude-only') {
+        return Object.fromEntries(ROUTER_ROLES.map((role) => [role, orderTargets('claude', selectedTargets)]));
+    }
+    // default / budget: planning roles start with the main harness; builder/scout
+    // start with opencode-go when available, because it is the budget option.
+    const planningFirst = mainHarness;
+    const buildFirst = has('opencode-go') ? 'opencode-go' : mainHarness;
+    return {
+        architect: orderTargets(planningFirst, selectedTargets),
+        techlead: orderTargets(planningFirst, selectedTargets),
+        reviewer: orderTargets(planningFirst, selectedTargets),
+        builder: orderTargets(buildFirst, selectedTargets),
+        scout: orderTargets(buildFirst, selectedTargets),
+    };
+}
+
+// default keeps the shipped table (no file written); claude-only/budget/custom write ~/.aos/router.json.
+function writeUserRouterConfig({ home, preset, mainHarness, selectedTargets }) {
+    if (!preset || preset === 'default') return null;
+    const preferences = buildRouterPreferences(mainHarness || 'claude', selectedTargets, preset);
+    const file = path.join(home, '.aos', 'router.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
+    fs.writeFileSync(file, JSON.stringify({ preferences }, null, 2) + '\n');
+    if (!DRY_RUN) uninstallRecords.recordGeneratedFiles(home, [file]);
+    return file;
 }
 
 function detectInstallState() {
@@ -1421,9 +1667,9 @@ function detectInstallState() {
 
     const legacyMarkers = [
         path.join(homeDir, '.agents', 'AGENTS.md'),
-        path.join(geminiDir, 'config', 'skills', 'startcycle', 'SKILL.md'),
-        path.join(homeDir, '.agents', 'skills', 'startcycle', 'SKILL.md'),
-        path.join(claudeConfigDir(homeDir), 'skills', 'startcycle', 'SKILL.md')
+        path.join(geminiDir, 'config', 'skills', 'fabric', 'SKILL.md'),
+        path.join(homeDir, '.agents', 'skills', 'fabric', 'SKILL.md'),
+        path.join(claudeConfigDir(homeDir), 'skills', 'fabric', 'SKILL.md')
     ];
 
     if (!isInstalled && legacyMarkers.some(p => fs.existsSync(p))) {
@@ -1495,6 +1741,12 @@ function detectInstallState() {
     return { isInstalled, localVersion, currentVersion, updateAvailable, isDowngrade, installedModules, manifest, installManifest };
 }
 
+// Tier/universal flag an installed machine already chose; update and -y reinstall must not reset them.
+function storedTierOpts(installState) {
+    const m = (installState && installState.manifest) || {};
+    return { tier: m.tier === '2' ? '2' : '1', isUniversal: m.isUniversal !== false };
+}
+
 function saveManifest(data = {}) {
     if (DRY_RUN) {
         log.step(`[dry-run] would save manifest: ${path.join(homeDir, '.agents', '.bdb-manifest.json')}`);
@@ -1544,6 +1796,10 @@ async function reloadDaemons(skipNames = []) {
         for (const d of daemons) {
             if (skipNames.includes(d.name)) continue;
             if (fs.existsSync(d.plist)) {
+                if (v5Profile.isTestSandbox(homeDir)) {
+                    log.success(`${d.name} daemon reloaded`);
+                    continue;
+                }
                 try {
                     execSync(`launchctl unload "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
                     execSync(`launchctl load "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
@@ -1770,12 +2026,15 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     const ownsManifest = !_sessionManifest;
     const manifest = _sessionManifest || loadInstallManifest();
     let result;
+    let cliSkipped = true;
     try {
         const useCli = pluginCli === undefined && realClaudeHome(targetHome);
         if (pluginCli === undefined && !useCli && mode === 'on' && keys.includes('claudecode')) {
             log.step(`claude plugin CLI steps skipped: HOME is not the account's real home (${process.env.AOS_PLUGIN_CLI === 'off' ? 'AOS_PLUGIN_CLI=off' : 'set AOS_PLUGIN_CLI=on to force them'}).`);
         }
-        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, announce: (m) => log.step(m), cli: uninstallRecords.recordingCli(targetHome, pluginCli !== undefined ? pluginCli : useCli ? pluginMigration.defaultCliRunner : null), ...(registrars ? { registrars } : {}) });
+        const cliForRun = pluginCli !== undefined ? pluginCli : useCli ? pluginMigration.defaultCliRunner : null;
+        cliSkipped = !cliForRun;
+        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, announce: (m) => log.step(m), cli: uninstallRecords.recordingCli(targetHome, cliForRun), ...(registrars ? { registrars } : {}) });
     } catch (e) {
         log.warn(`Plugin migration skipped: ${e.message}`);
         result = { covered: new Set(), lines: [], error: e.message };
@@ -1784,8 +2043,18 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     const regFailed = result.lines.filter((l) => /plugin registration failed/.test(l));
     if (regFailed.length && !result.error) result.error = regFailed.join('; ');
     if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
+    result.cliSkipped = cliSkipped;
     if (targetHome === homeDir) _pluginMigration = result;
     return result;
+}
+
+// ONE highlighted line at the very end of the run (full install and Quick Update) when the Claude
+// plugin step did not finish: what failed plus the exact fix for PowerShell and bash. Success stays
+// in the step logs; nothing is printed then.
+function printClaudePluginFix() {
+    const line = _pluginMigration && !_pluginMigration.cliSkipped ? pluginMigration.pluginFixSummary(_pluginMigration) : null;
+    if (line) console.log(line);
+    return !!line;
 }
 
 // Antigravity and Codex plugin steps, shared by the full install and Quick Update so the default
@@ -1852,27 +2121,27 @@ function cleanEmptySkillDirs(dir) {
 // backed up and removed, all-or-nothing (edited files stop the removal and are reported). Legacy module
 // skills (e.g. hardware-pcb) also present in ~/.agents/skills are backed up and retired when file
 // hashes match; edited copies stay and are reported.
-function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, rootDir = null, label = 'Codex', tag = 'codex-skills' } = {}) {
     if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return { removed: [], leftover: [] };
     const targetHome = home || homeDir;
-    const root = path.join(targetHome, '.codex', 'skills');
+    const root = rootDir || path.join(targetHome, '.codex', 'skills');
     if (!fs.existsSync(root)) return { removed: [], leftover: [] };
     let rootStat;
     try { rootStat = fs.lstatSync(root); } catch { return { removed: [], leftover: [] }; }
     if (rootStat.isSymbolicLink()) {
-        log.warn(`Codex skills: ${root} is a symlink; not touched, Codex will list those skills twice.`);
+        log.warn(`${label} skills: ${root} is a symlink; not touched, ${label} will list those skills twice.`);
         return { removed: [], leftover: [], refused: `${root} is a symlink` };
     }
-    const backup = path.join(targetHome, '.agents', 'backups', `plugin-migration-codex-skills-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+    const backup = path.join(targetHome, '.agents', 'backups', `plugin-migration-${tag}-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
     let r = { removed: [], leftover: [], refused: null };
     try {
         r = pluginMigration.removeLooseCopies({ home: targetHome, root, manifest: manifest || {}, backupDir: backup });
         if (r.refused) {
-            log.warn(`Codex skills: ${r.refused}; not touched, Codex will list those skills twice.`);
+            log.warn(`${label} skills: ${r.refused}; not touched, ${label} will list those skills twice.`);
             return { removed: [], leftover: [], refused: r.refused };
         }
     } catch (e) {
-        log.warn(`Codex skill cleanup skipped: ${e.message}`);
+        log.warn(`${label} skill cleanup skipped: ${e.message}`);
     }
 
     const removedFiles = [...(r.removed || [])];
@@ -1942,18 +2211,29 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
                 continue;
             }
 
-            // All file hashes match the ~/.agents copy: back up and retire.
+            // All file hashes match the ~/.agents copy: back up the whole skill first, unlink only when every copy succeeded.
+            let backedUp = true;
             for (const rel of codexScan.files) {
                 const abs = path.join(codexSkillDir, rel);
                 try {
                     const dest = path.join(backup, path.relative(targetHome, abs));
                     fs.mkdirSync(path.dirname(dest), { recursive: true });
                     fs.copyFileSync(abs, dest);
+                } catch (e) {
+                    logDebug(e, `${label} retire module skill backup: ${abs}`);
+                    backedUp = false;
+                    break;
+                }
+            }
+            if (!backedUp) { leftoverSkills.add(skillName); continue; }
+            for (const rel of codexScan.files) {
+                const abs = path.join(codexSkillDir, rel);
+                try {
                     fs.unlinkSync(abs);
                     if (manifest && manifest[abs]) delete manifest[abs];
                     removedFiles.push(abs);
                 } catch (e) {
-                    logDebug(e, `Codex retire module skill: ${abs}`);
+                    logDebug(e, `${label} retire module skill: ${abs}`);
                 }
             }
             cleanEmptySkillDirs(codexSkillDir);
@@ -1962,12 +2242,31 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
 
     if (leftoverSkills.size) {
         const leftoverArr = [...leftoverSkills].sort();
-        log.warn(`Codex skills: ${leftoverArr.length} edited or unsafe copies in ${root} (${leftoverArr.slice(0, 5).join(', ')}) stay, so Codex lists skills twice (it also reads ~/.agents/skills). Move your edits out and re-run to retire them.`);
+        log.warn(`${label} skills: ${leftoverArr.length} edited or unsafe copies in ${root} (${leftoverArr.slice(0, 5).join(', ')}) stay, so ${label} lists skills twice (it also reads ~/.agents/skills). Move your edits out and re-run to retire them.`);
     }
     if (removedFiles.length) {
-        log.step(`Codex reads ~/.agents/skills, so ${removedFiles.length} AOS copies were removed from ${root} (backup: ${backup}).`);
+        log.step(`${label} reads ~/.agents/skills, so ${removedFiles.length} AOS copies were removed from ${root} (backup: ${backup}).`);
     }
     return { removed: removedFiles, leftover: [...leftoverSkills].sort() };
+}
+
+// OpenCode reads ~/.agents/skills through skills.paths (installOpencodePlugin); a second AOS copy under
+// ~/.config/opencode/skills made every skill a "duplicate skill" in opencode.log (#187). The copy is only
+// dropped once skills.paths really lists the shared store, so OpenCode never ends up without AOS skills.
+function opencodeUsesAgentsSkills(home = homeDir) {
+    const want = path.join(home, '.agents', 'skills').replace(/\\/g, '/');
+    for (const n of ['opencode.json', 'opencode.jsonc']) {
+        try {
+            const d = JSON.parse(stripJsonc(fs.readFileSync(path.join(home, '.config', 'opencode', n), 'utf8')));
+            if (d && d.skills && Array.isArray(d.skills.paths) && d.skills.paths.some((p) => String(p).replace(/\\/g, '/') === want)) return true;
+        } catch { /* next file */ }
+    }
+    return false;
+}
+
+function retireOpencodeSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+    if (!opencodeUsesAgentsSkills(home)) return { removed: [], leftover: [] };
+    return retireCodexSkillCopies(manifest, { home, rootDir: path.join(home, '.config', 'opencode', 'skills'), label: 'OpenCode', tag: 'opencode-skills' });
 }
 
 // ~/.codex-plugin/plugin.json in HOME made Codex rename every skill, even OpenAI's, to bdb-aos:<name>.
@@ -2072,7 +2371,11 @@ function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
         { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
-        { dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
+        // Skipped once skills.paths lists ~/.agents/skills: a second copy is listed twice (#187).
+        ...(opencodeUsesAgentsSkills() ? [] : [{ dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' }]),
+        // Same dirs the fresh install writes for platforms 6 and 8 (resolveTargetPaths), so update refreshes them too.
+        { dir: path.join(homeDir, '.windsurf', 'bdb-skills'), key: 'windsurf' },
+        { dir: path.join(homeDir, '.aider', 'bdb-skills'), key: 'aider' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
@@ -2184,6 +2487,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     const extraSkillDestinations = globalSkillDestinations();
 
     retireCodexSkillCopies(_sessionManifest);
+    retireOpencodeSkillCopies(_sessionManifest);
     retireStaleCodexPluginDir(_sessionManifest);
     for (const { dir: dest } of extraSkillDestinations) {
         try {
@@ -2673,7 +2977,7 @@ async function runTopologyAnimation(backgroundTask, label) {
     }
 }
 
-async function installTokenSaver(platformTarget) {
+async function installTokenSaver() {
     const tokenSaverDir = path.join(srcDir, 'vendor', 'token-saver');
     if (!fs.existsSync(tokenSaverDir)) return false;
     if (DRY_RUN) {
@@ -2681,7 +2985,8 @@ async function installTokenSaver(platformTarget) {
         return;
     }
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    
+    const existed = [path.join(homeDir, '.token-saver'), path.join(process.env.APPDATA || homeDir, 'token-saver')].some((d) => fs.existsSync(d));
+
     const { exec } = require('child_process');
     const execAsync = util.promisify(exec);
     
@@ -2694,6 +2999,7 @@ async function installTokenSaver(platformTarget) {
     try {
         await runTopologyAnimation(task, 'Installing Heimdall Token Saver Context Optimizer');
         log.success('Heimdall Token Saver registered');
+        if (!existed) uninstallRecords.recordTokenSaver(homeDir);
     } catch (err) {
         log.warn(`Heimdall Token Saver skipped/failed: ${err.message}`);
         logDebug(err, 'Token Saver install');
@@ -2904,9 +3210,17 @@ async function installDeja() {
         return;
     }
     try {
-        log.step('Installing deja-vu session memory...');
-        execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
-        uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
+        // A copy the user installed stays theirs: not reinstalled, not recorded. One AOS recorded earlier is updated.
+        let present = false;
+        try { present = fs.existsSync(path.join(execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim(), '@vshulcz', 'deja-vu')); } catch { /* npm missing: the install below reports it */ }
+        const ours = (uninstallRecords.readRecords(homeDir).npmGlobal || []).includes('@vshulcz/deja-vu');
+        if (present && !ours) {
+            log.step('deja-vu is already installed globally; left as it is.');
+        } else {
+            log.step('Installing deja-vu session memory...');
+            execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
+            uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
+        }
     } catch (e) {
         log.warn(`deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
@@ -3071,13 +3385,16 @@ async function installMemB(interactive) {
             try {
                 fs.mkdirSync(path.join(homeDir, '.memb'), { recursive: true });
                 fs.writeFileSync(plistPath, plistContent);
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                const isListening = await verifyDaemonListening(8088, 'memB WebUI');
-                if (isListening) {
+                if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('memB WebUI LaunchAgent active (Port 8088)');
                 } else {
-                    log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                    reloadLaunchAgent(plistPath);
+                    const isListening = await verifyDaemonListening(8088, 'memB WebUI');
+                    if (isListening) {
+                        log.success('memB WebUI LaunchAgent active (Port 8088)');
+                    } else {
+                        log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                    }
                 }
             } catch (e) { logDebug(e, 'operation'); }
         } else if (process.platform === 'linux') {
@@ -3125,6 +3442,13 @@ async function installMemB(interactive) {
                 }
             } catch (e) { logDebug(e, 'windows memb daemon setup'); }
         }
+    }
+    // Memory import job (supervised by launchd / systemd): only exists when the user set a time (`aos memory set-time`).
+    if (membOk && !DRY_RUN) {
+        try {
+            const job = await require('./lib/memory-import').applyJob(homeDir);
+            if (job.file) log.success(`memB memory import job active (${path.basename(job.file)})`);
+        } catch (e) { logDebug(e, 'memb memory import job'); }
     }
     return membOk;
 }
@@ -3215,13 +3539,16 @@ async function installSynapse() {
             try {
                 fs.mkdirSync(path.join(homeDir, '.synapse'), { recursive: true });
                 fs.writeFileSync(plistPath, plistContent);
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
-                if (isListening) {
+                if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('Synapse 3D LaunchAgent active (Port 7781)');
                 } else {
-                    log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                    reloadLaunchAgent(plistPath);
+                    const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                    if (isListening) {
+                        log.success('Synapse 3D LaunchAgent active (Port 7781)');
+                    } else {
+                        log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                    }
                 }
             } catch (e) { logDebug(e, 'synapse plist setup'); }
         } else if (process.platform === 'linux') {
@@ -3314,6 +3641,7 @@ async function installOpenWikiVisualizer() {
             });
             installCli = !isCancel(answer) && !!answer;
         }
+        if (v5Profile.isTestSandbox(homeDir)) installCli = false;
         if (installCli) {
             try {
                 log.step('Installing OpenWiki CLI globally (npm install -g openwiki@latest)...');
@@ -3446,13 +3774,16 @@ async function installOpenWikiVisualizer() {
         try {
             fs.mkdirSync(path.join(homeDir, '.openwiki'), { recursive: true });
             fs.writeFileSync(plistPath, plistContent);
-            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
-            if (isListening) {
+            if (v5Profile.isTestSandbox(homeDir)) {
                 log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
             } else {
-                log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+                reloadLaunchAgent(plistPath);
+                const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
+                if (isListening) {
+                    log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
+                } else {
+                    log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             }
         } catch (e) { logDebug(e, 'openwiki visualizer plist setup'); }
     } else if (process.platform === 'linux') {
@@ -3675,7 +4006,11 @@ async function applyCodingModeStep({ flag } = {}) {
             // stdin must be a TTY too, and CI never prompts (a pty-allocating runner is still CI).
             interactive: !isAutoYes && Boolean(process.stdin.isTTY) && !process.env.CI,
             ask: async (message) => { const a = await askConfirm({ message, initialValue: false }); return isCancel(a) ? undefined : Boolean(a); },
-            run: (cmd) => runNpmWithRetry(cmd, {}, 'install codebase-memory-mcp'),
+            run: async (cmd) => {
+                const ok = await runNpmWithRetry(cmd, {}, 'install codebase-memory-mcp');
+                if (ok !== false && !DRY_RUN) uninstallRecords.recordNpmGlobal(homeDir, codebaseMemory.CMB_BINARY);
+                return ok;
+            },
             warn: (m) => log.warn(m),
             step: (m) => log.step(m),
         });
@@ -3999,10 +4334,20 @@ function aoServiceInstall(binTarget) {
     // AO installs its own service, and does it for macOS, Windows and Linux.
     try {
         execFileSync(binTarget, ['service', 'install'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        uninstallRecords.recordAoService(homeDir, binTarget);
     } catch (e) {
         throw new Error(describeExecError(e));
     }
 }
+// Optional setup step: which folders the daily memory import covers and when it runs. Skipped unattended; nothing is preset.
+async function promptMemoryImport() {
+    if (isAutoYes || DRY_RUN || !memoryOn) return;
+    const yes = pick(await askConfirm({ message: 'Set up the daily memory import (folders to read into memB, and a time)?', initialValue: false }));
+    if (!yes) return;
+    const ui = v5Options(true).ui;
+    await require('./lib/memory-import').interactive({ home: homeDir, write: (x) => process.stdout.write(x), ui });
+}
+
 async function promptMemBIngestion(mcpCodeTarget) {
     if (isAutoYes || DRY_RUN) return;
 
@@ -4151,6 +4496,11 @@ function resolveTargetPaths(platformValue, customPaths) {
             : path.join(homeDir, 'Library', 'Application Support', 'Claude');
         targetMcpDir = claudeAppSupport;
         mcpConfigPath = path.join(claudeAppSupport, 'claude_desktop_config.json');
+        // Claude Desktop does not exist on Linux: no claude_desktop_config.json there, Claude Code's ~/.claude.json is the store.
+        if (process.platform === 'linux') {
+            targetMcpDir = path.join(homeDir, '.config', 'Claude');
+            mcpConfigPath = path.join(homeDir, '.claude.json');
+        }
         // Claude Desktop and Claude Code are two products with two separate MCP
         // stores, and this one option covers both: Desktop reads
         // claude_desktop_config.json, Claude Code (CLI *and* its desktop app)
@@ -4159,7 +4509,7 @@ function resolveTargetPaths(platformValue, customPaths) {
         // without Claude Desktop it created a config for a product that isn't
         // there. universalHarnessSync() already distinguished the two; the
         // per-platform path did not.
-        extraMcpConfigPaths = [path.join(homeDir, '.claude.json')];
+        if (process.platform !== 'linux') extraMcpConfigPaths = [path.join(homeDir, '.claude.json')];
     } else if (platformValue === '3') {
         targetSkillDir = path.join(currentDir, '.cursor', 'bdb-skills');
         targetLegacyDir = path.join(currentDir, '.cursor', 'bdb-skills', 'legacy');
@@ -4178,8 +4528,9 @@ function resolveTargetPaths(platformValue, customPaths) {
         targetMcpDir = path.join(homeDir, '.windsurf');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '7') {
-        targetSkillDir = path.join(homeDir, '.roo', 'bdb-skills');
-        targetLegacyDir = path.join(homeDir, '.roo', 'bdb-skills', 'legacy');
+        // Same dir globalSkillDestinations() refreshes on update; a second bdb-skills copy would list skills twice.
+        targetSkillDir = path.join(homeDir, '.roo', 'skills');
+        targetLegacyDir = path.join(homeDir, '.roo', 'skills', 'legacy');
         targetMcpDir = path.join(homeDir, '.roo');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '8') {
@@ -4201,19 +4552,10 @@ function resolveTargetPaths(platformValue, customPaths) {
 function getTierExcludeSkills(tier) {
     // Matched against directory entry names by copyDirRecursiveSync, so these
     // carry no extension: the MCP guides became <name>/SKILL.md directories.
-    return tier === '2' ? [
-        'bdb-adobe-suite-mcp',
-        'bdb-after-effects-mcp',
-        'bdb-blender-mcp',
-        'bdb-davinci-mcp',
-        'bdb-grandma3-mcp',
-        'bdb-resolume-mcp',
-        'bdb-rhino-mcp',
-        'bdb-touchdesigner-mcp',
-        'bdb-unreal-mcp',
-        'bdb-vectorworks-mcp',
-        'bdbmediastorm'
-    ] : [];
+    // A stored pack selection excludes every shipped skill outside base+packs; the Pro MEDIA
+    // tier and installed modules imply their packs on top (additive). No stored selection
+    // excludes nothing (existing users keep all skills).
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? skillPacks.BASIC_TIER_EXCLUDES : [])];
 }
 
 // Merge the BDB MCP servers into a harness's *secondary* config store without
@@ -4531,6 +4873,7 @@ async function installMcpsForTarget(paths, ctx) {
     const { selectedMcps, mode, platformValue, creds } = ctx;
     const mcpSrcDir = path.join(srcDir, 'mcps');
     const mcpCodeTarget = path.join(paths.targetMcpDir, 'mcps');
+    const copyStartedAt = Date.now() - 2000;
 
     if (!selectedMcps || selectedMcps.length === 0) {
         log.step('Skipping MCP installation for this target.');
@@ -4549,6 +4892,7 @@ async function installMcpsForTarget(paths, ctx) {
         }
         installStep(`copy the MCP server ${mcp}`, () => {
             copyDirRecursiveSync(path.join(mcpSrcDir, mcp), path.join(mcpCodeTarget, mcp));
+            if (!DRY_RUN) mcpCopyMarker.writeMarker(path.join(mcpCodeTarget, mcp), path.join(mcpSrcDir, mcp), VERSION_FOR_MARKER());
         }, 'The remaining MCP servers are still installed.');
     }
 
@@ -4568,6 +4912,7 @@ async function installMcpsForTarget(paths, ctx) {
             if (!downloadOrUpdateModule('@hybridlabor-api/memb', membMcpTarget, 'memB MCP')) {
                 throw new Error('npm pack did not produce the memb-mcp payload');
             }
+            if (!DRY_RUN) mcpCopyMarker.writeMarker(membMcpTarget, null, VERSION_FOR_MARKER());
         }, 'memb-mcp installation skipped; MCP config may reference a missing path.');
     }
     log.step(`Installed selected MCP servers to ${mcpCodeTarget}`);
@@ -4706,7 +5051,13 @@ async function installMcpsForTarget(paths, ctx) {
         }
     }
 
-    const mcpTemplatePath = path.join(srcDir, 'mcp_config.json');
+    if (!DRY_RUN) {
+        for (const mcp of selectedMcps) {
+            try { mcpCopyMarker.refreshMarker(path.join(mcpCodeTarget, mcp), copyStartedAt, VERSION_FOR_MARKER()); } catch (e) { logDebug(e, `refresh the copy record of ${mcp}`); }
+        }
+    }
+
+    const mcpTemplatePath = mcpSecrets.shippedMcpTemplatePath(srcDir);
     const mcpTemplate = installStep(
         `read the MCP template ${mcpTemplatePath}`,
         () => fs.readFileSync(mcpTemplatePath, 'utf8'),
@@ -5032,6 +5383,37 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
     return agents;
 }
 
+// Agent dir under .agents/packs -> the skill packs (lib/skill-packs.json) that bring it in.
+const PACK_AGENT_DIRS = { eventtech: ['live-show'], media: ['creator', 'live-show'], hardware: ['hardware'] };
+
+// Load pack-specific agents from the shipped .agents/packs/<dir>/AGENTS.md. A stored pack selection
+// gates them like skills; no stored selection (null) keeps every pack.
+function loadPackAgents(packDir = path.join(srcDir, '.agents', 'packs'), commonSkills = loadCommonSkills(), selection = effectivePackSelection()) {
+    if (!fs.existsSync(packDir)) return [];
+
+    const packAgents = [];
+    const packs = fs.readdirSync(packDir).filter(f => {
+        if (!fs.statSync(path.join(packDir, f)).isDirectory()) return false;
+        if (!Array.isArray(selection)) return true;
+        return (PACK_AGENT_DIRS[f] || [f]).some(p => selection.includes(p));
+    });
+
+    for (const pack of packs) {
+        const agentsMdPath = path.join(packDir, pack, 'AGENTS.md');
+        if (fs.existsSync(agentsMdPath)) {
+            try {
+                const content = fs.readFileSync(agentsMdPath, 'utf8');
+                const agents = parseAgentsMd(content, commonSkills);
+                packAgents.push(...agents);
+            } catch (e) {
+                log.warn(`Failed to load agents from ${agentsMdPath}: ${e.message}`);
+            }
+        }
+    }
+
+    return packAgents;
+}
+
 // A role description is free text that may contain ": " (colon-space), which
 // breaks an unquoted YAML plain scalar the moment a future role happens to
 // use it (e.g. "Reviews: what changed"). Double-quoting defensively, with the
@@ -5102,8 +5484,34 @@ function installPipelineDefault({ targetHome = homeDir } = {}) {
 // Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
 // are emitted (name, description, model). `model` is optional and omitting it inherits the
 // session model, so it is written only for a pipeline.json override, verbatim.
+// Generated agent files sit outside the file manifest; record them so aos-uninstall can reverse them.
+// Only the machine-global agent dirs are recorded, never a project's .claude or .opencode.
+function recordCompiledAgents(files) {
+    const globalDirs = [path.join(claudeConfigDir(homeDir), 'agents'), path.join(homeDir, '.config', 'opencode', 'agents'), path.join(geminiDir, 'config', 'agents'), path.join(homeDir, '.codex', 'agents')]
+        .map((d) => path.resolve(d) + path.sep);
+    const mine = files.filter((f) => globalDirs.some((d) => path.resolve(f).startsWith(d)));
+    if (!DRY_RUN && mine.length) uninstallRecords.recordGeneratedFiles(homeDir, mine);
+}
+
+// Writes a generated agent file. A file that exists, differs and is not an unedited recorded AOS file is
+// the user's: it is backed up before the overwrite and stays out of the uninstall record.
+function writeCompiledAgent(file, text, written, { adopt = false } = {}) {
+    let ours = true;
+    if (fs.existsSync(file)) {
+        if (fs.readFileSync(file, 'utf8') === text) { written.push(file); return; }
+        const sum = uninstallRecords.generatedMap(homeDir).get(path.resolve(file));
+        if (!sum || sum !== crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')) {
+            ours = adopt; // adopt: the file carries our marker, so the rewrite makes it ours (the backup keeps any edit)
+            fs.copyFileSync(file, `${file}.${timestamp}.bak`);
+        }
+    }
+    fs.writeFileSync(file, text);
+    if (ours) written.push(file);
+}
+
 function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
+    const written = [];
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         const { model } = resolveAgentConfig(slug, 'claude', pipelineConfig);
@@ -5123,8 +5531,9 @@ function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
             '',
         ].filter((l) => l !== null).join('\n');
 
-        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
+        writeCompiledAgent(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n', written);
     }
+    recordCompiledAgents(written);
 }
 
 // .claude/agents/<slug>.md is shipped and copied to ~/.claude/agents by the
@@ -5158,6 +5567,27 @@ function applyClaudeModelOverrides(agents, targetDir, pipelineConfig, manifest) 
     return applied;
 }
 
+// With the bdb-aos plugin installed, Claude lists its agents as bdb-aos:<name>; a loose copy in
+// ~/.claude/agents doubles ~45 agent prompts per session. Unedited loose copies are backed up (same
+// plugin-migration-* backup as skills, so --restore-plugin-backup restores them) and not copied again.
+// Agents with a Claude model override in pipeline.json keep their loose copy: plugin agents cannot take one.
+function pluginCoveredAgentFiles() {
+    if (DRY_RUN || pluginMigrationMode() !== 'on') return [];
+    const shippedDir = path.join(srcDir, '.claude', 'agents');
+    const cfg = loadPipelineConfig();
+    let slugs = [];
+    try { slugs = fs.readdirSync(shippedDir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)); } catch { return []; }
+    const keep = new Set(slugs.filter((slug) => resolveAgentConfig(slug, 'claude', cfg).model));
+    const manifest = _sessionManifest || loadInstallManifest();
+    const backupDir = path.join(homeDir, '.agents', 'backups', `plugin-migration-agents-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+    const r = pluginMigration.retireLooseAgents({ home: homeDir, manifest, shippedDir, keep, backupDir });
+    if (!r) return [];
+    if (!_sessionManifest) saveInstallManifest(manifest);
+    if (r.removed.length) log.step(`Claude loads the agents from the ${pluginMigration.PLUGIN} plugin, so ${r.removed.length} loose copies were removed from ~/.claude/agents (backup: ${backupDir}; aos-uninstall --restore-plugin-backup restores them).`);
+    if (r.kept.length) log.warn(`${r.kept.length} edited loose agent(s) stay in ~/.claude/agents and duplicate the plugin (${r.kept.slice(0, 5).join(', ')}). Move your edits out and re-run to retire them.`);
+    return [...r.covered];
+}
+
 // OpenCode's agent picker lists only primary agents; `mode: all` puts these there and keeps them callable as subagents.
 const OPENCODE_PICKER_AGENTS = new Set(['godmode-ui-ux', 'godmode-engineering', 'godmode-media-eventtech', 'godmode-shipping']);
 // Session-level roles with no AGENTS.md persona: thin primary agents that load the matching skill.
@@ -5169,8 +5599,9 @@ const OPENCODE_SKILL_AGENTS = [
 // Generates .opencode/agents/<name>.md. Emits description, mode (subagent, or all for picker agents), and model.
 function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
+    const written = [];
     for (const a of OPENCODE_SKILL_AGENTS) {
-        fs.writeFileSync(path.join(targetDir, `${a.slug}.md`), ['---', `description: ${yamlQuote(a.description)}`, 'mode: primary', '---', '', a.body, ''].join('\n'));
+        writeCompiledAgent(path.join(targetDir, `${a.slug}.md`), ['---', `description: ${yamlQuote(a.description)}`, 'mode: primary', '---', '', a.body, ''].join('\n'), written);
     }
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
@@ -5198,8 +5629,9 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
         }
         frontmatterLines.push('---', '');
 
-        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatterLines.join('\n') + body + '\n');
+        writeCompiledAgent(path.join(targetDir, `${slug}.md`), frontmatterLines.join('\n') + body + '\n', written);
     }
+    recordCompiledAgents(written);
 }
 
 // Antigravity loads <dir>/agents/<slug>/agent.md (Markdown, YAML frontmatter, H1 + system prompt); the
@@ -5210,24 +5642,24 @@ function compileAgyAgents(agents, targetDir, pipelineConfig = null) {
         if (!/^[a-z0-9][a-z0-9._-]*$/.test(slug) || slug.includes('..')) throw new Error(`unsafe agent name: ${JSON.stringify(a.name)}`);
         return { a, slug };
     });
+    const written = [];
     for (const { a, slug } of items) {
         const file = path.join(targetDir, slug, 'agent.md');
         // A model line only for an explicit pipeline.json override (aos-23: no pinned models); agy documents inherit|flash|pro.
         const model = resolveAgentConfig(slug, 'antigravity', pipelineConfig).model;
         const readOnly = isReadOnlyAgent(slug);
         const text = ['---', 'subagent: true', readOnly ? 'inheritMcp: false' : 'inheritMcp: true', ...(model ? [`model: ${model}`] : []), '---', '', `# ${a.name}`, '', a.systemPrompt, ''].join('\n');
-        if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) continue;
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, text);
+        writeCompiledAgent(file, text, written);
     }
+    recordCompiledAgents(written);
 }
 
 // Generates ~/.codex/agents/<name>.toml. Format per the Codex subagents docs
 // (learn.chatgpt.com/docs/agent-configuration/subagents): required name, description,
 // developer_instructions; optional model, sandbox_mode. No model is written (the agent inherits the
 // session model) unless the user pinned one for Codex in .aos/pipeline.json.
-const CODEX_AGENT_MARKER = '# aos-managed: generated by the AOS installer, rewritten on update';
-const CODEX_LEGACY_MARKER = /^# Codex subagent configuration for /;
+const { CODEX_AGENT_MARKER, isAosCodexAgentFile } = uninstallRecords;
 // Read-only enforcement slugs. This is an explicit allowlist, not a regex, so
 // behavior changes only when a slug is added here on purpose. Kept in one place
 // and used by the Codex, OpenCode and Antigravity compilers below. The set
@@ -5278,16 +5710,9 @@ const isReadOnlyAgent = (slug) => READ_ONLY_AGENT_SLUGS.has(slug);
 
 const codexSandboxMode = (slug) => (isReadOnlyAgent(slug) ? 'read-only' : 'workspace-write');
 
-// Ours = carries the current marker or the pre-4.18.2 header; anything else is a user's agent file.
-function isAosCodexAgentFile(file) {
-    try {
-        const first = fs.readFileSync(file, 'utf8').split('\n', 1)[0];
-        return first === CODEX_AGENT_MARKER || CODEX_LEGACY_MARKER.test(first);
-    } catch { return false; }
-}
-
 function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
+    const written = [];
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         const file = path.join(targetDir, `${slug}.toml`);
@@ -5313,8 +5738,9 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
             `sandbox_mode = "${codexSandboxMode(slug)}"`,
             `developer_instructions = ${JSON.stringify(instructions)}`
         ].filter(Boolean);
-        fs.writeFileSync(file, lines.join('\n') + '\n');
+        writeCompiledAgent(file, lines.join('\n') + '\n', written, { adopt: true });
     }
+    recordCompiledAgents(written);
 }
 
 
@@ -5325,17 +5751,22 @@ function injectHarnessRules() {
 
     if (fs.existsSync(rulesMdSrc)) {
         if (active.has('antigravity')) installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
-            copyDirRecursiveSync(rulesMdSrc, path.join(geminiDir, 'RULES.md'));
+            // Managed-block upsert: a user's own content in RULES.md / GEMINI.md is never
+            // overwritten. AOS replaces only its marker-delimited block, which
+            // `aos uninstall` strips again (and the file with it if nothing user-owned remains).
+            const rulesBody = fs.readFileSync(rulesMdSrc, 'utf8');
+            const rulesTarget = path.join(geminiDir, 'RULES.md');
             // Keep GEMINI.md in sync for backwards compatibility with Antigravity CLI harnesses
+            const geminiTarget = path.join(geminiDir, 'GEMINI.md');
             try {
-                fs.copyFileSync(rulesMdSrc, path.join(geminiDir, 'GEMINI.md'));
-            } catch (e) { logDebug(e, 'sync GEMINI.md fallback'); }
-            log.step(`Installed RULES.md to ${path.join(geminiDir, 'RULES.md')}`);
+                for (const target of [rulesTarget, geminiTarget]) writeManagedRulesFile(target, rulesBody);
+            } catch (e) { logDebug(e, 'managed-block upsert for RULES.md/GEMINI.md'); }
+            log.step(`Installed RULES.md as managed block to ${rulesTarget} (and GEMINI.md); user content preserved`);
         }, 'The harness injection below still runs.');
 
         // Dispatcher scripts must land in ~/.claude/workflows/, because that is
-        // where the skills that route to them look: startcycle-graph's SKILL.md
-        // and teamwork-preview's both tell the model to call `Workflow` with
+        // where the skills that route to them look: fabric-graph's SKILL.md
+        // and fabric-teamwork's both tell the model to call `Workflow` with
         // scriptPath `$HOME/.claude/workflows/<name>.mjs`. installProjectHarness()
         // copies them into a *project*, which only helps a project that opted into
         // the local harness -- on a plain global install those paths did not exist
@@ -5346,17 +5777,17 @@ function injectHarnessRules() {
                 copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(homeDir), 'workflows'));
                 log.step(`Installed dispatcher workflows to ${path.join(claudeConfigDir(homeDir), 'workflows')}`);
             }
-        }, '/startcycle-graph and /teamwork-preview fall back to their prose protocols.');
+        }, '/fabric-graph and /fabric-teamwork fall back to their prose protocols.');
 
-        const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
+        const fabricWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'fabric-graph.md');
         const sources = installStep('read the global rule sources', () => ({
             globalRules: fs.readFileSync(rulesMdSrc, 'utf8'),
-            startcycleContent: fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '',
+            fabricContent: fs.existsSync(fabricWorkflowSrc) ? fs.readFileSync(fabricWorkflowSrc, 'utf8') : '',
             agentsMdContent: fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : ''
         }), 'Cursor, Claude, Copilot and Codex keep their current instruction files.');
 
         if (sources.ok) {
-            const { globalRules, startcycleContent, agentsMdContent } = sources.value;
+            const { globalRules, fabricContent, agentsMdContent } = sources.value;
 
             // F8: an install or update started inside a repo must not write into that repo (.github,
             // .codex-plugin, .roomodes); a repo gets files only via --project-harness.
@@ -5367,7 +5798,9 @@ function injectHarnessRules() {
             if (active.has('antigravity')) installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
-                    compileAgyAgents(parseAgentsMd(agentsMdContent), agyAgentsDir, loadPipelineConfig());
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
+                    compileAgyAgents([...agents, ...packAgents], agyAgentsDir, loadPipelineConfig());
                     log.step(`Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
                 }
             }, 'Antigravity agents unchanged');
@@ -5375,9 +5808,11 @@ function injectHarnessRules() {
             if (active.has('claudecode')) installStep('compile Claude Code subagents', () => {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
-                    const agents = agentsNotShippedAsFiles(parseAgentsMd(agentsMdContent));
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
+                    const allAgents = agentsNotShippedAsFiles([...agents, ...packAgents]);
                     const claudeAgentsDir = path.join(claudeConfigDir(homeDir), 'agents');
-                    compileClaudeAgents(agents, claudeAgentsDir, pipelineConfig);
+                    compileClaudeAgents(allAgents, claudeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
                 }
             }, 'Claude Code agents unchanged');
@@ -5386,8 +5821,9 @@ function injectHarnessRules() {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
                     const opencodeAgentsDir = path.join(homeDir, '.config', 'opencode', 'agents');
-                    compileOpenCodeAgents(agents, opencodeAgentsDir, pipelineConfig);
+                    compileOpenCodeAgents([...agents, ...packAgents], opencodeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
                 }
             }, 'OpenCode agents unchanged');
@@ -5396,8 +5832,9 @@ function injectHarnessRules() {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
                     const codexAgentsDir = path.join(homeDir, '.codex', 'agents');
-                    compileCodexAgents(agents, codexAgentsDir, pipelineConfig);
+                    compileCodexAgents([...agents, ...packAgents], codexAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to Codex subagents in ${codexAgentsDir}`);
                 }
             }, 'Codex agents unchanged');
@@ -5413,10 +5850,9 @@ function injectHarnessRules() {
                 next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
 
                 if (!next.trim()) {
-                    const srcClaude = path.join(srcDir, 'CLAUDE.md');
-                    next = fs.existsSync(srcClaude) ? fs.readFileSync(srcClaude, 'utf8') : '# AOS — Claude Code\n\n**Read [AGENTS.md](AGENTS.md) first.**\n';
+                    next = CLAUDE_POINTER;
                 } else if (!next.includes('AGENTS.md')) {
-                    next = `**Read [AGENTS.md](AGENTS.md) first.**\n\n${next}`;
+                    next = `${CLAUDE_PREFIX}${next}`;
                 }
 
                 if (next !== claudeContent) {
@@ -5451,12 +5887,12 @@ function injectHarnessRules() {
                 if (!codexContent.includes("Global Agent Instructions") && !codexContent.includes(DESTRUCTIVE_START)) {
                     codexContent = `${codexContent}\n\n${globalRules}`.trim();
                 }
-                if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
-                    codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
+                if (fabricContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
+                    codexContent = `${codexContent}\n\n---\n\n${fabricContent}`.trim();
                 }
                 codexContent = upsertRoutingBlock(upsertDestructiveBlock(codexContent));
                 fs.writeFileSync(codexPath, codexContent);
-                log.step('Synced .codex-plugin/system.md with Global Rules and /startcycle workflow');
+                log.step('Synced .codex-plugin/system.md with Global Rules and /fabric workflow');
             }, '.codex-plugin/system.md is unchanged.');
 
             const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
@@ -5485,7 +5921,7 @@ function injectHarnessRules() {
         const rooModesPath = path.join(currentDir, '.roomodes');
         const rooModesData = {
             customModes: [
-                { slug: "planner-orchestrator", name: "Planner Orchestrator", roleDefinition: "Lead System Planner & Task Decomposer. Analyzes prompts, /bdbrainstorm, and orchestrates /startcycle.", groups: ["read", "browser", "command"] },
+                { slug: "planner-orchestrator", name: "Planner Orchestrator", roleDefinition: "Lead System Planner & Task Decomposer. Analyzes prompts, /bdbrainstorm, and orchestrates /fabric.", groups: ["read", "browser", "command"] },
                 { slug: "godmode-ui-ux", name: "Godmode UI/UX", roleDefinition: "Lead Frontend Designer & UI Engineer. Anti-Slop, DTCG design tokens, fluid motion, React/Tailwind.", groups: ["read", "edit", "browser", "command"] },
                 { slug: "godmode-engineering", name: "Godmode Engineering", roleDefinition: "Senior Fullstack & Backend Engineer. DDD, Clean Architecture, TDD, TypeScript/Python.", groups: ["read", "edit", "browser", "command"] },
                 { slug: "godmode-eventtech", name: "Godmode EventTech", roleDefinition: "Architectural Authority for Real-Time Performance, Signal Flow, and Hardware Limits in live environments.", groups: ["read", "edit", "mcp", "command"] },
@@ -5509,7 +5945,11 @@ function injectHarnessRules() {
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
                     // hooks: installGlobalHooks delivers only what each harness wires.
-                    const exclude = dir === '.claude' ? ['settings.json', 'hooks'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    let exclude = dir === '.claude' ? ['settings.json', 'hooks', ...pluginCoveredAgentFiles()] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    // Only ship antigravity-rtk-rules.md if rtk is detected on PATH
+                    if (dir === '.agents') {
+                        if (!hasExecutable('rtk')) exclude = [...exclude, 'rules/antigravity-rtk-rules.md'];
+                    }
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
@@ -5519,7 +5959,7 @@ function injectHarnessRules() {
 
         installStep('write the default ~/.aos/pipeline.json', () => {
             if (!DRY_RUN) installPipelineDefault();
-        }, 'Helper agents of /startcycle-graph then inherit the session model.');
+        }, 'Helper agents of /fabric-graph then inherit the session model.');
 
         installStep('apply Claude model overrides to the shipped agents', () => {
             if (DRY_RUN || !_sessionManifest || !active.has('claudecode')) return;
@@ -5534,7 +5974,7 @@ function injectHarnessRules() {
                 copyDirRecursiveSync(agentsDirSrc, globalAgentsDir, AGENTS_COPY_EXCLUDE);
                 log.step(`Synced global .agents/ to ${globalAgentsDir}`);
             }
-        }, 'agents.md and workflows/startcycle.md may be missing globally.');
+        }, 'agents.md and workflows/fabric.md may be missing globally.');
     }
 }
 
@@ -5543,8 +5983,8 @@ function injectHarnessRules() {
 // Pinned entries only; the foreign installers (opencode-loop's npx installer, rtk init)
 // are never run because they rewrite the user's opencode config.
 const OPENCODE_OPTIONAL_PINS = {
-    ponytail: '@dietrichgebert/ponytail@4.10.0',
-    loop: '@bybrawe/opencode-loop@0.6.2',
+    ponytail: '@dietrichgebert/ponytail@5.3.2',
+    loop: '@bybrawe/opencode-loop@0.6.8',
 };
 const OPENCODE_RTK_HINT = 'rtk is not installed by AOS. Run yourself: brew install rtk && rtk init -g --opencode';
 const OPENCODE_LOOP_SHELL_WARNING = 'opencode-loop: /loop-shell style commands run shell commands as child processes. ' +
@@ -5631,6 +6071,23 @@ function warnOnDuplicateAosPlugin(plugins, canonical) {
         log.warn(`opencode.jsonc lists bdb-aos.js under another path (${others.map(norm).join(', ')}). ` +
             `plugins/bdb-aos.js is auto-loaded too; remove the extra entry to avoid a double gate.`);
     }
+}
+
+// The same bdb-aos.js spelled twice (slashes, file:// URL, ~/, case on Windows) makes OpenCode load it twice: keep the first.
+function dedupeAosPluginEntries(plugins, home = homeDir) {
+    const key = (v) => {
+        let s = String(Array.isArray(v) ? v[0] : v).trim().replace(/\\/g, '/').replace(/^file:\/\/\/?/i, '');
+        if (s.startsWith('~/')) s = `${String(home).replace(/\\/g, '/')}/${s.slice(2)}`;
+        return process.platform === 'win32' ? s.toLowerCase() : s;
+    };
+    const seen = new Set();
+    return plugins.filter((p) => {
+        if (!/bdb-aos\.js$/.test(key(p))) return true;
+        const k = key(p);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    });
 }
 
 function appendOptionalOpencodePlugins(data, configPath, optional) {
@@ -5723,6 +6180,13 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
             }
             pluginInstalled = true;
             uninstallRecords.recordOpencodePlugin(targetHome, pluginDest);
+            try {
+                // `opencode --version` creates ~/.config, ~/.cache and ~/.local: never in a dry run.
+                const ov = require('./lib/opencode-verify.js');
+                const v = !DRY_RUN && ov.onPath('opencode') && require('./lib/cli-spawn.js').run('opencode', ['--version'], { timeout: 8000 });
+                const warn = v && v.status === 0 ? ov.opencodeVersionWarning(v.stdout) : null;
+                if (warn) log.warn(warn);
+            } catch (e) { logDebug(e, 'opencode version check'); }
         } catch (e) {
             log.warn(`Could not install OpenCode plugin: ${e.message}`);
         }
@@ -5746,8 +6210,9 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     // Profile flag for the plugin (context behaviours only; gates and A2A are never switched off).
     if (pluginInstalled && !DRY_RUN) {
         try {
-            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn);
-            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}`);
+            const gateEffective = gateOnFor('opencode');
+            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn, gateEffective);
+            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}, gate=${gateEffective}`);
             uninstallRecords.recordOpencodeProfile(targetHome, flag.file);
         } catch (e) {
             log.warn(`Could not write OpenCode plugin profile flag: ${e.message}`);
@@ -5759,7 +6224,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     // so the a2a lib must land there or the plugin fails to load.
     installA2aLibCopies({ targetHome, opencodeDir });
 
-    // Slash-command payloads (/startcycle-graph and the generated /bdb-aos-<cmd> files).
+    // Slash-command payloads (/fabric-graph and the generated /bdb-aos-<cmd> files).
     const commandsSrc = path.join(srcDir, '.opencode', 'commands');
     if (fs.existsSync(commandsSrc)) {
         try {
@@ -5771,10 +6236,24 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 
     if (!pluginInstalled) return data;
 
+    // OpenCode auto-loads plugins/bdb-aos.js. A plugin[] entry for the same file made OpenCode on Windows load it
+    // twice (two plugin_origins), so auto-load is the only mechanism: our entry goes, foreign entries stay.
+    // Legacy ~/.opencode and %APPDATA%\opencode configs are cleaned too (a stale entry there was the second origin).
+    const ourPluginFile = path.resolve(opencodeDir, 'plugins', 'bdb-aos.js');
+    const ov = require('./lib/opencode-verify.js');
+    const isOurPluginEntry = (e) => ov.isAosPluginEntry(e, targetHome) || ov.pluginFile(e, targetHome) === ourPluginFile;
+
     const ownsWrite = data === null;
     let beforeSerialized = null;
+    if (ownsWrite && !configPath) return data;
+    // Textual removal first, so the comments in opencode.jsonc survive when nothing else changes. Never deletes a file.
+    try {
+        const backup = (file) => backupOnce(file, () => { const b = `${file}.${timestamp}.bak`; fs.copyFileSync(file, b); return b; });
+        for (const file of ov.removeAosPluginEntries(targetHome, { extraFiles: configPath ? [configPath] : [], dryRun: DRY_RUN, backup })) {
+            log.step(`Removed the bdb-aos.js plugin[] entry from ${file}: OpenCode auto-loads plugins/bdb-aos.js`);
+        }
+    } catch (e) { logDebug(e, 'opencode plugin[] textual cleanup'); }
     if (ownsWrite) {
-        if (!configPath) return data;
         const loaded = loadJsonConfig(configPath);
         if (loaded.state === 'invalid') { warnUnparseable(configPath, 'OpenCode plugin registration', loaded); return null; }
         const existing = loaded.data;
@@ -5784,14 +6263,9 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         data = existing;
     }
 
-    // Register the plugin.
     if (!Array.isArray(data.plugin)) data.plugin = [];
-    const pluginPathNormalized = path.join(opencodeDir, 'plugins', 'bdb-aos.js').replace(/\\/g, '/');
-    const alreadyRegistered = data.plugin.some(p => {
-        const str = typeof p === 'string' ? p : (Array.isArray(p) ? p[0] : '');
-        return str.includes('bdb-aos');
-    });
-    if (!alreadyRegistered) data.plugin.push(pluginPathNormalized);
+    const pluginPathNormalized = ourPluginFile.replace(/\\/g, '/');
+    data.plugin = dedupeAosPluginEntries(data.plugin.filter((p) => !isOurPluginEntry(p)));
     warnOnDuplicateAosPlugin(data.plugin, pluginPathNormalized);
     appendOptionalOpencodePlugins(data, configPath, optional);
 
@@ -5854,9 +6328,17 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
     const rulesLib = path.join(srcDir, 'lib', 'destructive-rules.js');
     if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
+    const routingRulesLib = path.join(srcDir, 'lib', 'routing-rules.js');
+    if (fs.existsSync(routingRulesLib)) copyDirRecursiveSync(routingRulesLib, path.join(targetHome, '.agents', 'lib', 'routing-rules.js'));
+    // session-cap.mjs (memb-inject, aos-session-hint) reads the per-context-profile SessionStart cap from here outside a checkout.
+    const ctxProfilesLib = path.join(srcDir, 'lib', 'v5', 'context-profiles.js');
+    if (fs.existsSync(ctxProfilesLib)) copyDirRecursiveSync(ctxProfilesLib, path.join(targetHome, '.agents', 'lib', 'context-profiles.js'));
     // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
     const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
     if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
+    // cli-spawn.js and the a2a libs resolve powershell/taskkill through win-bin.js (absolute System32 paths).
+    const winBinLib = path.join(srcDir, 'lib', 'win-bin.js');
+    if (fs.existsSync(winBinLib)) copyDirRecursiveSync(winBinLib, path.join(targetHome, '.agents', 'lib', 'win-bin.js'));
     const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
     if (on('claudecode')) {
         mergeBdbSettingsHooks(claudeSettings);
@@ -5913,6 +6395,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     if (on('codex')) {
         if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
         installCodexRules({ targetHome });
+        installCodexWritableRoot({ targetHome });
     }
 
     // 4. OpenCode CLI
@@ -6096,26 +6579,33 @@ function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
     }
 }
 
-function installGlobalBinaries() {
+function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
     const binSrc = path.join(srcDir, 'bin');
-    const globalAgentsBin = path.join(homeDir, '.agents', 'bin');
+    const globalAgentsBin = path.join(targetHome, '.agents', 'bin');
     if (fs.existsSync(binSrc)) {
         copyDirRecursiveSync(binSrc, globalAgentsBin);
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
-        copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
-        // The gateway reads the shipped server list from ~/.agents (aosRoot); without these it serves nothing.
-        for (const f of ['mcp_config.json', 'mcp_picks.json']) {
-            if (fs.existsSync(path.join(srcDir, f))) copyDirRecursiveSync(path.join(srcDir, f), path.join(homeDir, '.agents', f));
+        copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(targetHome, '.agents', 'lib'));
+        // The gateway reads the shipped server list from ~/.agents/gateway/upstream_template.json (aosRoot); without these it serves nothing.
+        const gatewayDir = path.join(targetHome, '.agents', 'gateway');
+        fs.mkdirSync(gatewayDir, { recursive: true });
+        const srcTemplate = mcpSecrets.shippedMcpTemplatePath(srcDir);
+        if (fs.existsSync(srcTemplate)) {
+            copyDirRecursiveSync(srcTemplate, path.join(gatewayDir, 'upstream_template.json'));
         }
+        if (fs.existsSync(path.join(srcDir, 'mcp_picks.json'))) {
+            copyDirRecursiveSync(path.join(srcDir, 'mcp_picks.json'), path.join(targetHome, '.agents', 'mcp_picks.json'));
+        }
+        mcpSecrets.migrateLegacyAgyWorkspaceMcp(targetHome, srcDir, { log });
         // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
         const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
-        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(homeDir, '.agents', 'lib', 'gate-profile.mjs'));
+        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(targetHome, '.agents', 'lib', 'gate-profile.mjs'));
         // lib/a2a-sdk-resolve.mjs in the copy above needs the package root (deps are package deps).
         writeA2aPackageRootRecord();
     }
 
-    const localBinDir = path.join(homeDir, '.local', 'bin');
+    const localBinDir = path.join(targetHome, '.local', 'bin');
     if (!fs.existsSync(localBinDir)) {
         try { fs.mkdirSync(localBinDir, { recursive: true }); } catch (e) { logDebug(e, 'mkdir localBin'); }
     }
@@ -6136,7 +6626,7 @@ function installGlobalBinaries() {
             // (Lenovo P15: "Cannot find module '../installer.js'"). Run it from the package instead.
             run = `npx -y -p ${AOS_NPX_SPEC}${aosDistTag(pkg.version)} aos-uninstall`;
         } else {
-            const targetMjs = launcherTarget(homeDir, name);
+            const targetMjs = launcherTarget(targetHome, name);
             if (!fs.existsSync(targetMjs)) continue;
             run = `node "${targetMjs}"`;
         }
@@ -6168,10 +6658,12 @@ function installGlobalBinaries() {
 
 // The npm dist-tag a version was published under (same rule as release-please.yml):
 // a prerelease goes to its own channel (5.0.0-beta.3 -> beta), everything else to latest.
-// A channel tag rather than the exact version, so `aos update` reaches the newest release.
+// Only tags npm actually publishes are used: any other prerelease id (pre, z-builds, local
+// builds) falls back to latest, because `npx pkg@<unpublished-tag>` fails with ETARGET.
+const AOS_PUBLISHED_CHANNELS = new Set(['alpha', 'beta', 'rc']);
 function aosDistTag(version) {
     const m = /^[^-]+-([A-Za-z]+)/.exec(String(version));
-    return m ? m[1] : 'latest';
+    return m && AOS_PUBLISHED_CHANNELS.has(m[1]) ? m[1] : 'latest';
 }
 
 // One line telling the user how to put ~/.local/bin on PATH, or null when it already is.
@@ -6225,50 +6717,23 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const localize = (cmd) => (projectLocal
         ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('${CLAUDE_PROJECT_DIR}').replace(/\$CLAUDE_PROJECT_DIR\b/g, '${CLAUDE_PROJECT_DIR}'))
         : cmd.replace(/\$\{?CLAUDE_PROJECT_DIR\}?\/\.claude\/hooks\//g, '$HOME/.claude/hooks/').split('$HOME/.claude/hooks/').join(process.env.CLAUDE_CONFIG_DIR ? '${CLAUDE_CONFIG_DIR}/hooks/' : '$HOME/.claude/hooks/'));
-    const DEFAULT_HOOK_TIMEOUTS = {
-        'go-gate.mjs': 10,
-        'conventional-commits.mjs': 10,
-        'env-file-protection.mjs': 10,
-        'graph-gate.mjs': 10,
-        'memb-inject.mjs': 10,
-        'a2a-inbox.mjs': 10,
-        'a2a-session.mjs': 5,
-        'go-token.mjs': 10,
-        'go-grant.mjs': 10,
-        'rules-inject.mjs': 10,
-        'trail-relay.mjs': 3,
-        'trail-autostart.mjs': 3,
-        'aos-session-hint.mjs': 3,
-    };
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
-            hooks: (e.hooks || []).map((h) => {
-                if (!h || typeof h.command !== 'string') return h;
-                const updated = { ...h, command: localize(h.command) };
-                if (typeof updated.timeout !== 'number' || updated.timeout <= 0) {
-                    for (const [script, to] of Object.entries(DEFAULT_HOOK_TIMEOUTS)) {
-                        if (updated.command.includes(script)) {
-                            updated.timeout = to;
-                            break;
-                        }
-                    }
-                }
-                return updated;
-            }),
+            hooks: (e.hooks || []).map((h) => (h && typeof h.command === 'string' ? { ...h, command: localize(h.command) } : h)),
         }));
 
     const buildMerged = (existing) => {
         const merged = existing && typeof existing === 'object' ? existing : {};
         merged.hooks = merged.hooks && typeof merged.hooks === 'object' ? merged.hooks : {};
-        const repoSettings = readJsonFile(path.join(srcDir, '.claude', 'settings.json')) || {};
+        const repoSettings = readJsonFile(path.join(srcDir, 'config', 'claude-hooks.json')) || {};
         for (const [event, entries] of Object.entries(repoSettings.hooks || {})) {
             if (!Array.isArray(entries)) continue;
             const foreignEntries = (Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [])
                 .filter((e) => !isBdbEntry(e));
             // Only context-injection hooks can be dropped here (--no-hooks, minimal profile); the gates never are.
             const own = cloneBdbEntries(entries);
-            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn ? own : v5Profile.dropContextHooks(own, droppedHook))];
+            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn && gateOnFor('claudecode') ? own : v5Profile.dropContextHooks(own, (c) => droppedHook(c, 'claudecode')))];
         }
         return merged;
     };
@@ -6486,9 +6951,14 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
         'aos-context': {
             PreInvocation: [
                 { type: 'command', command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+                { type: 'command', command: obs(globalHooksDir, 'aos-session-hint.mjs'), timeout: 3 },
                 { type: 'command', command: obs(globalHooksDir, 'rules-inject.mjs'), timeout: 3 },
-                { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
+                { type: 'command', command: cmd(workflowsDir, 'fabric-dispatch.mjs'), timeout: 30 }
             ]
+        },
+        // Session-end memory capture: agy's Stop event. Payload fields are unverified on live agy; the hook skips quietly without a transcript.
+        'aos-memb-save': {
+            Stop: [{ type: 'command', command: obs(globalHooksDir, 'memb-session-save.mjs'), timeout: 5 }]
         },
         'aos-a2a-inbox': {
             // Interactive-session A2A inbox (agy PreInvocation): delivers pending messages only on the
@@ -6500,7 +6970,9 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 
     const allHookNames = Object.keys(bdbHooks);
     if (!contextHooksOn) delete bdbHooks['aos-trail-relay'];
-    bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command));
+    if (!contextHooksOn || !memoryOn) delete bdbHooks['aos-memb-save'];
+    if (!gateOnFor('antigravity')) { delete bdbHooks['aos-go-gate']; delete bdbHooks['aos-graph-gate']; }
+    bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command, 'antigravity'));
 
     // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
     // included). Strip the BDB handlers out of it, keep foreign ones, and drop it when nothing is left.
@@ -6741,6 +7213,10 @@ function installCodexRules({ targetHome = homeDir } = {}) {
     const want = codexGateRules();
     try {
         const have = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+        if (!gateOnFor('codex')) {
+            if (have !== null && have.startsWith(uninstallRecords.CODEX_RULES_HEADER) && !DRY_RUN) { fs.unlinkSync(file); log.step(`Removed Codex go-gate rules ${file} (gate setting is off)`); return true; }
+            return false;
+        }
         if (have === want) return false;
         if (have !== null && !have.startsWith(uninstallRecords.CODEX_RULES_HEADER)) {
             log.warn(`${file} exists and is not from AOS; kept. The Codex go-gate rules backstop is not installed.`);
@@ -6758,7 +7234,33 @@ function installCodexRules({ targetHome = homeDir } = {}) {
     }
 }
 
-const CODEX_TRUST_REMINDER ='Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.';
+// #174: Codex's workspace-write sandbox must be able to write the A2A reply file. Only the reply
+// directory becomes a writable root (never ~/.aos); backed up first, removed again by aos-uninstall.
+function installCodexWritableRoot({ targetHome = homeDir } = {}) {
+    if (process.env.AOS_A2A_SIDECAR === 'off') return false;
+    const file = path.join(targetHome, '.codex', 'config.toml');
+    try {
+        const writableRoot = require('./lib/codex-writable-root.js');
+        const dir = writableRoot.replyRoot(targetHome);
+        const r = writableRoot.ensureWritableRoot(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '', dir);
+        if (r.note) log.warn(`${file}: ${r.note}; add ${dir} to [sandbox_workspace_write].writable_roots by hand so Codex can answer A2A messages.`);
+        if (!r.changed) return false;
+        if (DRY_RUN) { log.message(`[dry-run] Codex writable root ${dir}`); return false; }
+        if (!backupConfigFile(file)) return false;
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, r.text, { mode: 0o600 });
+        uninstallRecords.recordCodexWritableRoot(targetHome, dir);
+        log.step(`Codex: ${dir} added to [sandbox_workspace_write].writable_roots`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not add the Codex A2A writable root: ${e.message}`);
+        return false;
+    }
+}
+
+const CODEX_TRUST_REMINDER =
+    'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.\n' +
+    'Non-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.';
 // Set when an install changed the AOS hook groups in ~/.codex/config.toml; printed as the last outro line.
 let codexHooksChanged = false;
 
@@ -6807,6 +7309,13 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'aos-session-hint.mjs')}"`)}`,
         'timeout = 3',
         '',
+        // Re-arms the once-per-session rules block after /clear or compaction (SessionStart source); prints nothing.
+        '[[hooks.SessionStart]]',
+        '[[hooks.SessionStart.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'rules-inject.mjs')}"`)}`,
+        'timeout = 3',
+        '',
         // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints only the session's own A2A peer name (one line of additionalContext); skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
         '[[hooks.SessionStart]]',
         '[[hooks.SessionStart.hooks]]',
@@ -6817,7 +7326,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '[[hooks.UserPromptSubmit]]',
         '[[hooks.UserPromptSubmit.hooks]]',
         'type = "command"',
-        `command = ${JSON.stringify(`node "${path.join(workflowsDir, 'startcycle-dispatch.mjs')}"`)}`,
+        `command = ${JSON.stringify(`node "${path.join(workflowsDir, 'fabric-dispatch.mjs')}"`)}`,
         'timeout = 30',
         '',
         '[[hooks.PreToolUse]]',
@@ -6825,6 +7334,20 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event PreToolUse`)}`,
         'timeout = 5',
+        '',
+        // Safety hooks every harness gets (docs/install-options.md). They fail open; memb-session-save (Claude transcript
+        // format) and trail-autostart (Agent/Task tool) have no Codex equivalent and are not wired here.
+        '[[hooks.PreToolUse]]',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'conventional-commits.mjs')}"`)}`,
+        'timeout = 10',
+        '',
+        '[[hooks.PreToolUse]]',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'env-file-protection.mjs')}"`)}`,
+        'timeout = 10',
         '',
         '[[hooks.Stop]]',
         '[[hooks.Stop.hooks]]',
@@ -6834,8 +7357,8 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '# AOS:HOOKS:END'
     ].join('\n');
     // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
-    const tomlSnippet = contextHooksOn && memoryOn ? fullSnippet
-        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !droppedHook(b)).join('\n\n')}\n# AOS:HOOKS:END`;
+    const tomlSnippet = contextHooksOn && memoryOn && gateOnFor('codex') ? fullSnippet
+        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !droppedHook(b, 'codex')).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
     const original = content;
@@ -6857,7 +7380,14 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     // Drop every AOS hook entry (marker block or not, duplicates included), then append one fresh block.
     const isAosMarker = (l) => /^\s*# AOS:HOOKS:(START|END)\s*$/.test(l);
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
-    const kept = (uninstallRecords.dropAosHookGroups(content.split(/\r?\n/).filter((l) => !isAosMarker(l))));
+    // LEGACY_CODEX_DISPATCH was renamed to fabric-dispatch.mjs: an old entry for it outside the marker block ran a
+    // missing file on every prompt (exit 1). Renamed here, it is dropped below as an AOS entry and the fresh block wires
+    // fabric-dispatch.mjs when this profile uses it. Only an entry pointing at <codex>/workflows/<LEGACY_CODEX_DISPATCH>.
+    const fold = (p) => { const r = p.replace(/\\+/g, '/'); return process.platform === 'win32' ? r.toLowerCase() : r; };
+    const oldDispatch = path.join(workflowsDir, LEGACY_CODEX_DISPATCH);
+    const oldForms = [fold(oldDispatch), ...(oldDispatch.startsWith(homeDir + path.sep) ? [fold(`~/${path.relative(homeDir, oldDispatch)}`)] : [])];
+    const migrated = content.split(/\r?\n/).map((l) => (/^\s*command\s*=/.test(l) && oldForms.some((o) => fold(l).includes(o)) ? l.replace(new RegExp(LEGACY_CODEX_DISPATCH.replace(/\./g, '\\.'), 'i'), 'fabric-dispatch.mjs') : l));
+    const kept = (uninstallRecords.dropAosHookGroups(migrated.filter((l) => !isAosMarker(l))));
     // Blank lines left where AOS groups sat are collapsed, so a block that is not last in the file does not grow on every run.
     const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, eol + eol).trimEnd();
     content = `${body}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
@@ -6921,7 +7451,7 @@ function installProjectHarness() {
             copyDirRecursiveSync(workflowsSrc, path.join(projectCodexDir, 'workflows'));
             log.step(`Copied dispatcher workflows to project harnesses`);
         }
-    }, '/startcycle dispatch degrades to graph.md as a manual guide.');
+    }, '/fabric dispatch degrades to graph.md as a manual guide.');
 
     installStep('copy hooks into project', () => {
         const hooksSrc = path.join(srcDir, '.claude', 'hooks');
@@ -7024,10 +7554,24 @@ async function promptMcpSelection(tier) {
 function parseModuleSelection(argv = process.argv, env = process.env) {
     const flag = argv.find((a) => a.startsWith('--modules='));
     return [env.AOS_MODULES, flag && flag.slice('--modules='.length)].filter(Boolean).join(',')
-        .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+        .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)
+        .map((x) => (x === 'rust' ? 'rustauri' : x));
 }
 
+// Pack checkboxes of the setup module picker: every pack that is not brought by a tier or a
+// module on its own (live-show rides with Pro MEDIA, creator/hardware with their modules,
+// stacks rides along with app-dev). Selecting one implies the pack additively.
+const PACK_CHECKBOX_LABELS = {
+    'web-design': 'Web Design & Frontend',
+    'app-dev': 'App Development & Deploy (adds the language stacks pack)',
+    'agents-automation': 'Agents & Automation',
+    'business': 'Agency & Business',
+    'harness-engineering': 'Harness Engineering',
+};
+const PACK_CHECKBOX_IDS = Object.keys(PACK_CHECKBOX_LABELS);
+
 async function promptOptionalModules(installedModules, requested = parseModuleSelection(), modulesOverride = null) {
+    const packDefs = (() => { try { return skillPacks.loadPacks(srcDir).packs || {}; } catch { return {}; } })();
     const allModules = (modulesOverride || [
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
@@ -7035,7 +7579,7 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
         // Offered only where it can actually run -- see aoSupportedHere(). The
         // predecessor, @hybridlabor-api/bdb-os-agent-workspace, must never come
         // back: its repository is archived and its last release predates the
-        // archiving, so it hands out the build with the CDC loop defect.
+        // archiving, so it hands out the build with the CDC defect.
         ...(aoSupportedHere()
             ? [{ id: 'ao', name: 'AO Agent Orchestrator (Session telemetry & WebUI)', fn: installOSAgentWorkspace }]
             : []),
@@ -7044,10 +7588,18 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
         { id: 'rustauri', name: 'Rust + Tauri (tauri-pilot + rust-pro skills, optional)', fn: installRustauri },
         { id: 'styleseed', name: 'StyleSeed (Toss design-language UI/UX skills, optional)', fn: installStyleseed },
         { id: 'codebase-memory', name: 'Codebase Memory MCP (Code Knowledge Graph, Local SQLite)', fn: installCodebaseMemory },
-        { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
+        { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller },
+        // Skill-pack checkboxes: a no-op module whose only effect is the implied pack.
+        ...PACK_CHECKBOX_IDS.filter((id) => skillPacks.knownPack(id, srcDir)).map((id) => ({
+            id,
+            name: `${PACK_CHECKBOX_LABELS[id] || id} (skill pack)`,
+            hint: packDefs[id] && packDefs[id].description,
+            fn: () => true,
+        })),
     ]).filter((m) => !installExcluded.has(m.id));
 
     const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
+    const implyPacks = (ids) => { for (const id of ids) addImpliedPack(id); };
     if (isAutoYes) {
         if (!requested.length) return [];
         const wantAll = requested.includes('all');
@@ -7055,17 +7607,29 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
             if (id !== 'all' && !allModules.some((m) => m.id === id)) log.warn(`Unknown module "${id}" in --modules ignored (known: ${allModules.map((m) => m.id).join(', ')}).`);
         }
         const auto = uninstalled.filter((m) => wantAll || requested.includes(m.id)).map((m) => m.id);
-        return (await runModuleInstalls(allModules, auto, installedModules)).installed;
+        const res = await runModuleInstalls(allModules, auto, installedModules);
+        implyPacks(res.installed);
+        return res.installed;
     }
     if (uninstalled.length === 0) return [];
 
+    const detected = skillPacks.detectProjectStack(process.cwd());
+    const preselect = [];
+    if (detected.groups.includes('rust')) {
+        if (uninstalled.some((m) => m.id === 'rustauri')) preselect.push('rustauri');
+        if (uninstalled.some((m) => m.id === 'app-dev')) preselect.push('app-dev');
+    }
+
     const chosen = pick(await multiselect({
-        message: 'New / optional BDB OS modules available - select what to install:',
-        options: uninstalled.map(m => ({ value: m.id, label: m.name })),
+        message: 'New / optional BDB OS modules and skill packs - select what to install:',
+        options: uninstalled.map(m => ({ value: m.id, label: m.name, hint: m.hint })),
+        initialValues: preselect.length ? preselect : undefined,
         required: false
     }));
 
-    return (await runModuleInstalls(allModules, chosen, installedModules)).installed;
+    const res = await runModuleInstalls(allModules, chosen, installedModules);
+    implyPacks(res.installed);
+    return res.installed;
 }
 
 // Module installers return false (or throw) on failure; undefined/true mean success.
@@ -7094,65 +7658,23 @@ async function runModuleInstalls(allModules, chosen, installedModules) {
     return { installed, failed };
 }
 
-// Module ids whose daemons ship a web interface or background service worth
-// surfacing in the launchpad (each has a card in the generated HTML below).
-const LAUNCHPAD_WEB_MODULES = ['memb', 'synapse', 'openwiki', 'ao', 'remote'];
-// The hub is a core, on-demand service (started with `aos hub`, same as the
-// store UI), not an optional daemon module — but its launchpad card belongs on
-// the page. Registered after the literal so the constant itself keeps its
-// documented daemon-module shape.
-LAUNCHPAD_WEB_MODULES.push('hub');
-
-// Explicit opt-in flags that open the launchpad even outside a dev checkout.
-const LAUNCHPAD_OPEN_FLAGS = ['--launchpad', '--dashboard', '--open', '--dev'];
-
-// True on a local BDB dev checkout (or BDB_DEV=1). This is intentionally
-// narrower than the old isDevWorkflow check: CLI flags live in
-// shouldOpenLaunchpad(), not here, so callers can tell "dev machine" apart
-// from "user asked for it". Overrides exist for tests.
-function isDevEnvironment(overrides = {}) {
-    const home = overrides.homeDir || homeDir;
-    const env = overrides.env || process.env;
-    return fs.existsSync(path.join(home, 'dev', 'bdb-dev')) ||
-        fs.existsSync(path.join(home, 'bdb-dev')) ||
-        env.BDB_DEV === '1';
-}
-
-// True when the launchpad should be generated and opened: a dev checkout, an
-// explicit flag, or installed daemon/WebUI modules. Overrides exist for tests.
-function shouldOpenLaunchpad(installedModules = [], overrides = {}) {
-    const env = overrides.env || process.env;
-    const argv = overrides.argv || process.argv;
-    if (env.AOS_NO_OPEN === '1' || argv.includes('--no-open')) return false;
-    if (overrides.isUpdate || overrides.isRepair) return false;
-    if (argv.includes('update') || argv.includes('repair') || argv.includes('--update') || argv.includes('--repair')) return false;
-    if (isDevEnvironment(overrides)) return true;
-    if (LAUNCHPAD_OPEN_FLAGS.some(f => argv.includes(f))) return true;
-    const installed = Array.isArray(installedModules) ? installedModules : [];
-    return installed.some(m => LAUNCHPAD_WEB_MODULES.includes(m));
-}
-
-// Boot autostart (login item) is opt-in only: an explicit flag or a dev
-// checkout. Regular end-user installs must not get an autostart entry that
-// opens a browser on every login. Overrides exist for tests.
-function shouldAutostartLaunchpad(overrides = {}) {
-    const env = overrides.env || process.env;
-    const argv = overrides.argv || process.argv;
-    if (env.AOS_NO_OPEN === '1' || argv.includes('--no-open')) return false;
-    if (overrides.isUpdate || overrides.isRepair) return false;
-    if (argv.includes('update') || argv.includes('repair') || argv.includes('--update') || argv.includes('--repair')) return false;
-    if (argv.includes('--autostart-launchpad')) return true;
-    return isDevEnvironment(overrides);
-}
-
 // Plan Canvas autostart is strictly opt-in (--autostart-plan-canvas): unlike
-// the launchpad opener it is NOT implied by a dev checkout. The server never
+// a dev checkout does not imply it. The server never
 // idle-exits there (AOS_PLAN_CANVAS_IDLE_MS=0 is honoured by server.js).
 const PLAN_CANVAS_LABEL = 'com.bdb.plan-canvas';
 
+// A machine that registered the server once keeps it current: install and update rewrite the unit.
+function planCanvasRegistered(home, platform, appData) {
+    if (platform === 'darwin') return fs.existsSync(path.join(home, 'Library', 'LaunchAgents', `${PLAN_CANVAS_LABEL}.plist`));
+    if (platform === 'linux') return fs.existsSync(systemdUnits.unitPath(home, 'com.bdb.plan-canvas.service'));
+    if (platform === 'win32') return fs.existsSync(path.join(appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', `${PLAN_CANVAS_LABEL}.vbs`));
+    return false;
+}
+
 function shouldAutostartPlanCanvas(overrides = {}) {
     const argv = overrides.argv || process.argv;
-    return argv.includes('--autostart-plan-canvas');
+    if (argv.includes('--autostart-plan-canvas')) return true;
+    return planCanvasRegistered(overrides.homeDir || homeDir, overrides.platform || process.platform, overrides.appData);
 }
 
 function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
@@ -7227,9 +7749,8 @@ function installPlanCanvasAutostart(overrides = {}) {
             const plistPath = path.join(home, 'Library', 'LaunchAgents', `${PLAN_CANVAS_LABEL}.plist`);
             fs.mkdirSync(path.dirname(plistPath), { recursive: true });
             fs.writeFileSync(plistPath, buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }));
-            if (!overrides.skipLaunchctl) {
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            if (!overrides.skipLaunchctl && !v5Profile.isTestSandbox(home)) {
+                reloadLaunchAgent(plistPath);
             }
             log.success('Plan Canvas LaunchAgent registered (Port 4519)');
         } else if (platform === 'win32') {
@@ -7273,511 +7794,6 @@ function installPlanCanvasAutostart(overrides = {}) {
     } catch (e) { logDebug(e, 'plan canvas autostart'); return false; }
 }
 
-function generateAndOpenLaunchpad(installedModules = []) {
-    if (DRY_RUN) {
-        log.step('[dry-run] would generate & open BDB Launchpad HTML');
-        return false;
-    }
-    if (process.env.SSH_CLIENT || process.env.SSH_TTY) return false;
-    if (process.env.AOS_NO_OPEN === '1' || process.argv.includes('--no-open')) return false;
-
-    // Decoupled from the dev-checkout layout: on a regular end-user machine
-    // (no ~/dev/bdb-dev, no ~/bdb-dev) the launchpad still opens when daemon
-    // modules are installed or an explicit flag was passed.
-    // ~/bdb-dev was the pre-reorg workspace root; the State-0 reorg moved it to
-    // ~/dev/bdb-dev. Both are checked so this works regardless of which layout
-    // a given machine still has.
-    if (!shouldOpenLaunchpad(installedModules)) {
-        return false;
-    }
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BDB Agent OS – Launchpad</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNGRkZGRkYiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNFN0U3RUEiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjI0NiIgZmlsbD0iIzBhMGEwYSIgc3Ryb2tlPSIjOWIzMGM0IiBzdHJva2Utd2lkdGg9IjEyIi8+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNzAsNjgpIj48cGF0aCBmaWxsPSJ1cmwoI2EpIiBkPSJNMTgxLjYzLjA1YzEwMS4zOS0yLjQ3LDE4NC41Niw4MC4wOSwxOTAuMTQsMTc5LjkzLDUuNTMsOTkuMDMtNjYuMTYsMTg1LjQyLTE2NS4xMSwxOTUuNDYtODcuMzksOC44Ni0xNzEuMS00NS41Ni0xOTcuNjctMTI4Ljk2Qy0yOC43NCwxMjguMDMsNTYuNzgsMy4xLDE4MS42My4wNWgwWk0xNzcuNSwyMS4zQzY5LjA5LDI1LjMxLTcuMTYsMTI5LjYyLDIxLjc2LDIzNC41MmMxOC43Miw2Ny44OCw4MS41NiwxMTYuNywxNTEuNTMsMTIxLjMyLDEwNi4yMSw3LjAzLDE5NS42LTgxLjYzLDE3OS42OC0xODkuMDYtMTIuNTQtODQuNjUtODkuODEtMTQ4LjY2LTE3NS40Ny0xNDUuNDloMFoiLz48ZyBmaWxsPSIjRkZGRkZGIj48cGF0aCBkPSJNMTQ3LjY5LDEyMC4wNWMxMi4wNC4zNiwyNC42NC0uNzIsMzYuNjItLjA3LDI0LjI5LDEuMzIsNDEuMzcsMjAuMTMsNDIuOTEsNDMuOTktLjY5LDE2LjM1LjU3LDMzLjQyLS4yOCw0OS42OS0xLjMxLDI1LjQyLTE4LjU1LDQzLjc1LTQ0LjAyLDQ1LjY0LTkuNTkuNzItMjAuMTQuNjktMjkuNzguODQtNC45Ny4wOC05LjkuNjgtMTAuMzctNS42NnMuNDMtOS40MS4zNC0xNC4wM2MxMi42NS0xMS44NCwxNC43NS0zMS4xNyw0Ljc1LTQ1LjQxLS42My0uOS0yLjI2LTIuMzQtMi42Mi0zLjE3cy0uNDYtMTIuNTgtLjI2LTE0LjM3LDEuMS0zLjUyLDEuNDYtNS4xNmMxLjIxLTUuNDIsMS4wNi0xMS4yNi0uMzktMTYuNjItLjQxLTEuNTQtMS40OC0zLjU2LTEuNjMtNC45OS0uNDctNC4yOC0uMTQtOS42Ny0uMjYtMTQuMDgtLjExLTMuNTYtLjg0LTguNDMtLjU3LTExLjg2czEuMzItNC4zNSw0LjA4LTQuNzVoMFoiLz48cGF0aCBkPSJNMjMyLjY2LDEzMi40NmM5LjUzLjM2LDE5Ljc0LS43MiwyOS4xOS0uMDgsMjIuNjQsMS41MiwzMy45MiwyOC41OCwyMS45Myw0Ny4wNS0xLjQ5LDIuMy00LjMyLDQuNDctMy44NSw3LjQyLjQ3LDIuOTUsNS42NCw2LjIxLDcuNDIsOC4zLDExLjg4LDEzLjk2LDguNDEsMzUuNjktNi45MSw0NS40OS03Ljg1LDUuMDItMTQuNjksNC40My0yMy41Niw0Ljg2LTcuNjcuMzctMTYuMjQsMS4wNS0yMy45MS42NloiLz48cGF0aCBkPSJNOTAuNTksMTMzLjAzYzguODQtLjQ0LDI1LjI0LTEuMDgsMzMuMjMsMS45MiwxOC4wNyw2Ljc3LDIzLjk5LDI5Ljk2LDEzLjU2LDQ1LjctMS42LDIuNDEtNC41Miw0LjQ0LTMuMjgsNy43NS42OSwxLjg1LDUuNDEsNS40Miw3LjAzLDcuMzEsMTEuODYsMTMuODIsOC43NywzNS4yMy02LjI1LDQ1LjMzLTE1LjAyLDEwLjEtMjMuMzEsNS4yNy0zNC40NCw1LjU2WiIvPjwvZz48L2c+PC9zdmc+">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #090a0f;
-      --card-bg: rgba(22, 27, 34, 0.75);
-      --card-border: rgba(255, 255, 255, 0.08);
-      --text: #f0f6fc;
-      --text-muted: #8b949e;
-      --accent: #9b30c4;
-      --green: #3fb950;
-      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background-color: var(--bg);
-      color: var(--text);
-      font-family: var(--font);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      background-image: radial-gradient(circle at 50% 0%, rgba(88, 166, 255, 0.08) 0%, transparent 60%);
-    }
-    .container { width: 100%; max-width: 600px; }
-    .header { margin-bottom: 28px; text-align: center; }
-    .logo {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 24px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      margin-bottom: 6px;
-    }
-    .logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
-    .logo-badge { color: #ffffff; }
-    .tagline { color: var(--text-muted); font-size: 14px; font-weight: 400; }
-    .grid { display: flex; flex-direction: column; gap: 12px; }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      text-decoration: none;
-      color: inherit;
-      backdrop-filter: blur(12px);
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .card:hover {
-      border-color: rgba(155, 48, 196, 0.45);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    }
-    .card-content { display: flex; align-items: center; gap: 14px; }
-    .card-icon {
-      width: 40px;
-      height: 40px;
-      padding: 6px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .card-icon svg { width: 100%; height: 100%; }
-    .card-info h2 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-    .card-info p { font-size: 13px; color: var(--text-muted); }
-    .card-meta {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-    .port-pill {
-      background: rgba(255, 255, 255, 0.06);
-      padding: 4px 10px;
-      border-radius: 20px;
-      color: #c77dea;
-    }
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: var(--text-muted);
-      display: inline-block;
-      transition: all 0.3s ease;
-    }
-    .status-dot.online {
-      background-color: var(--green);
-      box-shadow: 0 0 10px rgba(63, 185, 80, 0.6);
-    }
-    .card-hint {
-      display: none;
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 4px;
-      font-style: italic;
-    }
-    .card.offline .card-hint {
-      display: block;
-    }
-    .card-hint code {
-      font-family: var(--mono);
-      font-style: normal;
-      color: #ffffff;
-      background: #0a0a0a;
-      border: 1px solid var(--accent);
-      border-radius: 4px;
-      padding: 1px 6px;
-      cursor: copy;
-    }
-    .footer {
-      margin-top: 28px;
-      text-align: center;
-      font-size: 12px;
-      color: var(--text-muted);
-      font-family: var(--mono);
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="logo">
-        <svg class="logo-mark" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="bdbPlateLight" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="60%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#E7E7EA"/>
-            </linearGradient>
-            <linearGradient id="bdbPlateDark" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#1C1C1F"/><stop offset="100%" stop-color="#050505"/>
-            </linearGradient>
-          </defs>
-          <circle cx="256" cy="256" r="195" fill="url(#bdbPlateDark)" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.6"/>
-          <circle cx="256" cy="256" r="175" fill="#0a0a0a"/>
-          <g transform="translate(70, 68) scale(1.0)">
-            <path fill="url(#bdbPlateLight)" d="M181.63.05c101.39-2.47,184.56,80.09,190.14,179.93,5.53,99.03-66.16,185.42-165.11,195.46-87.39,8.86-171.1-45.56-197.67-128.96C-28.74,128.03,56.78,3.1,181.63.05h0ZM177.5,21.3C69.09,25.31-7.16,129.62,21.76,234.52c18.72,67.88,81.56,116.7,151.53,121.32,106.21,7.03,195.6-81.63,179.68-189.06-12.54-84.65-89.81-148.66-175.47-145.49h0Z"/>
-            <g fill="#FFFFFF">
-              <path d="M147.69,120.05c12.04.36,24.64-.72,36.62-.07,24.29,1.32,41.37,20.13,42.91,43.99-.69,16.35.57,33.42-.28,49.69-1.31,25.42-18.55,43.75-44.02,45.64-9.59.72-20.14.69-29.78.84-4.97.08-9.9.68-10.37-5.66s.43-9.41.34-14.03c12.65-11.84,14.75-31.17,4.75-45.41-.63-.9-2.26-2.34-2.62-3.17s-.46-12.58-.26-14.37,1.1-3.52,1.46-5.16c1.21-5.42,1.06-11.26-.39-16.62-.41-1.54-1.48-3.56-1.63-4.99-.47-4.28-.14-9.67-.26-14.08-.11-3.56-.84-8.43-.57-11.86s1.32-4.35,4.08-4.75h0ZM162.03,135.5c-4.32.73-3.34,6.65-3.26,10.01.17,6.21.91,12.51,1.13,18.73.83,23.13-1.03,45.49-1.41,68.42-.07,3.93-1.27,10.87,4.01,11.46,10.36-.51,21.39,1.89,31.38-1.45,13.74-4.59,20.43-17.79,19.81-31.81-1.77-14.46-1.19-29.09-1.94-43.58-.52-10.12-3.97-20.33-12.44-26.46-10.8-7.82-24.82-4.88-37.29-5.34h0Z"/>
-              <path d="M232.66,132.46c9.53.36,19.74-.72,29.19-.08,22.64,1.52,33.92,28.58,21.93,47.05-1.49,2.3-4.32,4.47-3.85,7.42.47,2.95,5.64,6.21,7.42,8.3,11.88,13.96,8.41,35.69-6.91,45.49-7.85,5.02-14.69,4.43-23.56,4.86-7.67.37-16.24,1.05-23.91.66-1.66-.08-2.98-.73-3.68-2.32s-.52-7.28-.43-9.26c.36-6.63,3.52-13.04,3.89-20.39.58-11.38-.1-23.12-.3-34.49-.1-5.68.32-11.44-.3-17.08-.41-3.82-1.64-7.52-1.89-11.35-.25-3.85-.18-7.99-.26-11.88-.07-2.84-1.26-6.03,2.68-6.95h-.01ZM243.68,144.59c-3.41.77-2.55,6.7-2.66,9.2-.28,6.08-.58,12.36-.29,18.47.1,2.06.36,6.36.9,8.21.54,1.85.84,1.79,1.66,2.19,1.66.83,8-.68,10.26-.88,4.22-.39,8.12.03,12.28-1.24,16.76-5.12,16.53-26.53,1.01-33.02-15.52-6.5-13.5-2.7-18.82-2.98-5.31-.28-3.37-.17-4.36.06h.03ZM243.68,194.52c-3.49.79-2.58,8.66-2.68,11.39-.26,7.05-1.06,17.41.07,24.21,1.13,6.8,2.63,3.38,5.32,3.26,3.96-.19,8.36-1.32,12.4-1.67,5.85-.5,10.68.22,16.24-2.25,13.6-6.04,12.62-25.27-.46-31.46-5.63-2.66-9.89-1.97-15.78-2.43-3.57-.28-7.2-.92-10.76-1.1-1.12-.06-3.35-.17-4.36.06h0Z"/>
-              <path d="M90.59,133.03c8.84-.44,25.24-1.08,33.23,1.92,18.07,6.77,23.99,29.96,13.56,45.7-1.6,2.41-4.52,4.44-3.28,7.75.69,1.85,5.41,5.42,7.03,7.31,11.86,13.82,8.77,35.23-6.25,45.33-15.02,10.1-23.31,5.27-34.44,5.56-4.12.11-10.36.88-14.32.28-2.22-.34-3.45-2.79-3.48-4.83-.11-7.84.77-15.89,1.1-23.71.99-23.09,1.31-45.33.57-68.43-.14-4.15-1.05-9.79-.57-13.79.43-3.52,4.1-2.95,6.84-3.09h0ZM98.3,145.15c-1.71.29-2.98,1.7-3.21,3.41-.15,1.19-.23,3.13-.3,4.39-.39,8.01-.9,19.53.58,27.27.23,1.24.57,2.55,1.82,3.15,1.81.84,7.03-.55,9.32-.76,3.3-.3,6.62-.1,9.89-.59,21.2-3.21,21.02-29.7,1.28-34.86-4.36-1.14-13.16-1.92-17.79-2.07-.55-.01-1.03-.03-1.59.07h0ZM98.03,195.09c-4.25.88-2.46,6.76-3.24,9.72-.06,7.92-.55,15.86,0,23.75.22,3.21.77,5.75,4.57,5.67,3.82-.08,8.46-1.32,12.41-1.67,5.55-.48,11.21.12,16.48-2,14.62-5.88,13.53-26.13-.52-32.17-5.13-2.21-8.25-1.59-13.48-1.97-4.69-.34-9.7-1.23-14.35-1.38-.62-.01-1.26-.07-1.86.06h-.01Z"/>
-            </g>
-          </g>
-        </svg>
-        <span class="logo-badge">BDB Agent OS</span>
-      </div>
-      <p class="tagline">Local Multi-Agent Ecosystem Hub</p>
-    </div>
-    <div class="grid">
-      <a class="card" href="http://127.0.0.1:8088" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="grad-memb" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
-            <polygon points="50,10 85,45 50,90 15,45" fill="url(#grad-memb)" opacity="0.9"/>
-            <polyline points="50,10 50,90" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
-            <polyline points="15,45 85,45" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
-            <line x1="50" y1="45" x2="70" y2="25" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
-            <line x1="50" y1="45" x2="30" y2="70" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
-            <circle cx="50" cy="45" r="4" fill="#FFFFFF"/><circle cx="70" cy="25" r="2" fill="#FFFFFF"/><circle cx="30" cy="70" r="2" fill="#FFFFFF"/>
-          </svg></div>
-          <div class="card-info">
-            <h2>memB Vector Memory</h2>
-            <p>Autonomous Vector & Long-Term Memory</p>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:8088</span>
-          <span class="status-dot" id="dot-memb" title="Checking..."></span>
-        </div>
-      </a>
-      <a class="card" href="http://127.0.0.1:7781" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="grad-synapse" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
-            <rect x="20" y="55" width="14" height="30" rx="2" fill="url(#grad-synapse)" opacity="0.85"/>
-            <rect x="43" y="35" width="14" height="50" rx="2" fill="url(#grad-synapse)" opacity="0.9"/>
-            <rect x="66" y="45" width="14" height="40" rx="2" fill="url(#grad-synapse)" opacity="0.8"/>
-            <line x1="27" y1="55" x2="50" y2="35" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
-            <line x1="50" y1="35" x2="73" y2="45" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
-            <circle cx="27" cy="55" r="3" fill="#FFFFFF"/><circle cx="50" cy="35" r="3" fill="#FFFFFF"/><circle cx="73" cy="45" r="3" fill="#FFFFFF"/>
-          </svg></div>
-          <div class="card-info">
-            <h2>Synapse 3D</h2>
-            <p>Interactive Codebase Topology & Sessions</p>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:7781</span>
-          <span class="status-dot" id="dot-synapse" title="Checking..."></span>
-        </div>
-      </a>
-      <a class="card" href="http://127.0.0.1:3101" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="plateLight" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="60%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#E7E7EA"/></linearGradient>
-              <linearGradient id="plateMid" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#9b30c4"/><stop offset="100%" stop-color="#51116F"/></linearGradient>
-              <linearGradient id="plateDark" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#1C1C1F"/><stop offset="100%" stop-color="#050505"/></linearGradient>
-            </defs>
-            <g id="antennae" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
-              <rect x="180" y="45" width="20" height="30" rx="2" fill="url(#plateLight)"/><polygon points="180,45 190,25 200,45" fill="#FFFFFF"/><circle cx="190" cy="25" r="4" fill="#FFFFFF"/>
-              <rect x="186" y="80" width="22" height="34" rx="2" fill="url(#plateMid)"/><rect x="194" y="118" width="24" height="38" rx="2" fill="url(#plateDark)"/><rect x="202" y="160" width="26" height="38" rx="2" fill="url(#plateDark)"/>
-              <rect x="312" y="45" width="20" height="30" rx="2" fill="url(#plateLight)"/><polygon points="312,45 322,25 332,45" fill="#FFFFFF"/><circle cx="322" cy="25" r="4" fill="#FFFFFF"/>
-              <rect x="304" y="80" width="22" height="34" rx="2" fill="url(#plateMid)"/><rect x="294" y="118" width="24" height="38" rx="2" fill="url(#plateDark)"/><rect x="284" y="160" width="26" height="38" rx="2" fill="url(#plateDark)"/>
-            </g>
-            <g id="head" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
-              <rect x="238" y="170" width="36" height="32" rx="3" fill="url(#plateLight)"/>
-              <rect x="156" y="206" width="200" height="88" rx="6" fill="url(#plateDark)"/>
-              <rect x="136" y="230" width="20" height="40" rx="3" fill="url(#plateMid)"/><rect x="356" y="230" width="20" height="40" rx="3" fill="url(#plateMid)"/>
-            </g>
-            <g id="eyes">
-              <rect x="174" y="222" width="56" height="52" rx="5" fill="#000000" stroke="#FFFFFF" stroke-width="2"/><rect x="180" y="228" width="44" height="40" rx="3" fill="url(#plateDark)"/>
-              <circle cx="202" cy="248" r="14" fill="#FFFFFF" opacity="0.3"/><circle cx="202" cy="248" r="7" fill="#FFFFFF"/><circle cx="205" cy="245" r="2.5" fill="#FFFFFF"/>
-              <rect x="282" y="222" width="56" height="52" rx="5" fill="#000000" stroke="#FFFFFF" stroke-width="2"/><rect x="288" y="228" width="44" height="40" rx="3" fill="url(#plateDark)"/>
-              <circle cx="310" cy="248" r="14" fill="#FFFFFF" opacity="0.3"/><circle cx="310" cy="248" r="7" fill="#FFFFFF"/><circle cx="313" cy="245" r="2.5" fill="#FFFFFF"/>
-            </g>
-            <g id="mandibles" stroke="#000000" stroke-width="2.5">
-              <rect x="226" y="298" width="60" height="18" rx="3" fill="url(#plateLight)"/>
-              <rect x="236" y="303" width="10" height="8" rx="1.5" fill="#51116F"/><rect x="251" y="303" width="10" height="8" rx="1.5" fill="#51116F"/><rect x="266" y="303" width="10" height="8" rx="1.5" fill="#51116F"/>
-              <polygon points="196,300 220,300 206,340" fill="url(#plateLight)"/><polygon points="316,300 292,300 306,340" fill="url(#plateLight)"/>
-            </g>
-            <g id="thorax" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
-              <rect x="180" y="336" width="152" height="74" rx="6" fill="url(#plateMid)"/>
-              <rect x="216" y="352" width="80" height="42" rx="4" fill="#0c0414" stroke="#FFFFFF" stroke-width="1.5"/>
-              <text x="256" y="378" fill="#FFFFFF" font-family="monospace" font-size="14" font-weight="900" text-anchor="middle" letter-spacing="3">BDB</text>
-            </g>
-          </svg></div>
-          <div class="card-info">
-            <h2>AO — Agent Orchestrator</h2>
-            <p>Multi-Agent Cockpit & Git-Worktree Orchestration</p>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:3101</span>
-          <span class="status-dot" id="dot-ao" title="Checking..."></span>
-        </div>
-      </a>
-      <a class="card" href="http://127.0.0.1:9080" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="grad-remote" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
-            <circle cx="50" cy="50" r="32" fill="none" stroke="url(#grad-remote)" stroke-width="3" opacity="0.6"/>
-            <circle cx="50" cy="50" r="8" fill="url(#grad-remote)"/>
-            <circle cx="50" cy="14" r="4" fill="#FFFFFF"/><circle cx="82" cy="65" r="4" fill="#FFFFFF"/><circle cx="18" cy="65" r="4" fill="#FFFFFF"/>
-            <line x1="50" y1="50" x2="50" y2="18" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
-            <line x1="50" y1="50" x2="79" y2="63" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
-            <line x1="50" y1="50" x2="21" y2="63" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
-          </svg></div>
-          <div class="card-info">
-            <h2>RemoteOS Gateway</h2>
-            <p>Multi-Cloud Execution & 4-Eyes Approval Gateway</p>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:9080</span>
-          <span class="status-dot" id="dot-remote" title="Checking..."></span>
-        </div>
-      </a>
-      <a class="card" href="http://127.0.0.1:4321" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="grad-openwiki" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
-            <rect x="26" y="16" width="48" height="68" rx="4" fill="url(#grad-openwiki)" opacity="0.9"/>
-            <line x1="36" y1="32" x2="64" y2="32" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
-            <line x1="36" y1="42" x2="64" y2="42" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
-            <line x1="36" y1="52" x2="52" y2="52" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
-            <circle cx="70" cy="68" r="14" fill="#0a0a0a" stroke="#FFFFFF" stroke-width="2"/>
-            <circle cx="65" cy="64" r="2.5" fill="#FFFFFF"/><circle cx="74" cy="63" r="2.5" fill="#FFFFFF"/><circle cx="70" cy="72" r="2.5" fill="#FFFFFF"/>
-            <line x1="65" y1="64" x2="74" y2="63" stroke="#FFFFFF" stroke-width="1.2" opacity="0.7"/>
-            <line x1="65" y1="64" x2="70" y2="72" stroke="#FFFFFF" stroke-width="1.2" opacity="0.7"/>
-            <line x1="74" y1="63" x2="70" y2="72" stroke="#FFFFFF" stroke-width="1.2" opacity="0.7"/>
-          </svg></div>
-          <div class="card-info">
-            <h2>OpenWiki</h2>
-            <p>Grounded Documentation & Evidence Graph</p>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:4321</span>
-          <span class="status-dot" id="dot-openwiki" title="Checking..."></span>
-        </div>
-      </a>
-      <a class="card" href="http://127.0.0.1:4322" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="grad-store" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#9b30c4"/></linearGradient></defs>
-            <rect x="20" y="20" width="60" height="60" rx="4" fill="url(#grad-store)" opacity="0.85"/>
-            <rect x="28" y="28" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="45" y="28" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="62" y="28" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/>
-            <rect x="28" y="48" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="45" y="48" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="62" y="48" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/>
-          </svg></div>
-          <div class="card-info">
-            <h2>AOS Store</h2>
-            <p>Browse & install skills and agents</p>
-            <div class="card-hint">offline — run: aos-store ui</div>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:4322</span>
-          <span class="status-dot" id="dot-store" title="Checking..."></span>
-        </div>
-      </a>
-      <a class="card" href="http://127.0.0.1:4519/" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="grad-plancanvas" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#9b30c4"/></linearGradient></defs>
-            <rect x="18" y="22" width="64" height="56" rx="4" fill="url(#grad-plancanvas)" opacity="0.85"/>
-            <rect x="26" y="30" width="22" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="52" y="30" width="22" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/>
-            <line x1="26" y1="54" x2="74" y2="54" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/><line x1="26" y1="64" x2="56" y2="64" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
-          </svg></div>
-          <div class="card-info">
-            <h2>Plan Canvas</h2>
-            <p>Review plans in the browser: annotate, chat, approve</p>
-            <div class="card-hint">offline — run: <code data-copy="aos-plan-canvas server" title="Click to copy">aos-plan-canvas server</code></div>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:4519</span>
-          <span class="status-dot" id="dot-plancanvas" title="Checking..."></span>
-        </div>
-      </a>
-      <a class="card" href="http://127.0.0.1:7900/" target="_blank">
-        <div class="card-content">
-          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="grad-hub" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#9b30c4"/></linearGradient></defs>
-            <circle cx="50" cy="50" r="34" fill="url(#grad-hub)" opacity="0.85"/>
-            <circle cx="50" cy="50" r="9" fill="#0a0a0a"/>
-            <circle cx="50" cy="18" r="4" fill="#FFFFFF"/><circle cx="79" cy="65" r="4" fill="#FFFFFF"/><circle cx="21" cy="65" r="4" fill="#FFFFFF"/>
-            <line x1="50" y1="50" x2="50" y2="18" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
-            <line x1="50" y1="50" x2="79" y2="65" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
-            <line x1="50" y1="50" x2="21" y2="65" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
-          </svg></div>
-          <div class="card-info">
-            <h2>AOS Hub</h2>
-            <p>Services, plan kits and the store in one page</p>
-            <div class="card-hint">on demand — run: <code data-copy="aos hub" title="Click to copy">aos hub</code></div>
-          </div>
-        </div>
-        <div class="card-meta">
-          <span class="port-pill">:7900</span>
-          <span class="status-dot" id="dot-hub" title="Checking..."></span>
-        </div>
-      </a>
-    </div>
-    <div class="footer">
-      <span>Autostart Daemons • 127.0.0.1</span>
-    </div>
-  </div>
-  <script>
-    function checkHealth(url, dotId) {
-      const dot = document.getElementById(dotId);
-      if (!dot) return;
-      const card = dot.closest('.card');
-      fetch(url, { mode: 'no-cors' })
-        .then(() => {
-          dot.classList.add('online');
-          if (card) card.classList.remove('offline');
-        })
-        .catch(() => {
-          dot.classList.remove('online');
-          if (card) card.classList.add('offline');
-        });
-    }
-    function checkAllHealth() {
-      checkHealth('http://127.0.0.1:8088', 'dot-memb');
-      checkHealth('http://127.0.0.1:7781', 'dot-synapse');
-      checkHealth('http://127.0.0.1:3101', 'dot-ao');
-      checkHealth('http://127.0.0.1:9080', 'dot-remote');
-      checkHealth('http://127.0.0.1:4321', 'dot-openwiki');
-      checkHealth('http://127.0.0.1:4322', 'dot-store');
-      checkHealth('http://127.0.0.1:4519', 'dot-plancanvas');
-      checkHealth('http://127.0.0.1:7900', 'dot-hub');
-    }
-    document.addEventListener('click', (ev) => {
-      const el = ev.target.closest && ev.target.closest('[data-copy]');
-      if (!el) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      const text = el.getAttribute('data-copy');
-      const fallback = () => {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand('copy'); } catch (e) {}
-        ta.remove();
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(fallback);
-      else fallback();
-      el.title = 'Copied';
-    }, true);
-    checkAllHealth();
-    setInterval(checkAllHealth, 5000);
-  </script>
-</body>
-</html>`;
-
-    const filePath = path.join(os.homedir(), '.agents', 'bdb-launchpad.html');
-    fs.writeFileSync(filePath, html, 'utf-8');
-    const warnOpenFailed = (e) => log.warn(`Could not open the dashboard automatically (${e.message}). Open it yourself: ${filePath}`);
-    try {
-        let child;
-        if (process.platform === 'darwin') {
-            child = spawn('open', [filePath], { detached: true, stdio: 'ignore' });
-        } else if (process.platform === 'win32') {
-            // cmd.exe /c start has a title-vs-path quoting quirk when the
-            // arguments come from spawn's argv array rather than a real shell --
-            // on a real Windows test run it silently opened nothing, and the
-            // failure was invisible: spawn() reports a bad launch asynchronously
-            // via 'error', not by throwing, so the try/catch around this call
-            // could never have caught it regardless of --verbose. explorer.exe
-            // on a plain file path has no title argument to misparse.
-            child = spawn('explorer', [filePath], { detached: true, stdio: 'ignore', windowsHide: true });
-        } else {
-            child = spawn('xdg-open', [filePath], { detached: true, stdio: 'ignore', windowsHide: true });
-        }
-        if (child) {
-            child.on('error', warnOpenFailed);
-            child.unref();
-        }
-    } catch (e) { warnOpenFailed(e); }
-
-    // Opening it once per install/update isn't the same as being available at
-    // every login -- memB/Synapse/AO all get a real autostart entry for their
-    // own background services, but the dashboard itself (a static file, not
-    // a process) never got the equivalent: something to open it automatically
-    // on login too, not just right after an installer run.
-    // Opt-in only: without --autostart-launchpad (or a dev checkout) a regular
-    // end-user install must not drop a login item that opens a browser on
-    // every boot.
-    if (!shouldAutostartLaunchpad()) {
-        return true;
-    }
-    if (process.platform === 'darwin') {
-        const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.launchpad.plist');
-        const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.bdb.launchpad</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>open</string>
-        <string>${filePath}</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>`;
-        // Deliberately no KeepAlive: this launches a browser tab, not a
-        // long-running service -- `open` exits the moment it's handed the
-        // file to the browser, and KeepAlive would make launchd treat that
-        // normal exit as a crash to restart, reopening the tab in a loop.
-        try {
-            fs.writeFileSync(plistPath, plistContent);
-            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-        } catch (e) { logDebug(e, 'launchpad autostart plist'); }
-    } else if (process.platform === 'win32') {
-        const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
-        const vbsPath = path.join(startupDir, 'com.bdb.launchpad.vbs');
-        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${filePath}""", 1, False\r\n`;
-        try {
-            fs.mkdirSync(startupDir, { recursive: true });
-            fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
-        } catch (e) { logDebug(e, 'launchpad autostart vbs'); }
-    }
-    return true;
-}
-
 function syncMcpConfigFile(targetPath, masterMcpData) {
     try {
         const loaded = loadJsonConfig(targetPath);
@@ -7796,7 +7812,8 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
     }
 }
 
-function syncOpencodeConfigFile(targetPath, masterMcpData) {
+// plugin: false for the update-time MCP refresh, which must not install or rewrite the OpenCode plugin.
+function syncOpencodeConfigFile(targetPath, masterMcpData, { plugin = true } = {}) {
     try {
         const loaded = loadJsonConfig(targetPath);
         if (loaded.state === 'invalid') { warnUnparseable(targetPath, 'OpenCode MCP and plugin sync', loaded); return; }
@@ -7861,7 +7878,7 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
         // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
         // function owns the write -- it merges MCP servers in the same pass.
         // homeDir matches how the opencode harness entry builds its path.
-        installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
+        if (plugin) installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
 
         if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
         if (!stashInlineSecrets(collector, targetPath)) return;
@@ -7927,7 +7944,101 @@ function migrateMcpSecrets() {
     return moved;
 }
 
-async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
+// Update path of the shipped MCP definitions. Fresh install writes them via installMcpsForTarget (it knows
+// the user's picks); update has no stored pick, so it only re-merges into entries a harness config already
+// holds -- owned ones are rewritten to the current shape, retired ones dropped, user entries and servers
+// the user never installed stay as they are.
+function resolveShippedMcpServers() {
+    const mcpsDir = path.join(resolveTargetPaths(defaultPlatformValue(), null).targetMcpDir, 'mcps');
+    let servers = { ...mcpPicks().servers };
+    if (process.platform === 'win32' && servers.deja) servers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+    servers = v5Profile.filterMcpServers(servers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS)).servers;
+    if (!memoryOn) servers = v5Profile.filterMcpServers(servers, v5Profile.MEMORY_MCPS).servers;
+    const esc = (p) => String(p).replace(/\\/g, '\\\\');
+    const pyBin = (process.platform === 'win32' ? path.join(mcpsDir, 'memb-mcp', '.venv', 'Scripts', 'python.exe') : path.join(mcpsDir, 'memb-mcp', '.venv', 'bin', 'python')).split('\\').join('/');
+    const out = {};
+    for (const [name, def] of Object.entries(servers)) {
+        const raw = JSON.stringify(def);
+        // An entry that points into mcps/ is only refreshed when that server's code is on disk.
+        const dirs = [...raw.matchAll(/__MCPS_DIR__\/([^/"\\]+)/g)].map((m) => m[1]);
+        if (dirs.some((d) => !fs.existsSync(path.join(mcpsDir, d)))) continue;
+        // A dist-based server whose build never produced its entry script would fail at launch (#185); fresh installs check this too.
+        const entry = def.command === 'node' && Array.isArray(def.args) && typeof def.args[0] === 'string' && def.args[0].startsWith('__MCPS_DIR__/') ? def.args[0].slice('__MCPS_DIR__/'.length) : null;
+        if (entry && !fs.existsSync(path.join(mcpsDir, entry))) {
+            log.warn(`${name}: ${entry} is missing (the build did not finish) -- not registering it. Run "npm run build" in ${path.join(mcpsDir, entry.split('/')[0])}; the failure is in the update log under ${path.join(homeDir, '.aos', 'logs')}.`);
+            continue;
+        }
+        const resolved = raw
+            .replace(/__MCPS_DIR__/g, () => esc(mcpsDir))
+            .replace(/\{\{HOME\}\}/g, () => esc(homeDir))
+            .replace(/"command":\s*"uv"/g, `"command": "${uvBin().replace(/\\/g, '/')}"`)
+            .replace(/__PYTHON_BIN__/g, () => JSON.stringify(pyBin).slice(1, -1));
+        try { out[name] = JSON.parse(resolved); } catch (e) { logDebug(e, 'resolve shipped MCP server'); }
+    }
+    return out;
+}
+
+function refreshHarnessMcpEntries() {
+    installMcpLauncher();
+    const shipped = resolveShippedMcpServers();
+    const cwd = path.resolve(currentDir);
+    const retired = new Set(mcpPicks().retired);
+    const refreshed = [];
+    for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir)) {
+        if (!fs.existsSync(file)) continue;
+        // An update started inside a repo must not write into that repo (F8).
+        if (cwd !== path.resolve(homeDir) && path.resolve(file).startsWith(cwd + path.sep)) continue;
+        try {
+            let present;
+            let tables = null;
+            if (kind === 'toml') {
+                tables = mcpSecrets.parseCodexTables(readTextFile(file));
+                present = Object.keys(tables);
+            } else {
+                const raw = readTextFile(file);
+                const loaded = loadJsonConfig(file);
+                if (loaded.state === 'invalid') { warnUnparseable(file, 'MCP refresh', loaded); continue; }
+                if (loaded.state !== 'ok') continue;
+                // A rewrite drops comments and trailing commas; a file that has them is left to the user.
+                let strict = true;
+                try { JSON.parse(raw); } catch { strict = false; }
+                if (!strict) { log.warn(`${file} has comments or trailing commas; shipped MCP entries not refreshed there (a rewrite would drop them). Edit it by hand or remove the comments.`); continue; }
+                present = Object.keys((kind === 'opencode' ? loaded.data.mcp : loaded.data.mcpServers) || {});
+            }
+            if (!present.length) continue;
+            const subset = Object.fromEntries(Object.entries(shipped).filter(([n]) => present.includes(n)));
+            if (memoryOn) {
+                for (const m of ['memb_mcp', 'deja']) {
+                    if (shipped[m] && (present.includes('aos') || present.includes(m))) {
+                        subset[m] = shipped[m];
+                    }
+                }
+            }
+            if (kind === 'toml') {
+                // Regenerating the AOS block drops every AOS table it is not handed: pass the ones that are not
+                // regenerated (server code missing, AOS_DISABLED_MCPS) back as they stand. Retired ones go.
+                for (const n of uninstallRecords.aosMcpNames()) {
+                    if (tables[n] && !subset[n] && !retired.has(n)) subset[n] = mcpSecrets.codexEntry(tables[n]);
+                }
+                mergeCodexTomlMcpServers(file, subset);
+            } else if (kind === 'opencode') syncOpencodeConfigFile(file, { mcpServers: subset }, { plugin: false });
+            else syncMcpConfigFile(file, { mcpServers: subset });
+            refreshed.push(file);
+        } catch (e) {
+            log.warn(`Could not refresh the shipped MCP entries in ${file}: ${e.message}`);
+        }
+    }
+    if (refreshed.length) log.step(`Shipped MCP entries checked in: ${refreshed.join(', ')}`);
+    noticeSecretBackups();
+}
+
+// The old launchpad page and its login item are gone (the AOS Hub replaced them); existing machines lose the leftovers.
+function retireLaunchpad() {
+    if (DRY_RUN || v5Profile.isTestSandbox(homeDir)) return;
+    for (const l of uninstallRecords.reverseLaunchpad({ home: homeDir })) log.step(l);
+}
+
+async function universalHarnessSync(primaryMcpConfigPath) {
     log.info('Universal Agent Harness Sync...');
     installMcpLauncher();
     const detections = detectPlatforms();
@@ -7942,6 +8053,7 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
     for (const d of detections) {
         log.step(`Injecting MCP engines into ${d.name}...`);
         if (d.key === 'claudedesktop') {
+            if (process.platform === 'linux') continue;
             syncMcpConfig(path.join(d.path, 'claude_desktop_config.json'));
         } else if (d.key === 'claudecode') {
             syncMcpConfig(path.join(homeDir, '.claude.json'));
@@ -7978,7 +8090,7 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
     }
     noticeSecretBackups();
     log.success('Universal Sync Complete!');
-    generateAndOpenLaunchpad(installedModules);
+    retireLaunchpad();
     installPlanCanvasAutostart();
 }
 
@@ -7987,11 +8099,12 @@ function quickUpdateKernel(installState) {
     const s = spinner();
     s.start('Quick Update: refreshing skills & syncing installed submodules...');
 
-    const excludeSkills = getTierExcludeSkills('1');
+    const excludeSkills = getTierExcludeSkills(storedTierOpts(installState).tier);
     const paths = resolveTargetPaths(defaultPlatformValue(), null);
 
+    populateSkillLibrary();
+    retireLaunchpad();
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
-    retireObsoleteLegacyDir(paths.targetLegacyDir);
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
 
     // Initialize manifest for this update session.
@@ -8004,6 +8117,7 @@ function quickUpdateKernel(installState) {
         path.join(srcDir, '.github'),
         path.join(srcDir, '.codex-plugin'),
     ]);
+    retireObsoleteLegacyDir(paths.targetLegacyDir);
 
     const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {
@@ -8029,7 +8143,16 @@ function quickUpdateKernel(installState) {
     }
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
+    applySkillSet(_sessionManifest);
+    applyPackSelection(_sessionManifest);
+    if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
+        installRustauri();
+    }
     s.stop('Skills refreshed');
+    // Every AOS bin gets its ~/.local/bin launcher, on update too: skills above refreshed the files the
+    // launchers point at (plan-canvas, archify, trail), and an install that predates a new bin never
+    // gains the launcher without this. Idempotent; 'aos' still never overwrites a foreign file.
+    installGlobalBinaries();
     const failures = [];
     const migration = runPluginMigration();
     if (migration.error) failures.push(`plugin migration: ${migration.error}`);
@@ -8052,8 +8175,11 @@ function quickUpdateHarnesses() {
             injectHarnessRules();
         }, 'Harness files keep whatever version this machine already had.')],
         ['remove the AOS mcsc entry from agy configs', installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.')],
+        ['refresh shipped MCP definitions in the harness configs', installStep('refresh shipped MCP definitions in the harness configs', () => { refreshHarnessMcpEntries(); }, 'MCP entries keep the definitions this machine already had.')],
+        ['migrate legacy agy workspace MCP config', installStep('migrate legacy agy workspace MCP config', () => { mcpSecrets.migrateLegacyAgyWorkspaceMcp(homeDir, srcDir, { log }); })],
         ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
         ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
+        ['refresh the Plan Canvas background server', installStep('refresh the Plan Canvas background server', () => { installPlanCanvasAutostart(); })],
     ];
     return steps.filter(([, r]) => !r.ok).map(([what, r]) => `${what}: ${r.error.message}`);
 }
@@ -8069,81 +8195,6 @@ async function refreshOpenWikiSilently({ key: given } = {}) {
     await installOpenWikiDaemon(key, paths.targetSkillDir, { provider, model: env['OPENWIKI_MODEL_ID'] || env['OPENWIKI_MODEL'] || '', baseUrl: env['OPENWIKI_BASE_URL'] || '' });
     await installOpenWikiVisualizer();
     return true;
-}
-
-async function runQuickUpdate(installState) {
-    quickUpdateKernel(installState);
-    quickUpdateHarnesses();
-    const paths = resolveTargetPaths('1', null);
-
-    // OpenWiki: if already configured, refresh the daemon silently (no prompt).
-    // Only ask when there is no key yet — i.e. a first-time offer or a machine
-    // that predates this feature. This avoids the "keep existing?" confirmation
-    // on every Quick Update for users who have already set up OpenWiki.
-    if (!isAutoYes) {
-        const _owEnv = loadExistingEnv(paths.targetMcpDir);
-        const _owProvider = _owEnv['OPENWIKI_PROVIDER'] || 'google';
-        const _owKeyName = PROVIDER_KEY_ENV_NAMES[_owProvider] || 'GEMINI_API_KEY';
-        const _owKey = _owEnv[_owKeyName] || _owEnv['GEMINI_API_KEY'] || _owEnv['GOOGLE_API_KEY'] || _owEnv['OPENWIKI_API_KEY'] || '';
-        if (_owKey || _owProvider === 'ollama') {
-            await installOpenWikiDaemon(_owKey, paths.targetSkillDir, { provider: _owProvider, model: _owEnv['OPENWIKI_MODEL_ID'] || _owEnv['OPENWIKI_MODEL'] || '', baseUrl: _owEnv['OPENWIKI_BASE_URL'] || '' });
-            await installOpenWikiVisualizer();
-        } else {
-            const creds = await promptCredentials(paths.targetMcpDir);
-            if (creds !== BACK) {
-                await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
-                await installOpenWikiVisualizer();
-            }
-        }
-    }
-
-    const modulesToUpdate = installState.installedModules || [];
-    for (const subId of modulesToUpdate) {
-        if (subId === 'synapse') await installSynapse();
-        else if (subId === 'memb') await installMemB(false);
-        else if (subId === 'remote') await installOSRemoteGateway();
-        else if (subId === 'ao' && aoSupportedHere()) await installOSAgentWorkspace();
-        else if (subId === 'creator') await installCreatorExtension();
-        else if (subId === 'hardware') await installHardwarePcb();
-        else if (subId === 'codebase-memory') await installCodebaseMemory();
-        else if (subId === 'installer') await installDevToolInstaller();
-    }
-
-    await applyCodingModeStep(memoryCodingOptions());
-    await promptOptionalModules(modulesToUpdate);
-    // modulesToUpdate now covers both the modules updated in the loop above and any newly
-    // chosen ones promptOptionalModules just installed (it mutates the same array) -- every
-    // one of them already ran its own install-and-verify, so reloadDaemons() should leave
-    // them alone rather than relaunching and re-checking a daemon a second time.
-    const alreadyHandled = modulesToUpdate.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
-    await reloadDaemons(alreadyHandled);
-    saveManifest({ tier: '1', isUniversal: true, installedModules: modulesToUpdate });
-    flushSessionManifest();
-
-    console.log('');
-    verifyEcosystemInstallation();
-    await maybeInstallCodenotch();
-}
-
-
-function buildAoAnnouncementBanner() {
-    const W = 78;
-    const row = (text, style = '') => `\x1b[36m│\x1b[0m${style}${text.padEnd(W)}\x1b[0m\x1b[36m│\x1b[0m`;
-    return [
-        `\x1b[36m╭${'─'.repeat(W)}╮\x1b[0m`,
-        row(''),
-        row('   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE', '\x1b[1m\x1b[35m'),
-        row(''),
-        row('   The next generation of cross-harness multi-agent orchestration'),
-        row('   is now open to every user as a final beta.'),
-        row(''),
-        row('   • Dashboard & WebUI:  http://localhost:3101'),
-        row('   • Service command:    ao service install  (enables the background service)'),
-        row('   • Quick launch:       ao open  or  ao service status'),
-        row('   • Features:           session telemetry, live AgentTrail, multi-workspaces'),
-        row(''),
-        `\x1b[36m╰${'─'.repeat(W)}╯\x1b[0m\n`
-    ].join('\n');
 }
 
 // AOS CLI ships as a separate npm package under packages/ for one reason: pi
@@ -8171,6 +8222,7 @@ function installAosCli() {
     const res = installStep('install AOS CLI', () => {
         log.step('Installing AOS CLI globally (pi is installed as its dependency)...');
         execSync(`npm install -g ${JSON.stringify(pkgDir)}`, { stdio: 'ignore', windowsHide: true });
+        uninstallRecords.recordNpmGlobal(homeDir, '@hybridlabor-api/aos-cli');
     }, `The rest of AOS is installed. Install AOS CLI later: ${manual}`);
 
     if (res.ok && hasExecutable('aos-cli')) {
@@ -8206,10 +8258,13 @@ function runUninstaller() {
 }
 
 // Prompts exist only in a TTY; `aos update` without one passes ui = {} and nothing is ever asked.
-function v5Options(interactive) {
+// menuMode (the interactive menu only): cancel returns null (back, nothing written). Otherwise cancel aborts like the wizard.
+function v5Options(interactive, menuMode = false) {
+    const ask = (v) => (menuMode ? (isCancel(v) ? null : v) : pick(v));
     const ui = interactive ? {
-        select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
-        multi: async (message, options, initialValues) => { const a = await multiselect({ message, options, initialValues, required: false }); return isCancel(a) ? [] : a; },
+        select: async (message, options, initialValue) => ask(await select({ message, options, initialValue })),
+        multi: async (message, options, initialValues) => ask(await multiselect({ message, options, initialValues, required: false })),
+        text: async (message, initialValue) => { const v = await text({ message, initialValue }); return isCancel(v) ? null : String(v || '').trim(); },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
@@ -8222,7 +8277,15 @@ function applyInstallOptions(home = homeDir) {
     contextHooksOn = r.contextHooks;
     activeProfile = r.profile;
     installExcluded = r.excluded;
+    skillSet = r.skillSet;
+    packSelection = r.packs;
+    runImpliedPacks.length = 0;
+    // An unattended --modules= request that names a pack (or the creator/hardware modules)
+    // brings that pack's skills in the same run: the module picker runs after the skill copy.
+    for (const id of parseModuleSelection()) addImpliedPack(id);
     memoryOn = !installExcluded.has('memb');
+    gateOn = r.gateOn;
+    gateHoldKeys.clear(); // a fresh resolution restarts the decision; an explicit Settings choice re-applies everywhere
     return r;
 }
 
@@ -8230,15 +8293,34 @@ function applyInstallOptions(home = homeDir) {
 // --dry-run, status or uninstall). A flag on the command line is saved; AOS_PROFILE is not.
 function persistInstallOptions(home = homeDir) {
     const o = INSTALL_OPTS;
-    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length)) return false;
+    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length || o.skillSetFromFlag || o.packsFromFlag)) return false;
     try {
         const st = v5Profile.readSettings(home);
         const next = { ...st, disabled: [...new Set([...st.disabled, ...o.without])] };
         if (o.profileFromFlag) { next.profile = o.profile; next.noHooks = o.noHooks; } else if (o.noHooks) next.noHooks = true;
+        if (o.skillSetFromFlag) next.skillSet = o.skillSet;
+        if (o.packsFromFlag) next.packs = skillPacks.normalizeSelection(o.packs, srcDir) || [];
         v5Profile.writeSettings(home, next);
         return true;
     } catch (e) {
         log.warn(`Could not save the install profile: ${e.message}`);
+        return false;
+    }
+}
+
+// The wizard's choices (Pro MEDIA tier, Creator/Hardware modules, pack checkboxes) become the stored pack
+// selection on a fresh install or a setup re-run. `aos update` never calls this: no stored selection = keep everything.
+function persistWizardPacks(home = homeDir) {
+    if (DRY_RUN || isAutoYes || INSTALL_OPTS.packsFromFlag) return false;
+    try {
+        const meta = readJsonFile(path.join(home, '.agents', '.bdb-manifest.json'));
+        const sel = skillPacks.normalizeSelection([...(packSelection || []), ...runImpliedPacks, ...skillPacks.impliedPacks(meta, srcDir)], srcDir) || [];
+        v5Profile.writeSettings(home, { ...v5Profile.readSettings(home), packs: sel });
+        packSelection = sel;
+        log.step(`Skill packs saved: base${sel.length ? ` + ${sel.join(', ')}` : ' only'} (change with aos store install/remove --pack).`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not save the skill pack selection: ${e.message}`);
         return false;
     }
 }
@@ -8260,44 +8342,13 @@ function initFullSession(installState) {
     ]);
 }
 
-async function main() {
-    const args = process.argv.slice(2);
-    // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
-    // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package'];
-    if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
-        console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
-        process.exitCode = 2;
-        return;
-    }
-    applyInstallOptions();
-    if (['status', 'update', 'repair'].includes(args[0])) {
-        if (args[0] !== 'status') {
-            process.env.AOS_NO_OPEN = '1';
-            persistInstallOptions();
-        }
-        process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
-        return;
-    }
-    if (args.includes('--version') || args.includes('-V') || args[0] === 'version') {
-        console.log(pkg.version);
-        return;
-    }
-    if (args.includes('--codex-gate')) {
-        console.log(`${codexGateSnippet(path.join(homeDir, '.codex', 'hooks'))}\n\n${CODEX_GATE_NOTICE}`);
-        return;
-    }
-    if (args.includes('--help') || args.includes('-h') || args[0] === 'help') {
-        console.log(`Usage: aos [command] [options]
+// Top-level help: the command list is generated from the spec, the option text is the long form.
+function printAosHelp(aosSpec) {
+    const w = Math.max(...aosSpec.commands.map((c) => c.name.length)) + 2;
+    console.log(`Usage: aos [command] [options]
 
 Commands:
-  store            Browse and install skills
-  hub              Open the AOS Hub (start|stop|status on 127.0.0.1:7900)
-  services         Status or control of the local services (status|start|stop|restart)
-  restart <id>     Restart one local service (typed confirm; same as aos services restart)
-  dashboard        Run the AOS dashboard (--port N, --no-open)
-  package          Install, update, repair or verify one v5 package by id
-  doctor|checkup   Check the installation
+${aosSpec.commands.map((c) => `  ${c.name.padEnd(w)}${c.summary}`).join('\n')}
 
 Options:
   --codex-gate     Print the go-gate [[hooks.PreToolUse]] stanza for ~/.codex/config.toml
@@ -8347,8 +8398,8 @@ Options:
                    relay/autostart) in the Claude, Antigravity and Codex configs. The go-gate,
                    graph-gate and safety hooks are ALWAYS installed; no profile or flag
                    removes them. Takes no value. It also rewrites hook entries of yours whose
-                   command only names a bdb script. The OpenCode plugin bdb-aos.js still
-                   injects memB and rules and autostarts the trail under --no-hooks and minimal.
+                   command only names a bdb script. The OpenCode plugin bdb-aos.js reads the
+                   profile flag and skips memB, rules and trail autostart the same way.
   --hooks-only     Install or refresh only the hooks and their settings entries, then exit.
                    Combine with --no-hooks only: not with --profile or --without, and not with
                    status, update or repair.
@@ -8366,7 +8417,72 @@ Options:
                    saved; unknown names are ignored with one warning.
   --verbose, -v    Verbose output
   -V, --version    Print the version and exit
-  -h, --help       Print this help and exit`);
+  -h, --help       Print this help and exit
+
+More: aos <command> --help | aos help <cli> | aos help --all [--json]`);
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+    // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
+    // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
+    // The command list comes from the CLI spec (lib/cli-specs), so the whitelist and `aos --help` cannot diverge.
+    const cliHelp = await import(require('url').pathToFileURL(path.join(srcDir, 'lib', 'cli-help.mjs')).href);
+    const aosSpec = cliHelp.loadSpecs().find((x) => x.name === 'aos');
+    const COMMANDS = aosSpec.commands.map((c) => c.name);
+    if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
+        console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
+        process.exitCode = 2;
+        return;
+    }
+    // Help is answered first and never reaches a command: `aos <sub> --help` shows that subcommand's help.
+    if (args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+        const json = args.includes('--json');
+        const words = args.filter((a) => !a.startsWith('-') && a !== 'help');
+        if (args.includes('--all')) { console.log(cliHelp.helpAll({ json })); return; }
+        const sub = words[0];
+        const specs = cliHelp.loadSpecs();
+        const target = sub && (specs.find((x) => x.name === sub || x.name === `aos-${sub}` || (x.aliases || []).includes(sub)) || (sub === 'checkup' ? specs.find((x) => x.name === 'aos-doctor') : null));
+        if (target && target.name !== 'aos') { console.log(cliHelp.helpFor(target, [...args.filter((a) => a === '--json'), ...words.slice(1)])); return; }
+        if (sub && COMMANDS.includes(sub) && !json) { console.log(cliHelp.renderHelp(aosSpec, sub)); return; }
+        if (json) { console.log(cliHelp.helpFor(aosSpec, ['--json'])); return; }
+        printAosHelp(aosSpec);
+        return;
+    }
+    if (args[0] === 'allow') {
+        process.exitCode = require('./lib/permissions-allow').allowCommand(args.slice(1), { home: homeDir });
+        return;
+    }
+    applyInstallOptions();
+    if (args[0] === 'memory') {
+        process.exitCode = await require('./lib/memory-import').command(args.slice(1), { home: homeDir });
+        return;
+    }
+    if (args[0] === 'context') {
+        const { contextCommand } = require('./lib/v5/context-profiles');
+        process.exitCode = contextCommand(args.slice(1), { home: homeDir });
+        return;
+    }
+    if (['status', 'update', 'repair'].includes(args[0])) {
+        if (args[0] !== 'status') {
+            process.env.AOS_NO_OPEN = '1';
+            persistInstallOptions();
+        }
+        process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
+        return;
+    }
+    if (args.includes('--version') || args.includes('-V') || args[0] === 'version') {
+        console.log(pkg.version);
+        return;
+    }
+    if (args.includes('--codex-gate')) {
+        console.log(`${codexGateSnippet(path.join(homeDir, '.codex', 'hooks'))}\n\n${CODEX_GATE_NOTICE}`);
+        return;
+    }
+    if (process.argv[2] === 'team') {
+        const teamScript = path.join(srcDir, 'bin', 'aos-team.mjs');
+        const result = spawnSync(process.execPath, [teamScript, ...process.argv.slice(3)], { stdio: 'inherit', shell: false, windowsHide: true });
+        process.exitCode = result.status == null ? 1 : result.status;
         return;
     }
     if (process.argv[2] === 'store') {
@@ -8432,6 +8548,7 @@ Options:
         persistInstallOptions();
         // --platforms is parsed above but only marked explicit further down the full flow; hooks-only exits before that.
         markPlatformsExplicit(PLATFORMS_ARG || []);
+        await gateReenableStep({ ask: gateReenableAsk() });
         installGlobalHooks({ harnesses: activeHarnessKeys() });
         flushSessionManifest();
         console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
@@ -8458,7 +8575,6 @@ Options:
 
     intro(buildHeroHeader(pkg.version));
     console.log(buildTelemetryCard({ installState, detections, daemonStatus }));
-    console.log(buildAoAnnouncementBanner());
 
     if (DRY_RUN) {
         // Precise on purpose: version comparison still queries the registry, and
@@ -8485,11 +8601,14 @@ Options:
         return;
     }
 
-    if (installState.isInstalled && !isAutoYes) {
+    if (installState.isInstalled && !isAutoYes && args[0] !== 'setup') {
         persistInstallOptions();
-        process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
+        process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true, true));
         return;
     }
+
+    // A -y reinstall re-merges every hook: never silently re-enable a gate the user removed by hand.
+    await gateReenableStep({ ask: gateReenableAsk() });
 
     const detectedNames = detections.map(d => d.name).join(', ');
     const platformOptions = [
@@ -8506,11 +8625,13 @@ Options:
         { value: '4', label: '⚙️ Custom Installation', hint: 'specify paths manually' }
     ];
 
-    let tier = '1';
+    let tier = installState.isInstalled ? storedTierOpts(installState).tier : '1';
     let mode = 'merge';
     let customPaths = null;
     let creds = null;
     let selectedMcps = null;
+    let contextProfileChoice = null;
+    let routerChoice = null;
     let wantsUniversal = true;
     markPlatformsExplicit(PLATFORMS_ARG || []);
     let specificPlatforms = [defaultPlatformValue()];
@@ -8533,7 +8654,7 @@ Options:
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
         selectedMcps = await promptMcpSelection(tier);
     } else {
-        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null };
+        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, contextProfile: null, router: null };
         const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
@@ -8627,6 +8748,54 @@ Options:
             memoryOn = v === 'on';
         };
 
+        const stepContextProfile = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
+            const { CONTEXT_PROFILES, CONTEXT_PROFILE_DEFS, contextProfileOf } = require('./lib/v5/context-profiles');
+            const st = v5Profile.readSettings(homeDir, () => {});
+            const cur = ctx.contextProfile || contextProfileOf(st);
+            const ans = await selectWithBack({
+                message: 'Context Profile (session token budget & gateway MCP tools):',
+                options: CONTEXT_PROFILES.map((p) => ({
+                    value: p,
+                    label: `${CONTEXT_PROFILE_DEFS[p].label}`,
+                    hint: CONTEXT_PROFILE_DEFS[p].description
+                })),
+                initialValue: cur
+            });
+            if (ans === BACK) return 'back';
+            ctx.contextProfile = ans;
+        };
+
+        const stepRouter = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
+            const mode = await selectWithBack({
+                message: 'Team & Router (which harness leads, which workers you have):',
+                options: [
+                    { value: 'keep', label: 'Keep the shipped table (recommended)', hint: 'advisory routing, nothing written' },
+                    { value: 'custom', label: 'Set up my team', hint: 'writes ~/.aos/router.json' }
+                ],
+                initialValue: 'keep'
+            });
+            if (mode === BACK) return 'back';
+            if (mode === 'keep') { ctx.router = null; return; }
+            const found = detectRouterTargets();
+            const sel = await multiselectWithBack({
+                message: 'Which targets/workers do you have? (detected CLIs are preselected)',
+                options: found.map((t) => ({ value: t.key, label: ROUTER_TARGET_LABELS[t.key], hint: t.detected ? 'detected' : 'not detected' })),
+                initialValues: found.filter((t) => t.detected).map((t) => t.key),
+                allowEmpty: true
+            });
+            if (sel === BACK) return 'back';
+            if (sel.length === 0) { ctx.router = null; return; }
+            const main = sel.length === 1 ? sel[0] : await selectWithBack({
+                message: 'Your main harness (leads architect, techlead, reviewer):',
+                options: sel.map((k) => ({ value: k, label: ROUTER_TARGET_LABELS[k] })),
+                initialValue: sel[0]
+            });
+            if (main === BACK) return 'back';
+            ctx.router = { preset: 'custom', mainHarness: main, selectedTargets: sel };
+        };
+
         const stepMcps = async () => {
             if (ctx.selectedPlatforms.includes('9')) return;
             const sel = await promptMcpSelection(ctx.tier);
@@ -8656,9 +8825,12 @@ Options:
             if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push(defaultPlatformValue());
             const lines = [
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
+                `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...skillPacks.tierPacks(ctx.tier)])].join(', ')}` : 'all skills (no pack selection stored)'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
                 `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
+                `Context:       ${ctx.contextProfile || 'full'}`,
+                `Router:        ${ctx.router ? `custom (lead: ${ctx.router.mainHarness})` : 'shipped table'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
@@ -8677,7 +8849,7 @@ Options:
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepMcps, stepCredentials, stepReview];
+        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepContextProfile, stepRouter, stepMcps, stepCredentials, stepReview];
 
         let i = 0;
         while (i < steps.length) {
@@ -8692,6 +8864,8 @@ Options:
         customPaths = ctx.customPaths;
         creds = ctx.creds;
         selectedMcps = ctx.selectedMcps;
+        contextProfileChoice = ctx.contextProfile;
+        routerChoice = ctx.router;
         wantsUniversal = ctx.selectedPlatforms.includes('0');
         specificPlatforms = ctx.selectedPlatforms.filter(p => p !== '0');
         if (specificPlatforms.length === 0 && wantsUniversal) specificPlatforms.push(defaultPlatformValue());
@@ -8710,7 +8884,28 @@ Options:
         outro('Project harness installation complete.');
         return;
     }
+    // Pro MEDIA brings the live-show pack (additive; base pack is always in).
+    skillPacks.tierPacks(tier).forEach(addImpliedPack);
     persistInstallOptions();
+    if (INSTALL_OPTS.router && !routerChoice) {
+        const detected = detectRouterTargets().filter((t) => t.detected).map((t) => t.key);
+        routerChoice = { preset: INSTALL_OPTS.router, mainHarness: 'claude', selectedTargets: [...new Set(['claude', ...detected])] };
+    }
+    if (routerChoice && !DRY_RUN) {
+        const file = writeUserRouterConfig({ home: homeDir, ...routerChoice });
+        if (file) log.info(`Router table written: ${file}`);
+    }
+    if (INSTALL_OPTS.context && !contextProfileChoice) contextProfileChoice = INSTALL_OPTS.context;
+    if (contextProfileChoice) {
+        const st = v5Profile.readSettings(homeDir, () => {});
+        st.context = contextProfileChoice;
+        v5Profile.writeSettings(homeDir, st);
+    }
+    if (!isAutoYes && !DRY_RUN && process.stdout.isTTY && process.stdin.isTTY) {
+        const ok = await askConfirm({ message: 'Optional: allow read-only aos status/doctor commands without prompts (adds rules to ~/.claude/settings.json, backup first, undo with `aos allow aos-tools --remove`)?', initialValue: false });
+        if (!isCancel(ok) && ok) require('./lib/permissions-allow').allowCommand(['aos-tools'], { home: homeDir, write: (t) => log.info(t.trim()) });
+        else log.info('Other presets (remote CI hosts etc.): `aos allow` lists them; run them yourself with `! aos allow <preset>`.');
+    }
     if (!memoryOn && !installExcluded.has('memb')) declineUnifiedMemory();
 
     // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.
@@ -8741,10 +8936,17 @@ Options:
     const s = spinner();
     s.start(`Installing optimized skills${tier === '2' ? ' [Basic Tier]' : ''} to ${targets.length} target(s)...`);
 
+    populateSkillLibrary();
+
     installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBase });
 
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
+    applySkillSet(_sessionManifest);
+    applyPackSelection(_sessionManifest);
+    if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
+        installRustauri();
+    }
     s.stop('Skills installed.');
     runAgyPluginStep();
 
@@ -8765,7 +8967,7 @@ Options:
         await installOpenWikiVisualizer();
     }
     if (installExcluded.has('token-saver')) log.step('Token Saver skipped (profile or --without).');
-    else await installTokenSaver(primaryTarget.platformValue);
+    else await installTokenSaver();
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
     // Unified memory is part of the default install, not an optional module: memB (with deja) goes in here.
@@ -8775,7 +8977,6 @@ Options:
     await applyCodingModeStep(memoryCodingOptions());
     const modulePlan =v5Profile.PROFILES[activeProfile].modules;
     const explicitModules = parseModuleSelection();
-    // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
     // -- only promptOptionalModules's own return value (the ones it just chose-and-installed
     // this call) actually ran an install-and-verify pass this run. Anything already in the
     // array before this call was untouched here and must still get its normal reloadDaemons()
@@ -8786,14 +8987,17 @@ Options:
     justInstalled.push(...memoryInstalled);
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
+    await promptMemoryImport();
 
     const alreadyHandled = justInstalled.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
+    if (persistWizardPacks()) applyPackSelection(_sessionManifest);
 
     if (wantsUniversal) {
-        await universalHarnessSync(primaryTarget.mcpConfigPath, installedModulesForPrompt);
+        await universalHarnessSync(primaryTarget.mcpConfigPath);
     }
+    installStep('register the Plan Canvas background server', () => { installPlanCanvasAutostart(); });
 
     // Flush file-level install manifest after all writes are done.
     flushSessionManifest();
@@ -8802,6 +9006,7 @@ Options:
     if (aosCliRequested) installAosCli();
 
     // After every harness MCP config write above: the gateway switches those entries, and a later write would undo it.
+    saveGatewaySelectedServers(tier);
     for (const name of await require('./lib/v5/menu').installDefaults(module.exports, { ...v5Options(!isAutoYes), dryRun: DRY_RUN }, installExcluded)) {
         moduleFailures.push({ id: name, name, reason: 'see the step line above and ~/.aos/logs' });
     }
@@ -8814,14 +9019,52 @@ Options:
     if (moduleFailures.length) {
         outro(`⚠️ Installation incomplete: ${moduleFailures.length} module(s) not installed (see above).`);
     } else {
-        outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+        outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''} · Open the AOS Hub: aos hub`);
     }
     // Last line on purpose: an earlier CODEX_GATE_NOTICE scrolled by unread and the gate stayed off.
     if (codexHooksChanged) console.log(`⚠️  ${CODEX_TRUST_REMINDER}`);
+    // After that notice: the very last line when the Claude plugin step failed (issue #54).
+    printClaudePluginFix();
+}
+
+// Persist which shipped servers the 1mcp gateway runs: derived once from this install's tier
+// (Pro MEDIA adds the media/show-control group) and installed modules (Creator Extension adds
+// the creative group), unioned with what the user already runs today. An explicit choice saved
+// by a prior run or `aos-gateway add/remove` is kept; DRY_RUN writes nothing.
+function saveGatewaySelectedServers(tierValue = tier, installedList = null, home = homeDir) {
+    if (DRY_RUN) return false;
+    try {
+        const gwConfig = require('./lib/gateway/config');
+        const selection = require('./lib/gateway/selection');
+        const dir = gwConfig.gatewayDir(home);
+        const current = require('./lib/v5/pkg-gateway').currentShippedUpstreams(dir);
+        const seen = require('./lib/gateway/doctor').directGatewayNames({ files: mcpSecrets.harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
+        const st = v5Profile.readSettings(home, () => {});
+        const r = selection.resolveGatewayServers({
+            settingServers: st.gateway && st.gateway.servers,
+            media: tierValue === '1' ? selection.detectMediaServers({ home }) : false,
+            creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
+            keep: [...current, ...seen],
+        });
+        if (r.retired && r.retired.length) log.step(`Gateway: retired server name(s) ignored: ${r.retired.join(', ')}${r.servers.length ? '' : ' (selection is now empty; add servers with aos-gateway add <name>)'}`);
+        if (r.kept.length) log.step(`Gateway: keeping the servers you already run (${r.kept.join(', ')})`);
+        const next = { ...st, gateway: { ...(st.gateway || {}), servers: r.servers } };
+        v5Profile.writeSettings(home, next);
+        log.step(`Gateway servers: ${r.servers.join(', ')}`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not save the gateway server selection: ${e.message}`);
+        return false;
+    }
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    CLAUDE_POINTER,
+    CLAUDE_PREFIX,
+    detectRouterTargets,
+    buildRouterPreferences,
+    writeUserRouterConfig,
     movePreserved,
     recoverStaleSwaps,
     MODULE_PRESERVE,
@@ -8856,7 +9099,6 @@ module.exports = {
     readAoDaemonIdentity,
     selectAoCandidate,
     describeAoVersion,
-    buildAoAnnouncementBanner,
     agentsNotShippedAsFiles,
     downloadOrUpdateModule,
     detectPlatforms,
@@ -8877,9 +9119,26 @@ module.exports = {
     installGlobalHooks,
     injectHarnessRules,
     activeHarnessKeys,
+    gateMissingInHarnesses,
+    harnessWiringProblems,
+    kernelFileProblems,
+    gateReenableStep,
+    gateHoldKeys,
     defaultPlatformValue,
     harnessSummaryLine,
     applyInstallOptions,
+    getTierExcludeSkills,
+    resolveShippedMcpServers,
+    migrateRooBdbSkills,
+    refreshHarnessMcpEntries,
+    globalSkillDestRoots,
+    globalSkillDestinations,
+    storedTierOpts,
+    currentPackSelection: () => packSelection,
+    effectivePackSelection,
+    addImpliedPack,
+    populateSkillLibrary,
+    applyPackSelection,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,
@@ -8904,9 +9163,12 @@ module.exports = {
     pluginMigrationMode,
     prompts: { text, password, select, multiselect, confirm: askConfirm },
     runPluginMigration,
+    printClaudePluginFix,
     runAgyPluginStep,
     runCodexPluginStep,
     retireCodexSkillCopies,
+    retireOpencodeSkillCopies,
+    opencodeUsesAgentsSkills,
     syncSkillsToGlobalHarnesses,
     retireStaleCodexPluginDir,
     realClaudeHome,
@@ -8954,7 +9216,7 @@ module.exports = {
     isValidOpenWikiModelId,
     loadExistingEnv,
     // installer v5 host surface (lib/v5/*)
-    runQuickUpdate, applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
+    applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
     saveManifest, DEJA_VERSION, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, checkModuleUpdate, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
@@ -8962,28 +9224,29 @@ module.exports = {
     INSTALL_MANIFEST_PATH,
     // Agent compilers & pipeline helpers
     parseAgentsMd,
+    loadPackAgents,
     loadCommonSkills,
     compileClaudeAgents,
     compileOpenCodeAgents,
     compileCodexAgents,
     compileAgyAgents,
     applyClaudeModelOverrides,
+    pluginCoveredAgentFiles,
     loadPipelineConfig,
     resolveAgentConfig,
     installPipelineDefault,
-    // Launchpad lifecycle (exported for regression tests)
-    generateAndOpenLaunchpad,
-    shouldOpenLaunchpad,
-    shouldAutostartLaunchpad,
+    // Plan Canvas lifecycle (exported for regression tests)
     shouldAutostartPlanCanvas,
     buildPlanCanvasPlist,
     buildPlanCanvasWinFiles,
     installPlanCanvasAutostart,
-    isDevEnvironment,
-    LAUNCHPAD_WEB_MODULES,
-    LAUNCHPAD_OPEN_FLAGS,
     checkSystemPrereqs,
     findBundledClaudeCli,
+    hasExecutable,
+    findExecutable,
+    shippedMcpTemplatePath: mcpSecrets.shippedMcpTemplatePath,
+    saveGatewaySelectedServers,
+    migrateLegacyAgyWorkspaceMcp: mcpSecrets.migrateLegacyAgyWorkspaceMcp,
 };
 
 // After module.exports: the v5 menu receives it as its host and main() runs before the first await.

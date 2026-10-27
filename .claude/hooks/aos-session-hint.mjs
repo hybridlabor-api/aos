@@ -5,29 +5,132 @@
 //   Output: {"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"..."}}
 //   Off switches: AOS_SESSION_HINT=off (human or installer kills it) and
 //   AOS_DELEGATE_DEPTH>0 (delegated workers stay silent).
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync, realpathSync, fstatSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-try {
-  try {
-    readFileSync(0, "utf8"); // consume stdin; unparseable input is still not an error
-  } catch {}
+export const hintOff = () => process.env.AOS_SESSION_HINT === "off" || process.env.AOS_SESSION_START_CONTEXT === "off" || Number(process.env.AOS_DELEGATE_DEPTH || 0) > 0;
 
-  const depth = Number(process.env.AOS_DELEGATE_DEPTH || 0);
-  if (process.env.AOS_SESSION_HINT === "off" || depth > 0) process.exit(0);
+// Retrieval tools that are installed here, probed with fs only (no spawn). [] when none.
+export function memoryTools({ home = homedir(), env = process.env, platform = process.platform, exists = existsSync } = {}) {
+  const dirs = String(env.PATH || '').split(platform === 'win32' ? ';' : ':').concat(['/usr/local/bin', '/opt/homebrew/bin', join(home, '.local', 'bin')]);
+  const exts = platform === 'win32' ? ['.cmd', '.exe', '.bat', ''] : [''];
+  const onPath = (name) => dirs.some((d) => d && exts.some((e) => exists(join(d, name + e))));
+  let off = [];
+  try { off = JSON.parse(readFileSync(join(home, '.aos', 'v5-settings.json'), 'utf8')).disabled || []; } catch {}
+  const on = (id) => !off.includes(id);
+  return [
+    ['memb search', on('memb') && exists(join(home, '.agents', 'memB'))],
+    ['deja search', on('deja') && onPath('deja')],
+    ['openwiki_search', on('openwiki') && onPath('openwiki')],
+    ['codebase_memory_mcp', onPath('codebase-memory-mcp')],
+  ].filter(([, ok]) => ok).map(([n]) => n);
+}
 
-  const hint = [
+// The hint text, shared with the OpenCode plugin. "" when switched off.
+export async function buildHint() {
+  if (hintOff()) return "";
+  const hints = [
     'plan-canvas is available for plan review — check the canvas with `aos-plan-canvas` and open a plan with `aos-plan-canvas open <file|plan-dir>`.',
     'agenttrail serves a live map of multi-agent builds when one is running.',
-    'The automatic tool-routing rules (when to use plan-canvas, agenttrail, subagents, startcycle) live in the "Tool routing (automatic)" block of AGENTS.md.',
-  ].join("\n");
+    'The automatic tool-routing rules (when to use plan-canvas, agenttrail, subagents, fabric) live in the "Tool routing (automatic)" block of AGENTS.md.',
+  ];
+  try {
+    const tools = memoryTools();
+    if (tools.length) hints.push(`Need more context? Pull it on demand: ${tools.join(', ')}.`);
+  } catch {}
+  try {
+    const home = homedir();
+    let notice = null;
+    try {
+      const { cachedUpdateNotice } = await import("../../lib/update-check.js");
+      notice = cachedUpdateNotice({ home });
+    } catch {
+      const fallbackLib = join(home, ".agents", "lib", "update-check.js");
+      if (existsSync(fallbackLib)) {
+        const { cachedUpdateNotice } = await import(fallbackLib);
+        notice = cachedUpdateNotice({ home });
+      }
+    }
+    if (notice) {
+      hints.push(notice);
+      // stderr reaches the user's terminal without breaking the hook runner's JSON on stdout.
+      process.stderr.write(`${notice}\n`);
+    }
+  } catch {}
+  // Post-update line: once per update, from the marker `aos update` leaves (lib/whats-new.js)
+  try {
+    const marker = join(homedir(), ".aos", "cache", "last-update.json");
+    const m = JSON.parse(readFileSync(marker, "utf8"));
+    if (m && !m.shown && m.version && Date.now() - m.t < 7 * 86400000) {
+      const line = `AOS updated to ${m.version} — run \`aos setup\` to optimize (${Number(m.hints) || 0} hints)`;
+      hints.unshift(line);
+      process.stderr.write(`${line}\n`);
+      writeFileSync(marker, JSON.stringify({ ...m, shown: true }));
+    }
+  } catch {}
+  const { capText } = await import("./session-cap.mjs");
+  return capText(hints.join("\n"), homedir());
+}
 
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: hint,
-      },
-    }) + "\n",
-  );
-} catch {}
-process.exit(0);
+// agy has no SessionStart event: the PreInvocation hook runs every turn, so a stamp per conversation keeps it to the first one.
+export function agyHintFirstTime(conversationId, base = join(homedir(), ".aos", "cache", "hint-agy")) {
+  const id = String(conversationId || "").replace(/[^\w.-]/g, "_").slice(0, 80);
+  if (!id) return false;
+  const stamp = join(base, id);
+  if (existsSync(stamp)) return false;
+  try { mkdirSync(base, { recursive: true }); writeFileSync(stamp, ""); } catch {}
+  return true;
+}
+
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
+
+async function main() {
+  let input = {};
+  try { input = JSON.parse((await readStdinBounded(1500)) ?? ""); } catch {} // unparseable input is still not an error
+  const isAgy = !input.hook_event_name && (Array.isArray(input.workspacePaths) || !!input.conversationId);
+  if (isAgy && !agyHintFirstTime(input.conversationId)) return;
+  const hint = await buildHint();
+  if (!hint) return;
+  process.stdout.write(JSON.stringify(isAgy
+    ? { injectSteps: [{ ephemeralMessage: hint }] }
+    : { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: hint } }) + "\n");
+}
+
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+if (process.argv[1] && isMain()) {
+  try { await main(); } catch {}
+  process.exit(0);
+}

@@ -1,0 +1,41 @@
+--- a/run.py	2026-10-19 21:23:19
++++ b/run.py	2026-10-19 21:23:19
+@@ -40,7 +40,22 @@
+ db_dir = os.environ.get("MEMB_DATA_DIR") or os.path.expanduser("~/.MemBDB")
+ db_path = os.path.join(db_dir, "memb.db")
+ history_db_path = os.path.join(db_dir, "history.db")
++
++def _llm_config():
++    """Extraction LLM from MEMB_LLM_* (set by aos-mcp-env from the user's OpenWiki/secrets choice); gemini by default."""
++    provider = os.environ.get("MEMB_LLM_PROVIDER", "gemini")
++    cfg = {}
++    model = os.environ.get("MEMB_LLM_MODEL") or ("gemini-2.5-flash" if provider == "gemini" else None)
++    if model:
++        cfg["model"] = model
++    if os.environ.get("MEMB_LLM_API_KEY"):
++        cfg["api_key"] = os.environ["MEMB_LLM_API_KEY"]
++    base = os.environ.get("MEMB_LLM_BASE_URL")
++    if base:
++        cfg[{"anthropic": "anthropic_base_url"}.get(provider, "openai_base_url")] = base
++    return {"provider": provider, "config": cfg}
+ 
++
+ memory_config = {
+     "embedder": {
+         "provider": "local_onnx",
+@@ -51,14 +66,9 @@
+         "config": {
+             "collection_name": "bdb_agent_memory",
+             "path": db_path
+-        }
+-    },
+-    "llm": {
+-        "provider": "gemini",
+-        "config": {
+-            "model": os.environ.get("MEMB_LLM_MODEL", "gemini-2.5-flash")
+         }
+     },
++    "llm": _llm_config(),
+     "history_db_path": history_db_path
+ }
+ 

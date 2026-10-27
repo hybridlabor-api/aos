@@ -1,11 +1,9 @@
 ---
 name: pb-open-source
 description: >-
-  Prepare a project for open sourcing: a sanitized fork with secrets and
-  internal references stripped, a sanitizer verdict, README and LICENSE, then a
-  new PRIVATE GitHub repo created and pushed only after GO. The playbook never
-  makes the repo public. Use for "open source this project", "make a sanitized
-  fork", "prepare a public release".
+  Prepare a project for open sourcing: sanitized fork with secrets and
+  internal refs stripped, sanitizer verdict, README, LICENSE, then a
+  PRIVATE repo after GO.
 category: engineering-method
 kind: playbook
 trigger: ["open source this project", "sanitized fork", "prepare a public release"]

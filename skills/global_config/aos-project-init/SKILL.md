@@ -1,10 +1,7 @@
 ---
 name: aos-project-init
 description: >-
-  Interview a project folder into AOS and write the result: a stable slug and
-  domain in .aos/project.json, an OpenWiki wiki that is actually watched and
-  does not index junk, memB memory bound to the slug, a Synapse map, AGENTS.md
-  with its harness symlinks, and optionally CI and issue triage.
+  Interview a project folder into AOS: .aos/project.json, OpenWiki, memB memory, Synapse map, AGENTS.md. Use when onboarding a project to AOS.
 category: bdb-core
 risk: low
 source: bdb
@@ -90,6 +87,13 @@ your head. Ask; do not default it on.
 holds content, merge it into `AGENTS.md` first and only then replace it with a
 pointer. Never silently overwrite it.
 
+**Stack detection & skill packs.** Inspect the project root:
+- `Cargo.toml` and `src-tauri/tauri.conf.json` (Tauri v2 desktop) or `Cargo.toml` (Rust) → preselect the `rust` group and `app-dev` pack (and the `desktop-app` team / `tauri_expert` role with `pb-tauri-e2e` for Tauri).
+- `go.mod` → preselect the `go` group and `app-dev` pack.
+- `package.json` with `vite` → preselect the `react` group, `web-design`, and `app-dev` packs.
+- `pyproject.toml` / `requirements.txt` → preselect the `python` group.
+Preselect only when detected; otherwise list Rust/Tauri as an option next to Vite and Go.
+
 **Subagents & Multi-Harness Pipeline.** Offer to initialize `.aos/pipeline.json` (or set per-role, per-harness model overrides via `/subagent-setup`; without an override agents use the session model, see `docs/agent-models.md`). Ensures subagents are automatically compiled across Claude Code, Antigravity, OpenCode, and Codex CLI.
 
 **With a GitHub remote, two more.** Skip both entirely without a remote — a
@@ -157,6 +161,12 @@ Never write credentials or high-entropy strings into memory.
 
 ---
 
+### Memory import (optional)
+
+When the project root sits outside every folder in `aos memory list`, ask once whether to add it to the daily memory
+import, and on yes run `aos memory add-path <project root>`. Skip silently when `aos memory` is not available or
+unified memory is off. Do not invent a path or a time: both are per machine and set by the user.
+
 ## 4. Confirm
 
 ```bash
@@ -168,6 +178,20 @@ commit: `chore:` for wiring, `docs:` for `AGENTS.md`. Check the project's
 version policy before reaching for `feat:`.
 
 ---
+
+## Router and team
+
+Project init asks nothing new. It only records where a project-level router
+override would live: `.aos/router.json` in the project root (project beats
+`~/.aos/router.json` beats the shipped table). Create it with
+`aos-router set <role> <targets> --project`, never by default.
+
+- Peers: `aos-a2a list` shows running A2A peers. Read-only information; init writes no A2A config.
+
+## 5.3 state
+
+Note in the confirmation (read-only): context profile, updates policy, mods,
+gateway and memory as set at machine level, plus whether `.aos/router.json` exists.
 
 ## Red flags
 

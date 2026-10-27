@@ -10,7 +10,7 @@ const { pathToFileURL } = require('node:url');
 
 const ROOT = path.join(__dirname, '..');
 const ROUTER_JSON = path.join(ROOT, 'config', 'router.json');
-const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
+const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
 
 const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'router-route-test-'));
 after(() => {

@@ -308,13 +308,16 @@ describe('runtime boundary', () => {
 
 describe('dispatcher contract wiring', () => {
   test('uses the tested boundary and fixed-argv shell hardening', () => {
-    const source = fs.readFileSync(new URL('../.claude/workflows/startcycle-dispatch.mjs', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../.claude/workflows/fabric-dispatch.mjs', import.meta.url), 'utf8');
     const verifyStart = source.indexOf("if (label.startsWith('archify-verify'))");
     const verifyEnd = source.indexOf('// LLM Agent Steps:', verifyStart);
     const verifyBlock = source.slice(verifyStart, verifyEnd);
     assert.match(source, /aos-archify-contract\.mjs/);
     assert.match(source, /runArchifyBoundary/);
     assert.doesNotMatch(verifyBlock, /JSON\.parse\(deliverRes\.stdout\)/);
-    assert.match(source, /spawn\('aos-trail',[\s\S]*?shell:\s*false/);
+    // Windows: one quoted command line (cliBin + cliArg) with an empty args array; POSIX: plain argv. Never shell:true plus args (DEP0190).
+    assert.match(source, /const cliCall = \(name, args\) => \(IS_WIN \? \[\[cliBin\(name\), \.\.\.args\.map\(cliArg\)\]\.join\(' '\), \[\]\] : \[name, args\]\)/);
+    assert.match(source, /spawn\(\.\.\.cliCall\('aos-trail', \[[^\]]*\]\),[\s\S]*?shell:\s*IS_WIN/);
+    assert.doesNotMatch(source, /shell:\s*true/);
   });
 });

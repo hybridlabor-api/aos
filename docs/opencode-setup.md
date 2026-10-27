@@ -3,7 +3,7 @@
 The AOS installer copies these into `~/.config/opencode` (`%APPDATA%\opencode` on Windows):
 
 - `plugins/bdb-aos.js` with `plugins/aos-hooks/` and `plugins/lib/` (go-gate, loop keeper, bus)
-- `commands/startcycle-graph.md` and one generated `commands/bdb-aos-<cmd>.md` per AOS command, called as `/bdb-aos-<cmd>` (flat hyphen names; a colon is not valid in Windows file names)
+- `commands/fabric-graph.md` and one generated `commands/bdb-aos-<cmd>.md` per AOS command, called as `/bdb-aos-<cmd>` (flat hyphen names; a colon is not valid in Windows file names)
 
 The command files are generated from `plugin-commands.json` by `node scripts/build-plugin-manifest.mjs` and checked by `--check`. A command may carry `bodies.opencode`; without it the Claude body is used with `/bdb-aos:<cmd>` rewritten to `/bdb-aos-<cmd>`.
 
@@ -23,8 +23,8 @@ OpenCode deliberately runs a small MCP set (`memb_mcp`, `deja`, `zavora_computer
 AOS_OPENCODE_OPTIONAL=ponytail,loop,rtk aos        # or: aos --opencode-optional=ponytail,loop,rtk
 ```
 
-- `ponytail`: appends `@dietrichgebert/ponytail@4.10.0` to `plugin[]`
-- `loop`: appends `@bybrawe/opencode-loop@0.6.2` to `plugin[]`
+- `ponytail`: appends `@dietrichgebert/ponytail@5.3.2` to `plugin[]`
+- `loop`: appends `@bybrawe/opencode-loop@0.6.8` to `plugin[]`
 - `rtk`: prints `brew install rtk && rtk init -g --opencode`; AOS installs nothing
 
 Entries are appended only when no entry for that package exists, after a timestamped `opencode.jsonc.<ts>.bak` backup. AOS never runs foreign installers (the `opencode-loop` npx installer rewrites the config) and skips `orca-opencode-status.js` (the Orca app maintains it) and `dag.jsonc` / GraphAgent (AGPL engine, different program).
@@ -51,7 +51,7 @@ Without it OpenCode asks on every access outside the working directory, includin
 
 - **`/loop-shell` and the go-gate (unverified).** `opencode-loop` can run shell commands as child processes. `tool.execute.before`, where the AOS go-gate sits, may never see them. Do not schedule `git push`, publish or other gated commands through them. The installer prints this warning whenever `opencode-loop` is in `plugin[]`.
 - **Machine prompts are never human.** Every prompt the plugin sends itself (loop nudge, bus wake) is `synthetic` and carries `aos_loop` or `aos_bus` metadata, so it cannot count as a GO. A test scans the plugin source for this.
-- **Double loading of `bdb-aos.js`.** OpenCode auto-loads `plugins/*.{ts,js}` and also loads paths in `plugin[]`. Verified by running OpenCode 1.18.30 with a probe plugin (init side effect counted, no model call): auto-load alone, auto-load plus the same file as an absolute path, as a `file://` URL, or as a path containing `..` each load it exactly once. A different file also named `bdb-aos.js` (checkout path, symlinked config dir) loads twice, giving two gates and two loop keepers. The installer registers exactly one path, `<config>/plugins/bdb-aos.js`, and warns when `opencode.jsonc` holds another one; `aos-doctor` also reads `opencode.json` and `config.json`, which the installer does not touch.
+- **Double loading of `bdb-aos.js`.** OpenCode auto-loads `plugins/*.{ts,js}` and also loads paths in `plugin[]`. Verified by running OpenCode 1.18.30 with a probe plugin (init side effect counted, no model call): auto-load alone, auto-load plus the same file as an absolute path, as a `file://` URL, or as a path containing `..` each load it exactly once. A different file also named `bdb-aos.js` (checkout path, symlinked config dir) loads twice, giving two gates and two loop keepers. On Windows (AOS 5.4.0 Lenovo test) the same file in `plugin[]` plus auto-load gave two `plugin_origins`, so the installer relies on auto-load alone: it puts no `bdb-aos.js` entry in `plugin[]`, removes its own entry from an older install (textually, comments stay), and warns when `opencode.jsonc` holds another one; `aos-doctor` also reads `opencode.json` and `config.json`, which the installer does not touch.
 - **`zavora_computer_use` needs Node.js 20+ and network on first start.** It runs as `npx -y @zavora-ai/computer-use-mcp@7.4.0` (pinned); nothing is bundled or built locally.
 - **Windows config directory (unverified).** The installer writes to `%APPDATA%\opencode`; `aos-doctor` looks there and in `~/.config/opencode`. Which of the two OpenCode reads on Windows was not run.
 
@@ -63,4 +63,4 @@ opencode debug config # what OpenCode resolved: plugin_origins, command, mcp, ag
 opencode debug skill  # skills it found
 ```
 
-Checked on OpenCode 1.18.30 against a fresh `HOME` after a full install: `plugin_origins` holds one `file://.../plugins/bdb-aos.js`, `command` holds the 14 `bdb-aos-*` commands plus `startcycle-graph`, 29 agents came from `~/.opencode/agents` (21 before the ECC language-reviewer round), `debug skill` lists 249 unique skills, and the log shows no plugin error. Tests: `tests/opencode-verify.test.js`; with `AOS_E2E_CLI=1` it installs into a temp `HOME` and asks the real `opencode`.
+Checked on OpenCode 1.18.30 against a fresh `HOME` after a full install: `plugin_origins` holds one `file://.../plugins/bdb-aos.js`, `command` holds the 14 `bdb-aos-*` commands plus `fabric-graph`, 29 agents came from `~/.opencode/agents` (21 before the ECC language-reviewer round), `debug skill` lists 249 unique skills, and the log shows no plugin error. Tests: `tests/opencode-verify.test.js`; with `AOS_E2E_CLI=1` it installs into a temp `HOME` and asks the real `opencode`.

@@ -774,5 +774,7 @@ test("aos-go-ref verify is read-only, prints JSON, exit 1 when denied; no issuin
   assert.equal(r.status, 1);
   assert.deepEqual(JSON.parse(r.stdout).ok, false);
   r = run(["verify", "--help"]);
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 0, "--help is answered by the help guard and exits 0");
+  assert.match(r.stdout, /aos-go-ref verify --session/);
+  assert.ok(fs.existsSync(tokenPath("cli-target")), "help consumes nothing");
 });

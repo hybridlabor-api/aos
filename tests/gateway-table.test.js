@@ -22,7 +22,7 @@ test('classify maps every row path back to its row id', () => {
 });
 
 test('SUPPORTED is exactly the verified rows; unverified rows are never written', () => {
-    assert.deepEqual([...harness.SUPPORTED].sort(), ['agy', 'claude', 'codex', 'cursor', 'opencode', 'roo']);
+    assert.deepEqual([...harness.SUPPORTED].sort(), ['agy', 'claude', 'cline', 'codex', 'cursor', 'opencode', 'roo', 'windsurf']);
     for (const r of rows.filter((x) => !x.verified)) assert.ok(!harness.SUPPORTED.has(r.id), r.id);
 });
 
@@ -35,12 +35,18 @@ test('entryFor per verified row keeps the old shapes, and ?preset= is appended',
     assert.deepEqual(harness.entryFor('roo', TOKEN), { type: 'streamable-http', url, headers: h });
     assert.deepEqual(harness.entryFor('agy', TOKEN), { serverUrl: url, headers: { 'x-aos-token': TOKEN } });
     assert.deepEqual(harness.entryFor('opencode', TOKEN), { type: 'remote', url, headers: h, enabled: true });
+    assert.deepEqual(harness.entryFor('cursor-app', TOKEN), { url, headers: h });
+    assert.deepEqual(harness.entryFor('agy-cli', TOKEN), { serverUrl: url, headers: { 'x-aos-token': TOKEN } });
+    assert.deepEqual(harness.entryFor('windsurf', TOKEN), { serverUrl: url, headers: h });
+    assert.deepEqual(harness.entryFor('cline', TOKEN), { type: 'streamableHttp', url, headers: h });
+    assert.deepEqual(harness.entryFor('vscode', TOKEN), { type: 'http', url, headers: h });
     assert.deepEqual(harness.entryFor('roo', TOKEN, 'aos-core'), { type: 'streamable-http', url: `${url}?preset=aos-core`, headers: h });
 });
 
 test('mapKey reads the row root; unknown kinds keep mcpServers', () => {
     assert.equal(harness.mapKey('opencode'), 'mcp');
     assert.equal(harness.mapKey('roo'), 'mcpServers');
+    assert.equal(harness.mapKey('vscode'), 'servers');
     assert.equal(harness.mapKey('nope'), 'mcpServers');
 });
 

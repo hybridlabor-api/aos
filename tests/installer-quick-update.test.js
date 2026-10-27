@@ -15,7 +15,7 @@ test.after(() => fs.rmSync(tmpHome, { recursive: true, force: true }));
 
 const {
     readGoBuildInfo, parseGoBuildInfo, decideAoInstall, checkAoWorkspace, installAoBinary,
-    describeAoVersion, buildAoAnnouncementBanner, readAoDaemonIdentity, selectAoCandidate, agentsNotShippedAsFiles, parseAgentsMd,
+    describeAoVersion, readAoDaemonIdentity, selectAoCandidate, agentsNotShippedAsFiles, parseAgentsMd,
     resolveFileConflict, buildKnownSourceHashes, computeFileHash, retireObsoleteLegacyDir,
     runModuleInstalls, verifyEcosystemInstallation, copyDirRecursiveSync,
 } = require('../installer.js');
@@ -221,15 +221,6 @@ test('describeAoVersion compares only the recorded release version of the binary
 
     assert.strictEqual(describeAoVersion({ exists: true, build: null, record, latest: '1.3.0' }).updateAvailable, false);
     assert.strictEqual(describeAoVersion({ exists: false }).text, 'Not installed');
-});
-
-test('the AO announcement banner is English and its box is aligned', () => {
-    const plain = buildAoAnnouncementBanner().replace(/\x1b\[[0-9;]*m/g, '').trimEnd();
-    const german = ['JETZT', 'VERFÜGBAR', 'FINALE', 'nächste', 'Generation der', 'freigeschaltet', 'für alle',
-        'Befehl', 'Hintergrunddienst', 'aktivieren', ' oder ', 'Telemetrie', 'Multi-Agenten'];
-    for (const word of german) assert.ok(!plain.includes(word), `banner still contains German "${word}"`);
-    const widths = new Set(plain.split('\n').map((l) => [...l].length));
-    assert.deepStrictEqual([...widths], [80]);
 });
 
 test('readAoDaemonIdentity uses pid+startedAt, pid alone, or null when running.json is missing', () => {

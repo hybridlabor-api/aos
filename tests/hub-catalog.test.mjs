@@ -169,9 +169,10 @@ test('temp-HOME harness fixtures produce correct installed flags', () => {
   writeFileSync(join(home, '.agents', 'skills', 'demo-agy', 'SKILL.md'), 'x');
   writeFileSync(join(home, '.gemini', 'config', 'agents', 'g-agent.md'), 'x');
   const cat = buildCatalog({ root, home, now: () => Date.now() });
-  assert.deepEqual(byName(cat.skills, 'demo-claude-codex').installed, { claude: true, codex: true, agy: false, cursor: false, roo: false });
+  // a legacy ~/.codex/skills copy no longer counts: Codex reads ~/.agents/skills
+  assert.deepEqual(byName(cat.skills, 'demo-claude-codex').installed, { claude: true, codex: false, agy: false, cursor: false, roo: false });
   assert.deepEqual(byName(cat.skills, 'demo-roo').installed, { claude: false, codex: false, agy: false, cursor: false, roo: true });
-  assert.deepEqual(byName(cat.skills, 'demo-agy').installed, { claude: false, codex: false, agy: true, cursor: false, roo: false });
+  assert.deepEqual(byName(cat.skills, 'demo-agy').installed, { claude: false, codex: true, agy: true, cursor: false, roo: false });
   assert.deepEqual(byName(cat.skills, 'nowhere').installed, { claude: false, codex: false, agy: false, cursor: false, roo: false });
   // agents via <name>.md in the harness agents dirs; .agents and .gemini both are the agy family
   assert.deepEqual(byName(cat.agents, 'a-architect').installed, { claude: false, codex: false, agy: false, cursor: false, roo: true });
@@ -229,4 +230,21 @@ test('route handler returns 200 and caches within 30 s (injected now)', async ()
 test('route cache served for the same result object identity support', () => {
   catalogCacheReset();
   assert.doesNotThrow(() => catalogCacheReset());
+});
+
+test('gateway-served upstreams are flagged installed via the aos entry and ~/.agents/gateway/mcp.json', () => {
+  const home = join(tmpBase, 'gw-flags-home');
+  mkdirSync(join(home, '.agents', 'gateway'), { recursive: true });
+  writeFileSync(join(home, '.claude.json'), JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp' } } }));
+  writeFileSync(join(home, '.agents', 'gateway', 'mcp.json'), JSON.stringify({ mcpServers: { github: { type: 'stdio', command: 'x' } } }));
+  const keep = process.env.CODEX_HOME;
+  delete process.env.CODEX_HOME;
+  try {
+    const gh = byName(buildCatalog({ root: ROOT, home, now: () => Date.now() }).mcps, 'github');
+    assert.equal(gh.installed.gateway, true);
+    assert.equal(gh.installed.claude, true);
+    assert.equal(gh.installed.codex, false);
+  } finally {
+    if (keep !== undefined) process.env.CODEX_HOME = keep;
+  }
 });

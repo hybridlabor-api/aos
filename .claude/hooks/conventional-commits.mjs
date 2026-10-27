@@ -2,6 +2,7 @@
 // PreToolUse gate that enforces Conventional Commits on `git commit` across harnesses:
 // - Claude Code (.claude/hooks/conventional-commits.mjs)
 // - Antigravity / Gemini CLI (hooks.json PreToolUse)
+// - Codex (config.toml PreToolUse; exit 2 + stderr is its deny shape)
 //
 // Why this exists: release-please (.github/workflows/release-please.yml) parses
 // commit subjects to compute the version bump and the changelog. It only reads
@@ -19,21 +20,47 @@
 // failure here, because the consequence (history AOS does not recognise) is
 // recoverable with a rebase, and a wedged commit flow is not.
 
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync, readFileSync, fstatSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore", "ci", "build", "revert"];
 
 const CONVENTIONAL = new RegExp(`^(${TYPES.join("|")})(\\(.+\\))?:\\s.+`);
 
-const COMMIT = /git\s+commit\b/;
+// Command position only (start of line or after ; && || |): text that merely mentions the command is not a commit.
+const COMMIT = /(?:^|[;&|\n])[ \t]*(?:\w+=\S+[ \t]+)*git(?:[ \t]+(?:-[Cc][ \t]+\S+|--no-pager))*[ \t]+commit\b/;
 
-function readStdin() {
-  try {
-    return readFileSync(0, "utf8");
-  } catch {
-    return "";
-  }
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
 }
 
 function respond(isAgy, allowed, reason = "") {
@@ -57,15 +84,21 @@ function respond(isAgy, allowed, reason = "") {
 // Returns the commit message, or null when it cannot be read. Null means
 // "cannot tell" and must be treated as allowed.
 function extractMessage(command) {
-  // -m "msg" / -m 'msg'
-  const inline = command.match(/git\s+commit[\s\S]*?-m\s+(?:"([^"]+)"|'([^']+)')/);
-  if (inline) return inline[1] ?? inline[2];
+  const at = command.search(COMMIT);
+  const tail = at < 0 ? command : command.slice(at);
 
-  // -m "$(cat <<'EOF' ... EOF)"
-  const heredoc = command.match(/git\s+commit[\s\S]*?-m\s+"?\$\(cat\s+<<['"]?EOF['"]?\s*\n([\s\S]+?)\nEOF/);
-  if (heredoc) return heredoc[1].trim();
+  // Heredoc form first: the inline form below would read the opening of the substitution as the message.
+  const heredoc = tail.match(/(?:-[a-zA-Z]*m|--message)(?:\s+|=)"?\$\(cat\s+<<-?\s*['"]?(\w+)['"]?[ \t]*\n([\s\S]+?)\n[ \t]*\1\b/);
+  if (heredoc) return heredoc[2].trim();
 
-  // Plain `git commit` (editor) or a message the hook cannot see: fail open.
+  // -m "msg", -am 'msg', --message "msg", --message="msg"
+  const inline = tail.match(/(?:-[a-zA-Z]*m|--message)(?:\s+|=)(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/);
+  if (inline) {
+    const msg = inline[1] ?? inline[2];
+    return msg.startsWith("$(") ? null : msg;
+  }
+
+  // Plain commit (editor) or a message the hook cannot see: fail open.
   return null;
 }
 
@@ -96,8 +129,8 @@ export function checkConventionalCommit(command) {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
-function main() {
-  const rawInput = readStdin();
+async function main() {
+  const rawInput = (await readStdinBounded(2000)) ?? "";
   let input = {};
   if (rawInput.trim()) {
     try {
@@ -114,6 +147,7 @@ function main() {
     input?.toolCall?.args?.CommandLine ||
     input?.toolCall?.args?.command ||
     input?.tool_input?.command ||
+    input?.tool_input?.cmd || // Codex exec_command
     input?.command ||
     "";
 
@@ -121,4 +155,4 @@ function main() {
   respond(isAgy, !reason, reason || "");
 }
 
-if (isMain()) main();
+if (isMain()) await main();

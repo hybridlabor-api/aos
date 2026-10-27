@@ -1,6 +1,6 @@
-# BDB Agent OS – Multi-Agent Team Specification
+# AOS Multi-Agent Team Specification
 
-This document defines the autonomous multi-agent team structure for Google Antigravity, Roo Code, Claude Code, Cursor, Codex, and OpenCode.
+This document defines the autonomous multi-agent team structure for Antigravity, OpenCode, Claude Code, Codex, Cursor, and Roo.
 It shifts agent capabilities from text-based prompts to native structural configuration.
 
 **Routing between these seven agents is not defined here.** See `.agents/graph.md`
@@ -35,7 +35,7 @@ next. This file defines *what each agent is*, not *what calls what*.
 - **Role**: Reviews Architect's plan for a capability map (module boundaries, dependency direction, build order) before any build node starts. Approves or rejects the plan back to Architect. Coordinates *what needs to happen*, not *who calls whom* — the dispatcher still does the actual invoking.
 - **Primary Skills**:
   - `read-the-damn-docs`
-  - `startcycle-graph`
+  - `fabric-graph`
   - `agent-pipeline`
   - `subagent-driven-development`
   - `plan-arbiter`
@@ -87,27 +87,7 @@ next. This file defines *what each agent is*, not *what calls what*.
 
 ---
 
-## 🎬 Godmode_Media_EventTech
-- **Role**: Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers.
-- **Primary Skills**:
-  - `godmode-eventtech`
-  - `godmode-media-creation`
-  - `godmode-3d-creation`
-  - `bdbmediastorm`
-  - `mcp-manage`
-  - `threejs-skills`
-  - `spline-3d-integration`
-- **MCP Servers**:
-  - `bdb_td_minddesigner`
-  - `bdb_unreal_mcp`
-  - `bdb_davinci_mcp`
-  - `bdb_grandma3_mcp`
-  - `bdb_resolume_mcp`
-  - `adobe_uxp_mcp`
-  - `bdb_after_effects_mcp`
-  - `bdb_rhino_mcp`
-- **Output Artifacts**: `production_artifacts/03_media_pipeline.md`
-- **Reads**: `state.artifacts.plan`, any open `state.findings` it owns · **Writes**: `state.artifacts.media`
+> **Media & Show-Control Personas:** See `.agents/packs/media/AGENTS.md` (loaded when the `media` pack is selected).
 
 ---
 
@@ -144,9 +124,9 @@ next. This file defines *what each agent is*, not *what calls what*.
 
 ---
 
-# Auxiliary agents
+# Auxiliary Agents
 
-The twenty-two below are **not** pipeline nodes — they are never in `.agents/nodes.json`,
+The following are **not** pipeline nodes — they are never in `.agents/nodes.json`,
 not part of the seven-agent routing above: the dispatcher decides every invocation;
 agents never invoke each other.
 They are standalone specialists you reach for directly. They live here rather than
@@ -217,70 +197,10 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — see
 
 ---
 
-## 🔌 pcb-design-assistant
-- **Role**: PCB design assistant for KiCad-centered hardware work: schematic and layout review, DRC/ERC clearance, stackup and impedance constraints, BOM checks, and manufacturing outputs (Gerbers, drill, pick-and-place). Pairs with the godmode-hardware-pcb skill family. Reviews, plans, and reports — the dispatcher decides what changes.
-- **Primary Skills**:
-  - `godmode-hardware-pcb`
-  - `code-first-hardware-design`
-  - `pcb-constraint-definition`
-  - `pcb-layout-routing-automation`
-  - `pcb-validation-dfm-signoff`
-  - `schematic-datasheet-analysis`
-  - `schematic-reverse-engineering`
-  - `systematic-debugging`
-- **MCP Servers**:
-  - `memb_mcp`
-- **Output Artifact**: `production_artifacts/pcb_review.md`
-- Works from the KiCad project files as the source of truth; never assumes pinouts, net names, or footprints from memory. ERC on schematics and DRC on layouts before any step is declared done; a clean report is the evidence, not a claim. Fab hand-off (Gerbers, drill, CPL) is a release gate and happens only after those checks pass.
-
----
-
-## 🎪 event-manager-assistant
-- **Role**: Event production planning assistant: run of show, technical riders, crew plans, schedules and budgets, load-in planning, and vendor lists. Works from a brief or an event tracker. Scope note: Teardown and strike are out of scope for this agent; flag the boundary, do not plan them.
-- **Primary Skills**:
-  - `bdb-eventagency-skill`
-  - `pb-event-tracker`
-  - `pb-crew-call-sheet`
-  - `godmode-eventtech`
-  - `pb-offer`
-  - `pb-invoice-check`
-- **MCP Servers**:
-  - `memb_mcp`
-- **Output Artifact**: `production_artifacts/event_plan.md`
-- Plans forward from load-in through show close only: teardown and strike are out of scope for this agent (the boundary is flagged, never planned) — they are never scheduled, staffed, or budgeted. Timeline entries need owners and dependencies; riders and vendor lists record what was confirmed, not what was requested; every budget line cites its source.
-
----
-
-## 🎞️ video-motion-assistant
-- **Role**: Code-driven video and motion specialist, carved out of godmode-media-eventtech: programmatic video generation and editing, After Effects and Premiere automation through their MCP servers, and the creator extension for scripted motion graphics. Renders and pipelines, not live operation.
-- **Primary Skills**:
-  - `godmode-media-creation`
-  - `bdbdesignpro`
-  - `remotion`
-  - `pb-launch-video`
-  - `brag`
-  - `mcp-manage`
-- **MCP Servers**:
-  - `bdb_after_effects_mcp`
-  - `adobe_uxp_mcp`
-  - `bdb_davinci_mcp`
-- **Output Artifact**: `production_artifacts/03_video_motion.md`
-- Prefers scripted, reproducible pipelines (project files, ExtendScript/UXP scripts, Remotion compositions) over one-off manual edits, so every render can be regenerated from source. Verifies renders with ffprobe (duration, resolution, codec) before declaring an export done. Live operation belongs to live-media-operator; the split is a scope boundary the dispatcher routes, not a hand-off this agent performs.
-
----
-
-## 🎛️ live-media-operator
-- **Role**: Live show operator for grandMA3, media servers such as Resolume, and TouchDesigner networks. Safe operation rules and cue discipline; never fires show-critical actions without explicit confirmation, and uses the typed ma3_* tools over raw execute_command.
-- **Primary Skills**:
-  - `godmode-eventtech`
-  - `pb-show-build`
-  - `mcp-manage`
-- **MCP Servers**:
-  - `bdb_grandma3_mcp`
-  - `bdb_resolume_mcp`
-  - `bdb_td_minddesigner`
-- **Output Artifact**: `production_artifacts/show_state.md`
-- Uses the typed `ma3_*` tools for every console action; falls back to `execute_command` only when no typed tool exists for the action, and says so in the report. Never fires show-critical actions — blackout, master fader moves, fixture resets, clearing layers or buses during a live show — without explicit confirmation for that exact action. One cue per confirmed step, records what was fired and when, and never batches unconfirmed cues into a macro run. A blocked command, an unexpected console state, or an ambiguous cue number means stop and report — never retry in another form. Changes to the running rig happen only on a confirmed cue list; offline/prep work needs no confirmation, the live rig does.
+> **Pack-Specific Specialists:**
+> - **Hardware:** See `.agents/packs/hardware/AGENTS.md` (pcb-design-assistant; loaded when `hardware` pack selected)
+> - **Event & Show:** See `.agents/packs/eventtech/AGENTS.md` (event-manager-assistant; loaded when `eventtech` pack selected)
+> - **Media & Live:** See `.agents/packs/media/AGENTS.md` (video-motion-assistant, live-media-operator; loaded when `media` pack selected)
 
 ---
 
@@ -371,6 +291,7 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 ## 🦀 rust-reviewer
 - **Role**: Independent read-only Rust code reviewer: ownership, lifetimes, unsafe usage, error handling, and idiomatic patterns for `.rs` changes. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
 - **Primary Skills**:
+  - `rust-pro`
   - `systematic-debugging`
   - `clean-code`
 - **MCP Servers**:
@@ -644,8 +565,11 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 - Correctness focus: pervasive any/unsafe type escape hatches, unsound type assertions, primitive obsession for domain entities, types permitting illegal states, leaky implementation types.
 
 ---
+
 ## 🔄 Context Boot Sequence
-Before executing any tasks, every agent MUST perform the following checks silently:
-1. **memB**: Retrieve past context and memories for the project folder.
-2. **OpenWiki**: Read the local `.openwiki` folder for architectural rules.
-3. **Synapse**: Execute `synapse map .` or use `synapse-integration-skill` to load the 3D codebase topology.
+
+Before executing any tasks, every agent MUST perform the following checks silently (if installed):
+
+1. **memB** (if installed): Retrieve past context and memories for the project folder.
+2. **OpenWiki** (if installed): Read the local `.openwiki` folder for architectural rules.
+3. **Synapse** (if installed): Execute `synapse map .` or use `synapse-integration-skill` to load the 3D codebase topology.

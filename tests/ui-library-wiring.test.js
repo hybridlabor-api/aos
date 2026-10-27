@@ -131,15 +131,13 @@ test('bdb-ui-library skill is placed under skills/global_config and wires routin
         'no @latest for package in skill definition');
 });
 
-test('bdb-ui-library skill is registered across harness manifests', () => {
-    const pj = JSON.parse(readFile(path.join(ROOT, 'plugin.json')));
-    assert.ok(pj.skills.includes('./skills/global_config/bdb-ui-library'), 'plugin.json includes bdb-ui-library');
-
-    const claudePj = JSON.parse(readFile(path.join(ROOT, '.claude-plugin', 'plugin.json')));
-    assert.ok(claudePj.skills.includes('./skills/global_config/bdb-ui-library'), '.claude-plugin/plugin.json includes bdb-ui-library');
-
-    const bdbAosPj = JSON.parse(readFile(path.join(ROOT, 'plugins', 'bdb-aos', 'plugin.json')));
-    assert.ok(bdbAosPj.skills.includes('./skills/global_config/bdb-ui-library'), 'plugins/bdb-aos/plugin.json includes bdb-ui-library');
+test('bdb-ui-library skill is registered in the skills manifest (slim plugins install it)', () => {
+    // Slim plugins: the plugin manifests no longer carry a skills array — the
+    // AOS installer installs skills from loose copies registered in skills.sh.json.
+    for (const manifestFile of ['plugin.json', '.claude-plugin/plugin.json', 'plugins/bdb-aos/plugin.json']) {
+        const pj = JSON.parse(readFile(path.join(ROOT, manifestFile)));
+        assert.ok(!('skills' in pj), `${manifestFile} must not bundle skills (slim plugin contract)`);
+    }
 
     const skillsSh = JSON.parse(readFile(path.join(ROOT, 'skills.sh.json')));
     const designCategory = (skillsSh.groupings || []).find((c) => c.title === 'Design & UI/UX');

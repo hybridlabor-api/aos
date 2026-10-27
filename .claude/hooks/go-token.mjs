@@ -3,11 +3,11 @@
 // master session, record a single-use token that go-gate.mjs in <session-name>
 // accepts. Writes nothing else and never blocks the prompt.
 
-import { readFileSync, mkdirSync, realpathSync, readdirSync, unlinkSync, constants as FS } from "node:fs";
+import { mkdirSync, realpathSync, readdirSync, unlinkSync, constants as FS } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { slug, TOKEN_TTL_MS, readSmallRegular, writeNoHang, fileLines } from "./go-gate.mjs";
+import { slug, TOKEN_TTL_MS, readSmallRegular, writeNoHang, fileLines, readStdinBounded } from "./go-gate.mjs";
 
 // Regular-file text or a throw: a planted FIFO/device must not hang the hook.
 function mustRead(f, max) {
@@ -70,7 +70,7 @@ const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSy
 
 if (isMain()) {
   try {
-    const input = JSON.parse(readFileSync(0, "utf8"));
+    const input = JSON.parse((await readStdinBounded(2000)) ?? "");
     issueGoToken(input.prompt, input);
   } catch { /* a failing hook must never block the prompt */ }
   process.exit(0);

@@ -112,7 +112,7 @@ test('launchd control with a plist fixture: exact bootstrap argv', async () => {
   assert.equal(res.ok, true);
 });
 
-test('windows: memb/synapse stop is disabled (Task Scheduler message); wscript start stays', async () => {
+test('windows: memb stop kills only processes under the install dir; wscript start stays', async () => {
   const homeWin = join(tmp, 'home-win');
   const startup = join(homeWin, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
   mkdirSync(startup, { recursive: true });
@@ -121,17 +121,68 @@ test('windows: memb/synapse stop is disabled (Task Scheduler message); wscript s
   delete process.env.APPDATA;
   try {
     calls.length = 0;
-    await assert.rejects(
-      () => controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'stop'),
-      /Task Scheduler/,
-      'no substring process-kill on Windows: the exact installed path is not derivable',
-    );
-    assert.equal(calls.length, 0, 'stop must not even attempt a kill');
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'stop');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].cmd, 'powershell.exe');
+    const script = calls[0].args.at(-1);
+    assert.ok(script.includes('.agents'), 'pattern is anchored to the module dir under home');
+    assert.ok(script.includes('server'), 'pattern names the daemon entry, not just the dir');
+    assert.ok(script.includes('GetOwner'), 'owner check stays');
     const res = await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'start');
     assert.equal(res.ok, true);
     assert.deepEqual(calls.at(-1), { cmd: 'wscript.exe', args: [join(startup, 'com.bdb.memb.webui.vbs')], opts: { timeout: 10000 } });
   } finally {
     if (savedAppData !== undefined) process.env.APPDATA = savedAppData;
+  }
+});
+
+test('windows: gateway stop matches aos-gateway.mjs serve and its 1mcp child, start is the Startup wrapper', async () => {
+  const homeWin = join(tmp, 'home-win-gw');
+  const startup = join(homeWin, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  mkdirSync(startup, { recursive: true });
+  writeFileSync(join(startup, 'com.bdb.aos.gateway.vbs'), "' vbs stub");
+  const savedAppData = process.env.APPDATA;
+  delete process.env.APPDATA;
+  try {
+    calls.length = 0;
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'stop');
+    const script = calls[0].args.at(-1);
+    assert.ok(script.includes('aos-gateway') && script.includes('@1mcp') && script.includes('GetOwner'));
+    assert.ok(script.includes('$_.ProcessId -ne $PID'), 'the hub never kills itself');
+    assert.ok(script.includes('home-win-gw') && script.includes('.agents'), 'both alternatives are anchored to this install, not a bare fragment');
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'start');
+    assert.deepEqual(calls.at(-1), { cmd: 'wscript.exe', args: [join(startup, 'com.bdb.aos.gateway.vbs')], opts: { timeout: 10000 } });
+  } finally {
+    if (savedAppData !== undefined) process.env.APPDATA = savedAppData;
+  }
+});
+
+test('windows: gateway stop patterns match the real Lenovo command lines, supervisor first, survivors decide the result', async () => {
+  const { gatewayStopPatterns } = await import('../lib/hub/services.mjs');
+  const vbs = 'Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """C:\\Program Files\\nodejs\\node.exe"" ""C:\\Users\\Yola\\.agents\\bin\\aos-gateway.mjs"" ""serve""", 0, False\r\n';
+  const [sup, child] = gatewayStopPatterns('C:\\Users\\Yola', vbs).map((p) => new RegExp(p, 'i'));
+  const gw = '"C:\\Program Files\\nodejs\\node.exe"  "C:\\Users\\Yola\\.agents\\bin\\aos-gateway.mjs" "serve"';
+  const mcp = '"C:\\Program Files\\nodejs\\node.exe" C:\\Users\\Yola\\.agents\\gateway\\node_modules\\@1mcp\\agent\\build\\index.js serve -c C:\\Users\\Yola\\.agents\\gateway\\mcp.json --port 7791';
+  assert.ok(sup.test(gw) && !sup.test(mcp));
+  assert.ok(child.test(mcp) && !child.test(gw));
+  assert.ok(sup.test(gw.toUpperCase()), 'case-insensitive');
+  assert.ok(!sup.test('"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\Other\\.agents\\bin\\aos-gateway.mjs" serve'));
+
+  const homeWin = join(tmp, 'home-win-gw2');
+  const startup = join(homeWin, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  mkdirSync(startup, { recursive: true });
+  writeFileSync(join(startup, 'com.bdb.aos.gateway.vbs'), "' vbs stub");
+  const saved = process.env.APPDATA;
+  delete process.env.APPDATA;
+  try {
+    calls.length = 0;
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'stop');
+    const script = calls[0].args.at(-1);
+    assert.ok(script.indexOf('serve') < script.indexOf('@1mcp'), 'supervisor pattern first');
+    assert.match(script, /-ErrorAction Stop } catch \{\}/, 'one failed Stop-Process does not decide the exit code');
+    assert.match(script, /if \(\$left\.Count\)[\s\S]*exit 1 }; exit 0/, 'only survivors fail the stop');
+  } finally {
+    if (saved !== undefined) process.env.APPDATA = saved;
   }
 });
 
@@ -264,6 +315,17 @@ test('fixture TCP server -> up:true via the port probe', async () => {
   const ctx = recordingCtx({ portOverrides: { memb: port }, wikiRoot: join(tmp, 'no-dev2') });
   const rows = await statusService(ctx);
   assert.equal(rows.find((r) => r.id === 'memb').up, true);
+  fixture.close();
+});
+
+test('hub row is probed, not assumed up (CLI status runs without the hub)', async () => {
+  const fixture = createServer_fwd((req, res) => { res.writeHead(200); res.end('ok'); });
+  await new Promise((ok) => fixture.listen(0, '127.0.0.1', ok));
+  const port = fixture.address().port;
+  const closed = (await statusService(recordingCtx({ portOverrides: { hub: 59991 }, wikiRoot: join(tmp, 'no-dev4') }))).find((r) => r.id === 'hub');
+  assert.equal(closed.up, false);
+  const open = (await statusService(recordingCtx({ portOverrides: { hub: port }, wikiRoot: join(tmp, 'no-dev5') }))).find((r) => r.id === 'hub');
+  assert.equal(open.up, true);
   fixture.close();
 });
 

@@ -16,7 +16,7 @@
  *    - Non-existent directories, root directory, deep hierarchies
  *    - User ID variants (MEMB_USER_ID, eventData.user_id, userId, bdb_developer)
  *    - Corrupt, empty, or missing SQLite database (fail-open verification)
- * 3. startcycle-dispatch.mjs
+ * 3. fabric-dispatch.mjs
  *    - Non-matching prompts & near-miss prefixes
  *    - Malformed JSON stdin, non-object JSON, missing keys
  *    - CLI arguments (--help, -h, positional arguments, command prefix)
@@ -33,7 +33,7 @@ const { spawnSync } = require('child_process');
 const REPO_ROOT = path.resolve(__dirname, '..');
 const INSTALLER_PATH = path.join(REPO_ROOT, 'installer.js');
 const MEMB_INJECT_SRC = path.join(REPO_ROOT, '.claude', 'hooks', 'memb-inject.mjs');
-const STARTCYCLE_DISPATCH_SRC = path.join(REPO_ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
+const FABRIC_DISPATCH_SRC = path.join(REPO_ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
 
 function runNodeScript(scriptPath, { args = [], input = '', env = {}, cwd = null, timeout = 10000 } = {}) {
     return spawnSync(process.execPath, [scriptPath, ...args], {
@@ -196,7 +196,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const final = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
         // PreToolUse and Stop each carry two AOS entries (gate + trail-relay); what must hold is that re-runs add none.
         assert.deepStrictEqual(final, once, 'repeated runs must not change the file');
-        assert.strictEqual(final['aos-context'].PreInvocation.length, 3, 'PreInvocation must not duplicate on repeated runs');
+        assert.strictEqual(final['aos-context'].PreInvocation.length, 4, 'PreInvocation must not duplicate on repeated runs');
     });
 
     // --- Codex config.toml tests ---
@@ -486,9 +486,9 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
 });
 
 // ============================================================================
-// SUITE 3: STARTCYCLE-DISPATCH.MJS STRESS TESTING
+// SUITE 3: FABRIC-DISPATCH.MJS STRESS TESTING
 // ============================================================================
-describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
+describe('Challenger Suite 3: Fabric Dispatcher Robustness', () => {
     let tmpDir;
 
     beforeEach(() => {
@@ -503,16 +503,16 @@ describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
         const nonMatching = [
             'How do I implement binary search in Rust?',
             'Please explain what this file does',
-            '/startcycle',
-            '/startcycle-graphical',
-            '/startcycle_graph',
-            'startcycle-graph',
-            'echo /startcycle-graph',
+            '/fabric',
+            '/fabric-graphical',
+            '/fabric_graph',
+            'fabric-graph',
+            'echo /fabric-graph',
             ''
         ];
 
         for (const prompt of nonMatching) {
-            const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+            const res = runNodeScript(FABRIC_DISPATCH_SRC, {
                 input: JSON.stringify({ prompt }),
                 cwd: tmpDir
             });
@@ -536,7 +536,7 @@ describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
         ];
 
         for (const input of malformedInputs) {
-            const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+            const res = runNodeScript(FABRIC_DISPATCH_SRC, {
                 input,
                 cwd: tmpDir
             });
@@ -545,14 +545,14 @@ describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
         }
     });
 
-    test('CLI help flags: node startcycle-dispatch.mjs --help and -h', () => {
+    test('CLI help flags: node fabric-dispatch.mjs --help and -h', () => {
         for (const flag of ['--help', '-h']) {
-            const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+            const res = runNodeScript(FABRIC_DISPATCH_SRC, {
                 args: [flag],
                 cwd: tmpDir
             });
             assert.strictEqual(res.status, 0, `Must exit 0 on flag ${flag}`);
-            assert.ok(res.stdout.includes('Usage: node startcycle-dispatch.mjs'), 'Must print usage');
+            assert.ok(res.stdout.includes('Usage: node fabric-dispatch.mjs'), 'Must print usage');
             assert.strictEqual(res.stderr, '');
         }
     });
@@ -570,7 +570,7 @@ describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
             }
         }));
 
-        const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+        const res = runNodeScript(FABRIC_DISPATCH_SRC, {
             args: ['Build resilient multi-harness dispatch'],
             cwd: tmpDir
         });
@@ -579,7 +579,7 @@ describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
         assert.ok(res.stdout.length > 0, 'Should output workflow execution result');
     });
 
-    test('CLI with /startcycle-graph prefix strips prefix cleanly', () => {
+    test('CLI with /fabric-graph prefix strips prefix cleanly', () => {
         const agentsDir = path.join(tmpDir, '.agents');
         fs.mkdirSync(agentsDir, { recursive: true });
         fs.writeFileSync(path.join(agentsDir, 'nodes.json'), JSON.stringify({
@@ -591,8 +591,8 @@ describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
             }
         }));
 
-        const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
-            args: ['/startcycle-graph', 'Refactor database models'],
+        const res = runNodeScript(FABRIC_DISPATCH_SRC, {
+            args: ['/fabric-graph', 'Refactor database models'],
             cwd: tmpDir
         });
         assert.strictEqual(res.status, 0);
@@ -611,8 +611,8 @@ describe('Challenger Suite 3: Startcycle Dispatcher Robustness', () => {
             }
         }));
 
-        const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
-            input: JSON.stringify({ prompt: '/startcycle-graph Deploy automated CI/CD pipeline' }),
+        const res = runNodeScript(FABRIC_DISPATCH_SRC, {
+            input: JSON.stringify({ prompt: '/fabric-graph Deploy automated CI/CD pipeline' }),
             cwd: tmpDir
         });
         assert.strictEqual(res.status, 0);

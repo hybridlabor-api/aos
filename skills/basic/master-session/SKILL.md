@@ -1,6 +1,6 @@
 ---
 name: master-session
-description: Use when one Claude Code session must supervise several others on this machine — adopting sessions the user started by hand, or spawning workers itself. Covers roster, status requests, a GO board, idle notices, and the GO-token protocol. Works with AOS alone; the AO daemon is optional.
+description: Supervise multiple agent sessions on this machine. Roster, status, GO-board, GO-token protocol. Adopt or spawn workers.
 category: bdb-core
 risk: safe
 tools:
@@ -64,7 +64,7 @@ Collate replies into one block per session and show it to the human:
   subagents: <n running | none>
 ```
 
-The human answers per session. Items under `GO needed` are the human's to decide; list them verbatim, never summarised into something softer.
+The human answers per session. Items under `GO needed` are the human's to decide; list them verbatim, never summarised into something softer. When an agenttrail hub runs for this repo, the same GO-needed items also surface in its Waiting-for-you strip and Go-gate panel — but the hub itself can never approve: answering still means typing the GO (in the worker's own window, or via the GO-token protocol below).
 
 ## Portable mode (no Claude Code)
 

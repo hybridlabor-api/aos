@@ -29,7 +29,7 @@ test('every command has a flat hyphen OpenCode file with no colon names inside',
   }
   assert.match(fs.readFileSync(path.join(OC_DIR, 'bdb-aos-init.md'), 'utf8'), /`\/bdb-aos-setup`/);
   assert.match(fs.readFileSync(path.join(OC_DIR, 'bdb-aos-loop.md'), 'utf8'), /OpenCode has no built-in loop/);
-  assert.ok(fs.existsSync(path.join(OC_DIR, 'startcycle-graph.md')), 'existing command stays');
+  assert.ok(fs.existsSync(path.join(OC_DIR, 'fabric-graph.md')), 'existing command stays');
 });
 
 test('--check passes, and fails when only the opencode body changes', () => {
@@ -41,7 +41,7 @@ test('--check passes, and fails when only the opencode body changes', () => {
   assert.throws(() => check(file), (e) => /\.opencode\/commands\/ is out of date \(bdb-aos-setup\.md\)/.test(e.stderr));
 });
 
-test('--check flags a hand-edited and a stale generated file, but not startcycle-graph.md', () => {
+test('--check flags a hand-edited and a stale generated file, but not fabric-graph.md', () => {
   const edited = path.join(OC_DIR, 'bdb-aos-store.md');
   const original = fs.readFileSync(edited, 'utf8');
   const stale = path.join(OC_DIR, 'bdb-aos-zzz-stale.md');
@@ -131,9 +131,7 @@ test('an outdated unmodified command is updated', () => {
 test('optional components are off by default', () => {
   const home = tmp();
   const { cfg, out } = install(home);
-  const plugins = readCfg(cfg).plugin;
-  assert.equal(plugins.length, 1);
-  assert.match(plugins[0], /bdb-aos\.js$/);
+  assert.deepEqual(readCfg(cfg).plugin, [], 'bdb-aos.js is auto-loaded from plugins/, never listed in plugin[]');
   assert.ok(!/brew install rtk|loop-shell/.test(out));
   assert.deepEqual(fs.readdirSync(path.dirname(cfg)).filter((f) => f.endsWith('.bak')), []);
 });
@@ -147,8 +145,8 @@ test('opt-in appends pinned entries after a backup, once, and warns about loop-s
   const first = install(home, { optional: ['ponytail', 'loop', 'rtk', 'bogus'] });
   const plugins = readCfg(cfg).plugin;
   assert.ok(plugins.includes('some-other'));
-  assert.ok(plugins.includes('@dietrichgebert/ponytail@4.10.0'));
-  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.2'));
+  assert.ok(plugins.includes('@dietrichgebert/ponytail@5.3.2'));
+  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.8'));
   assert.ok(!plugins.some((p) => /rtk/.test(p)), 'rtk is a hint only');
   assert.match(first.out, /brew install rtk && rtk init -g --opencode/);
   assert.match(first.out, /go-gate, may never see them/);
@@ -170,10 +168,10 @@ test('opt-in via env var and --opencode-optional flag; an existing other pin is 
   const plugins = readCfg(cfg).plugin;
   assert.equal(plugins.filter((p) => /ponytail/.test(p)).length, 1);
   assert.ok(plugins.includes('@dietrichgebert/ponytail@4.9.0'));
-  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.2'));
+  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.8'));
   const home2 = tmp();
   const r = install(home2, { optional: null, argv: ['--opencode-optional=ponytail'] });
-  assert.ok(readCfg(r.cfg).plugin.includes('@dietrichgebert/ponytail@4.10.0'));
+  assert.ok(readCfg(r.cfg).plugin.includes('@dietrichgebert/ponytail@5.3.2'));
 });
 
 test('lean-MCP rule: the plugin install leaves OpenCode mcp keys untouched, opt-ins included', () => {
@@ -210,6 +208,35 @@ test('every machine-sent session.prompt in the plugin is synthetic and marked ao
     assert.match(window, /synthetic: true/, 'prompt part must be synthetic');
     assert.match(window, /metadata[^\n]*aos_(bus|loop)|aos_(bus|loop)/, 'prompt part must carry aos_bus or aos_loop');
   }
+});
+
+test('update removes our own bdb-aos.js plugin[] entry (auto-load only); foreign entries and comments stay', () => {
+  const home = tmp();
+  const cfgDir = path.join(home, '.config', 'opencode');
+  fs.mkdirSync(cfgDir, { recursive: true });
+  const cfg = path.join(cfgDir, 'opencode.jsonc');
+  const ours = path.join(cfgDir, 'plugins', 'bdb-aos.js').replace(/\\/g, '/');
+  fs.writeFileSync(cfg, `{\n  // my note\n  "plugin": [${JSON.stringify(ours)}, "@dietrichgebert/ponytail@5.3.2"],\n  "skills": { "paths": [".agents/skills"] }\n}\n`);
+  const { out } = install(home);
+  const text = fs.readFileSync(cfg, 'utf8');
+  assert.match(text, /\/\/ my note/, 'comments survive the textual removal');
+  assert.deepEqual(JSON.parse(text.replace(/^\s*\/\/.*$/m, '')).plugin, ['@dietrichgebert/ponytail@5.3.2']);
+  assert.match(out, /Removed the bdb-aos\.js plugin\[\] entry/);
+  assert.ok(fs.existsSync(path.join(cfgDir, 'plugins', 'bdb-aos.js')), 'the auto-loaded plugin file stays');
+});
+
+test('update also drops a stale AOS entry from the legacy ~/.opencode config; the file, its comments and foreign entries stay', () => {
+  const home = tmp();
+  const legacyDir = path.join(home, '.opencode');
+  fs.mkdirSync(legacyDir, { recursive: true });
+  const legacy = path.join(legacyDir, 'opencode.jsonc');
+  const stale = path.join(legacyDir, 'plugins', 'bdb-aos.js').replace(/\\/g, '/');
+  fs.writeFileSync(legacy, `{\n  // legacy note\n  "plugin": [${JSON.stringify(stale)}, "opencode-foo@1.0.0"]\n}\n`);
+  const { out } = install(home);
+  const text = fs.readFileSync(legacy, 'utf8');
+  assert.match(text, /\/\/ legacy note/);
+  assert.deepEqual(JSON.parse(text.replace(/^\s*\/\/.*$/m, '')).plugin, ['opencode-foo@1.0.0']);
+  assert.match(out, /Removed the bdb-aos\.js plugin\[\] entry from .*\.opencode/);
 });
 
 test('a second spelling of the bdb-aos.js path is reported', () => {

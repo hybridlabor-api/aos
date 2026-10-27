@@ -20,7 +20,7 @@
 |------------|-------------|
 | `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling. |
 | `agent-memory-mcp` | A hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions). |
-| `agent-pipeline` | Reference for the BDB lifecycle (define → plan → build → verify/review → ship) that `/startcycle-graph`'s dispatcher graph actually runs. |
+| `agent-pipeline` | Reference for the BDB lifecycle (define → plan → build → verify/review → ship) that `/fabric-graph`'s dispatcher graph actually runs. |
 | `agent-tool-builder` | Tools are how AI agents interact with the world. A well-designed tool is the difference between an agent that works and one that hallucinates, fails silently, or costs 10x more tokens than necessary. This skill covers tool design from schema to error handling. |
 | `ai-agent-development` | AI agent development workflow for building autonomous agents, multi-agent systems, and agent orchestration with CrewAI, LangGraph, and custom agents. |
 | `apify-lead-generation` | Scrape leads from multiple platforms using Apify Actors. |
@@ -43,7 +43,7 @@
 | `rag-implementation` | RAG (Retrieval-Augmented Generation) implementation workflow covering embedding selection, vector database setup, chunking strategies, and retrieval optimization. |
 | `subagent-driven-development` | Use when executing implementation plans with independent tasks in the current session |
 | `tmux` | Expert tmux session, window, and pane management for terminal multiplexing, persistent remote workflows, and shell scripting automation. |
-| `teamwork-preview` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams across harnesses. |
+| `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams across harnesses. |
 
 #### 🎨 Frontend & UI/UX
 | Skill Name | Description |

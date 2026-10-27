@@ -1,9 +1,7 @@
 ---
 name: factory-lookback
 description: >-
-  Experimental workflow for auditing recurring feedback, telemetry, errors,
-  and brittle delivery paths to find systemic fixes. Use for periodic or
-  requested cross-source lookbacks, not routine single-item intake.
+  Audit recurring feedback, telemetry, errors and brittle delivery paths for systemic fixes. Use for periodic lookbacks, not single-item intake.
 category: engineering-method
 source: BuilderIO/skills
 ---

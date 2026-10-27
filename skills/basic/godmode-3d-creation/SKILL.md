@@ -10,6 +10,20 @@ You are the Mastermind for all 3D generation, modeling, and CAD workflows within
 
 ---
 
+## Plan first
+
+Planning starts on the plan canvas with the `research` template, and the human approves it there — not in chat.
+
+Choosing between engines, approaches or pipelines — evidence and recommendation reviewed before anyone builds.
+
+```bash
+aos-plan-canvas new research <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 1. Engine & Local Backend Architecture
 
 The core local 3D generation backends are hosted within the Creator Extension:
@@ -141,3 +155,23 @@ Godmode 3D Creation generates 3D assets, meshes, and CAD models using local Pyth
 - [ ] Appropriate device mode (`cuda` or `cpu`) is specified.
 - [ ] Output format (`.glb`, `.obj`, `.step`) matches the target pipeline.
 - [ ] The generated 3D asset file exists in the target output directory.
+
+
+---
+
+## Creator Pack Skills
+
+<!-- aos:pack-index:start -->
+- **remotion** — Generate walkthrough videos from Stitch projects using Remotion with smooth transitions, zooming, and text overlays
+- **threejs-skills** — Create 3D scenes, interactive experiences and visual effects with Three.js. Use for 3D graphics, WebGL, animations or interactive 3D elements.
+- **spline-3d-integration** — Use when adding interactive 3D scenes from Spline.design to web projects, including React embedding and runtime control API.
+- **bdb-after-effects-mcp** — Utilizes the After Effects MCP servers (after-effects-mcp and ae-mcp) to create compositions, layers, masks, keyframe animations, and run ExtendScript.
+- **bdb-adobe-suite-mcp** — >-
+- **bdb-davinci-mcp** — Utilizes the DaVinci Resolve MCP servers to control timeline editing, media analysis, color grading, and Fusion/Fairlight scripting.
+- **bdb-blender-mcp** — Utilizes the Blender MCP server and addon to build 3D assets, apply materials, inspect scenes, and script bpy.
+- **brag** — >-
+- **design-spells** — Use when adding curated micro-interactions, delightful animations, and subtle design details that add magic and personality to web and mobile apps.
+- **live-preview-canvas** — A prototyping skill that generates a local HTML mock with a built-in feedback layer, allowing users to drop visual comments (red dots) for UI fixes.
+
+**Install:** `aos store install --pack creator`
+<!-- aos:pack-index:end -->

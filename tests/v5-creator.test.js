@@ -20,7 +20,7 @@ function machine(installed) {
     const home = fs.mkdtempSync(path.join(root, `h${n++}-`));
     const base = path.join(home, '.agents');
     const skills = path.join(home, 'skills');
-    fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
+    fs.mkdirSync(path.join(skills, 'fabric'), { recursive: true });
     const dir = path.join(base, 'bdb-dev-creator-extension');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: installed }));

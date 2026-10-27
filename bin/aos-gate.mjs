@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "../lib/cli-help-guard.mjs";
 import { openSync, writeSync, closeSync, renameSync, mkdirSync, readFileSync, constants as K } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";

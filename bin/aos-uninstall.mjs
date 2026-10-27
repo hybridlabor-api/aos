@@ -16,7 +16,8 @@
 // deleted; a file with no manifest entry was never ours and is not considered
 // at all.
 
-import { readFileSync, existsSync, rmSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
+import '../lib/cli-help-guard.mjs';
+import { readFileSync, existsSync, rmSync, rmdirSync, renameSync, lstatSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
@@ -30,6 +31,10 @@ const cn = createRequire(import.meta.url)('../lib/codenotch.js');
 const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
 const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js');
 const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
+const npmUninstallGlobal = (pkg) => {
+  const r = createRequire(import.meta.url)('../lib/cli-spawn.js').run('npm', ['uninstall', '-g', pkg], { timeout: 120000 });
+  if (r.status !== 0) throw new Error(r.stderr || `npm exited ${r.status}`);
+};
 const pk = createRequire(import.meta.url)('../lib/v5/packages.js');
 const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
 const winStartup = createRequire(import.meta.url)('../lib/v5/win-startup.js');
@@ -40,6 +45,7 @@ const winStartup = createRequire(import.meta.url)('../lib/v5/win-startup.js');
 const installer = createRequire(import.meta.url)('../installer.js');
 const { stripDestructiveBlock } = createRequire(import.meta.url)('../lib/destructive-rules.js');
 const { stripRoutingBlock } = createRequire(import.meta.url)('../lib/routing-rules.js');
+const { stripHarnessRulesBlock } = createRequire(import.meta.url)('../lib/harness-rules.js');
 // agy worker home (~/.aos/agy-worker-home) is built and removed by no-mcp.js; absent in a layout without mcps/.
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 
@@ -70,9 +76,13 @@ const DATA_PATHS = [
 const AGENTS = [
   'com.bdb.memb.webui', 'com.bdb.synapse', 'com.bdb.openwiki.daemon',
   'com.bdb.ao.daemon', 'com.bdb.agent-workspace', 'com.hybridlabor.bdb-remote', 'com.bdb.plan-canvas',
+  'com.bdb.memb.ingest',
 ];
 // Linux: the systemd user units the installer writes for the same services.
-const LINUX_UNITS = ['com.bdb.memb.webui.service', 'com.bdb.synapse.service', 'com.bdb.openwiki-visualize.service', 'com.bdb.plan-canvas.service'];
+const LINUX_UNITS = [
+  'com.bdb.memb.webui.service', 'com.bdb.synapse.service', 'com.bdb.openwiki-visualize.service', 'com.bdb.plan-canvas.service',
+  'openwiki-daemon.timer', 'openwiki-daemon.service', 'com.bdb.memb.ingest.timer', 'com.bdb.memb.ingest.service',
+];
 // Windows: the installer starts these through a hidden .vbs in the user's
 // Startup folder that runs a .bat (names and dirs as written by installer.js).
 const WIN_STARTUP = [
@@ -111,9 +121,9 @@ const MODULE_DIRS = [
 // with the `legacyMarkers` array in installer.js's detectInstallState().
 const LEGACY_MARKERS = [
   h('.agents', 'AGENTS.md'),
-  h('.gemini', 'config', 'skills', 'startcycle', 'SKILL.md'),
-  h('.agents', 'skills', 'startcycle', 'SKILL.md'),
-  path.join(pm.claudeDir(HOME), 'skills', 'startcycle', 'SKILL.md'),
+  h('.gemini', 'config', 'skills', 'fabric', 'SKILL.md'),
+  h('.agents', 'skills', 'fabric', 'SKILL.md'),
+  path.join(pm.claudeDir(HOME), 'skills', 'fabric', 'SKILL.md'),
 ];
 
 const sha256 = (file) => {
@@ -156,6 +166,9 @@ function plan(opts = {}) {
       const bat = s.batName ? path.join(home, s.batDir, s.batName) : null;
       if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${bat}*`) });
     }
+    // OpenWiki daemon fallback entry (install_daemon.ps1) when no scheduled task could be registered.
+    const owCmd = path.join(startupDir, 'BDB_OpenWiki_Daemon.cmd');
+    if (existsSync(owCmd)) agents.push({ label: 'openwiki-daemon', vbs: owCmd, match: '*openwiki_daemon.py*' });
   }
 
   // v5 gateway/hub autostart: removed by their own step after the package loop, not through WIN_STARTUP.
@@ -173,20 +186,22 @@ function plan(opts = {}) {
 
   const codenotch = cn.planCodenotchUninstall({ stateFile: cn.stateFilePath(HOME) });
 
-  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, codenotch, keptCommands };
+  const mcpTrees = removeGeneratedMcpTrees({ home, appData: opts.appData, dry: true, owned: manifestPaths });
+
+  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, codenotch, keptCommands, mcpTrees };
 }
 
 function describe(p) {
   const { manifest, ours, edited, gone, agents, modules, legacy, data } = p;
 
-  if (!manifest) {
+  if (!manifest && !ur.hasPending(HOME)) {
     console.log('No install manifest at ' + tilde(MANIFEST) + '.');
     console.log('Without it there is no telling which file came from AOS — nothing is deleted.');
     console.log('Otherwise affected: ~/.claude/skills, ~/.gemini/config/skills, ~/.codex/skills, ~/.agents/');
     return false;
   }
 
-  console.log(`\nManifest: ${Object.keys(manifest).length} files recorded`);
+  console.log(`\nManifest: ${Object.keys(manifest || {}).length} files recorded`);
   console.log(`  ${String(ours.length).padStart(5)}  unchanged since install → removed`);
   console.log(`  ${String(edited.length).padStart(5)}  edited after install → .bak first, then removed`);
   console.log(`  ${String(gone.length).padStart(5)}  already gone`);
@@ -206,6 +221,14 @@ function describe(p) {
     console.log(`\nBackground services (${agents.length}): ${agents.map((a) => a.label).join(', ')}`);
   }
   for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${tilde(s.full)} are stopped`);
+  if (p.mcpTrees && p.mcpTrees.removed.length) {
+    console.log(`\nAOS-recorded MCP server files and folders (${p.mcpTrees.removed.length}) are removed:`);
+    for (const t of p.mcpTrees.removed) console.log(`    ${tilde(t)}`);
+  }
+  if (p.mcpTrees && p.mcpTrees.hints.length) {
+    console.log('\nMCP folders that stay:');
+    for (const k of p.mcpTrees.hints) console.log(`    ${k}`);
+  }
   if (modules.length) {
     console.log('\nModules:');
     for (const m of modules) console.log(`    ${tilde(m)}`);
@@ -268,12 +291,98 @@ function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { std
   }
 }
 
+// Trees the install builds inside the copied MCP servers (npm install, tsc, venv). They are not in the file
+// manifest, so they outlive it. Only shipped server names are touched, only these subtrees, and directories are
+// removed afterwards only when empty: files the user put there stay.
+const MCP_GENERATED = ['node_modules', 'dist', '.venv', '__pycache__'];
+const pruneEmpty = (dir) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
+  try { rmdirSync(dir); } catch { /* not empty */ }
+};
+// An MCP server folder is AOS's only through its record: <folder>/.aos-copy.json (written at install, file -> sha256).
+// Unchanged recorded files and generated build trees go; changed or unrecorded files stay and are reported.
+// A folder without a record is a legacy copy (or the user's): left alone, reported once.
+const mcpMarker = createRequire(import.meta.url)('../lib/mcp-copy-marker.js');
+function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, owned = [] } = {}) {
+  const base = appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  const roots = [
+    path.join(home, 'Library', 'Application Support', 'Claude'), path.join(home, '.config', 'Claude'), path.join(base, 'Claude'),
+    path.join(home, '.gemini', 'config'), path.join(home, '.codex'), path.join(home, '.windsurf'), path.join(home, '.roo'), path.join(home, '.aider'),
+  ].map((r) => path.join(r, 'mcps'));
+  const shippedDir = fileURLToPath(new URL('../mcps', import.meta.url));
+  let shipped = names;
+  if (!shipped) { try { shipped = readdirSync(shippedDir); } catch { shipped = []; } }
+  const removed = [];
+  const kept = [];
+  const hints = [];
+  for (const root of roots) for (const name of new Set([...shipped, 'memb-mcp'])) {
+    const dir = path.join(root, name);
+    let st; try { st = lstatSync(dir); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    const trees = MCP_GENERATED.map((g) => path.join(dir, g)).filter(existsSync);
+    const rec = mcpMarker.readMarker(dir);
+    if (!rec) {
+      // Files listed in the install manifest leave with it; their build trees go here.
+      if (trees.length && owned.some((f) => f.startsWith(dir + path.sep))) {
+        for (const t of trees) { removed.push(t); if (!dry) rmSync(t, { recursive: true, force: true }); }
+        if (!dry) { pruneEmpty(dir); try { rmdirSync(root); } catch { /* not empty */ } }
+      } else {
+        kept.push(dir);
+        hints.push(`${tilde(dir)}: no AOS copy record (installed before it existed); run "aos update" once, then uninstall again`);
+      }
+      continue;
+    }
+    const foreign = [];
+    const doomed = [];
+    const nested = []; // __pycache__ at any depth: Python writes it at runtime, it is never in the record
+    const walk = (cur, relDir) => {
+      for (const e of readdirSync(cur, { withFileTypes: true })) {
+        const rel = relDir ? `${relDir}/${e.name}` : e.name;
+        const full = path.join(cur, e.name);
+        if (!relDir && (MCP_GENERATED.includes(e.name) || e.name === mcpMarker.MARKER)) continue;
+        if (relDir && e.isDirectory() && e.name === '__pycache__') { nested.push(full); continue; }
+        if (e.isDirectory()) walk(full, rel);
+        else if (rec.files[rel] && mcpMarker.sha(full) === rec.files[rel]) doomed.push(full);
+        else foreign.push(full);
+      }
+    };
+    walk(dir, '');
+    for (const f of doomed) if (!dry) rmSync(f, { force: true });
+    for (const t of [...trees, ...nested]) if (!dry) rmSync(t, { recursive: true, force: true });
+    if (!foreign.length) {
+      removed.push(dir);
+      if (!dry) { rmSync(dir, { recursive: true, force: true }); try { rmdirSync(root); } catch { /* other servers left */ } }
+    } else {
+      removed.push(...doomed, ...trees, ...nested);
+      kept.push(dir);
+      hints.push(`${tilde(dir)}: ${foreign.length} changed or unrecorded file(s) kept (${foreign.slice(0, 3).map((f) => path.basename(f)).join(', ')}${foreign.length > 3 ? ', ...' : ''})`);
+      if (!dry) { rmSync(path.join(dir, mcpMarker.MARKER), { force: true }); pruneEmpty(dir); }
+    }
+  }
+  return { removed, kept, hints };
+}
+
+// ~/CLAUDE.md as the installer wrote it: exactly the pointer goes whole; its prefix line goes from user text.
+function removeClaudePointer(file) {
+  const text = readFileSync(file, 'utf8');
+  if (text.replace(/\r\n/g, '\n') === installer.CLAUDE_POINTER) { rmSync(file); return 'removed'; }
+  if (!text.startsWith(installer.CLAUDE_PREFIX)) return null;
+  copyFileSync(file, `${file}.${new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)}.bak`);
+  const tmpFile = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmpFile, text.slice(installer.CLAUDE_PREFIX.length));
+  renameSync(tmpFile, file);
+  return 'stripped';
+}
+
 async function execute(p) {
   const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
   let removed = 0, backed = 0;
+  // One failing step must not skip the rest; failures are listed at the end and their records stay.
+  const failures = [];
+  const attempt = (label, fn) => { try { return fn(); } catch (e) { failures.push(`${label}: ${e.message}`); return undefined; } };
 
-  for (const a of agents) {
+  for (const a of agents) attempt(`service ${a.label}`, () => {
     if (a.vbs) {
       // Windows: the .bat loops (`goto loop`), so kill the processes running it
       // before anything else — delete the bat first, then the vbs, so a cmd
@@ -284,25 +393,34 @@ async function execute(p) {
       } catch { /* nothing running or powershell unavailable */ }
       if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
-      continue;
+      return;
     }
     if (a.unit) {
       try { execFileSync('systemctl', ['--user', 'disable', '--now', a.label], { stdio: 'ignore' }); } catch { /* not loaded */ }
       try { rmSync(a.unit); } catch { /* already gone */ }
-      continue;
+      return;
     }
     try { execFileSync('launchctl', ['unload', a.plist], { stdio: 'ignore' }); } catch { /* not loaded */ }
     try { rmSync(a.plist); } catch { /* already gone */ }
-  }
+  });
   if (agents.length) console.log(`  ${agents.length} services stopped and removed`);
-
-  for (const f of edited) {
-    try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch { /* unreadable */ }
+  if (process.platform === 'win32') {
+    try { execFileSync('schtasks', ['/Delete', '/TN', 'BDB_OpenWiki_Daemon', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { /* no such task */ }
   }
-  for (const f of [...ours, ...edited]) {
+
+  const unsaved = new Set();
+  for (const f of edited) {
+    try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch (e) { unsaved.add(f); failures.push(`${tilde(f)} not removed: backup failed (${e.message})`); }
+  }
+  for (const f of [...ours, ...edited].filter((x) => !unsaved.has(x))) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
+  attempt('AOS-copied MCP server folders', () => {
+    const { removed: gone, hints } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
+    for (const t of gone) console.log(`  removed ${tilde(t)}`);
+    for (const k of hints) console.log(`  kept ${k}`);
+  });
 
   const ruleFiles = [
     h('CLAUDE.md'), h('AGENTS.md'), h('.github', 'copilot-instructions.md'),
@@ -310,13 +428,27 @@ async function execute(p) {
   ];
   for (const f of ruleFiles.filter(existsSync)) {
     try {
-      const text = readFileSync(f, 'utf8');
-      const stripped = stripRoutingBlock(stripDestructiveBlock(text));
+      let text = readFileSync(f, 'utf8');
+      if (f === h('CLAUDE.md')) {
+        const r = removeClaudePointer(f);
+        if (r === 'removed') { console.log(`  ${tilde(f)} removed (AOS pointer only)`); continue; }
+        if (r === 'stripped') { console.log(`  AOS pointer line removed from ${tilde(f)}`); text = readFileSync(f, 'utf8'); }
+      }
+      // The harness-rules block is the outermost one for ~/.gemini/RULES.md and
+      // GEMINI.md — strip it first so the inner blocks go with it; the inner
+      // strips still cover older installs that carried only those blocks.
+      const stripped = stripRoutingBlock(stripDestructiveBlock(stripHarnessRulesBlock(text)));
       if (stripped === text) continue;
+      if (!stripped.trim()) { rmSync(f); console.log(`  ${tilde(f)} removed (no user content left)`); continue; }
       writeFileSync(f, stripped);
       console.log(`  Rule blocks removed from ${tilde(f)}`);
-    } catch { console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
+    } catch { failures.push(`${tilde(f)} unreadable (rule blocks)`); console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
   }
+
+  try {
+    const n = createRequire(import.meta.url)('../lib/permissions-allow.js').removeAllRecorded(HOME);
+    if (n) console.log(`  ${n} permission rule(s) added by \`aos allow\` removed`);
+  } catch { failures.push('aos allow rules'); console.log('  ~/.claude/settings.json unreadable — remove the rules added by `aos allow` (see ~/.aos/allow-records.json) by hand'); }
 
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} modules removed`);
@@ -325,11 +457,24 @@ async function execute(p) {
   const dejaByAos = (ur.readRecords(HOME).npmGlobal || []).includes(DEJA_PKG);
   if (dejaByAos) {
     try {
-      execFileSync('npm', ['uninstall', '-g', DEJA_PKG], { stdio: 'ignore', shell: process.platform === 'win32' });
+      npmUninstallGlobal(DEJA_PKG);
       ur.forgetNpmGlobal(HOME, DEJA_PKG);
       console.log('  deja-vu (npm) removed');
     } catch {
+      failures.push(`npm uninstall -g ${DEJA_PKG}`);
       console.log(`  deja-vu not removed via npm — remove it by hand: npm uninstall -g ${DEJA_PKG}`);
+    }
+  }
+
+  // Other global npm packages AOS installed itself (aos-cli, codebase-memory-mcp), recorded at install time.
+  for (const pkg of (ur.readRecords(HOME).npmGlobal || []).filter((x) => x !== DEJA_PKG)) {
+    try {
+      npmUninstallGlobal(pkg);
+      ur.forgetNpmGlobal(HOME, pkg);
+      console.log(`  ${pkg} (npm) removed`);
+    } catch {
+      failures.push(`npm uninstall -g ${pkg}`);
+      console.log(`  ${pkg} not removed via npm — remove it by hand: npm uninstall -g ${pkg}`);
     }
   }
 
@@ -348,19 +493,24 @@ async function execute(p) {
   for (const f of dejaMcpJson.filter(existsSync)) {
     try {
       const cfg = JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''));
-      if (dejaByAos && cfg.mcpServers && cfg.mcpServers.deja) {
+      // Backed up before every rewrite; a failed backup aborts this file's edit.
+      const save = () => { copyFileSync(f, `${f}.${stamp}.bak`); writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n'); };
+      // Only the invocation AOS writes: deja mcp, or cmd /c deja mcp on Windows.
+      const d = cfg.mcpServers && cfg.mcpServers.deja;
+      const aosDeja = !!d && ((d.command === 'deja' && JSON.stringify(d.args) === '["mcp"]') || (d.command === 'cmd' && JSON.stringify(d.args) === '["/c","deja","mcp"]'));
+      if (dejaByAos && aosDeja) {
         delete cfg.mcpServers.deja;
-        writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
+        save();
         console.log(`  deja entry removed from ${tilde(f)}`);
       }
       // Rust + Tauri package: only the entry AOS writes ({command: tauri-pilot, args: [mcp]}) leaves.
       const tp = cfg.mcpServers && cfg.mcpServers['tauri-pilot'];
       if (tp && tp.command === 'tauri-pilot' && JSON.stringify(tp.args) === '["mcp"]') {
         delete cfg.mcpServers['tauri-pilot'];
-        writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
+        save();
         console.log(`  tauri-pilot entry removed from ${tilde(f)}`);
       }
-    } catch { console.log(`  ${tilde(f)} unreadable — check by hand`); }
+    } catch { failures.push(`${tilde(f)} unreadable`); console.log(`  ${tilde(f)} unreadable — check by hand`); }
   }
 
   const opencodeCfg = h('.config', 'opencode', 'opencode.jsonc');
@@ -383,38 +533,38 @@ async function execute(p) {
         writeFileSync(codexToml, kept.join(eol));
         console.log(`  deja table removed from ${tilde(codexToml)}`);
       }
-    } catch { console.log(`  ${tilde(codexToml)} unreadable — check by hand`); }
+    } catch { failures.push(`${tilde(codexToml)} unreadable`); console.log(`  ${tilde(codexToml)} unreadable — check by hand`); }
   }
 
-  if (codenotch) {
+  if (codenotch) attempt('Codenotch', () => {
     const r = cn.uninstallCodenotch(codenotch, { stateFile: cn.stateFilePath(HOME) });
     console.log(`  Codenotch: ${r === 'remove' ? 'removed' : r === 'keep' ? 'kept, not the recorded build' : r === 'error' ? 'uninstaller failed, left in place' : 'already gone'}`);
-  }
+  });
 
-  agyPlugin.uninstall({ home: HOME, dryRun: DRY });
+  attempt('agy plugin', () => agyPlugin.uninstall({ home: HOME, dryRun: DRY }));
 
-  if (noMcp) {
+  if (noMcp) attempt('agy worker home', () => {
     const wh = noMcp.removeAgyWorkerHome({ home: HOME, dryRun: DRY });
     if (wh.removed.length) console.log(`  agy worker home without MCP servers: ${wh.removed.length} entries ${DRY ? 'would be removed' : 'removed'}`);
     for (const k of wh.kept) console.log(`  ${tilde(k)} not created by AOS, kept`);
-  }
+  });
 
   // Claude Code mods, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
-  const always = ['fleet', 'sessions', 'alert', 'rustauri'];
-  for (const id of ['fleet', 'sessions', 'alert', 'gateway', 'hub', 'rustauri']) {
+  const always = ['fleet', 'sessions', 'alert', 'control', 'rustauri'];
+  for (const id of ['fleet', 'sessions', 'alert', 'control', 'gateway', 'hub', 'rustauri']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       // run: gateway and hub stop their service through it (launchctl, systemctl, or the Windows Startup .vbs process).
-      const c = { home: HOME, dryRun: DRY, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
-      if (!always.includes(id) && !(await pkg.detect(c)).installed) continue;
+      const c = { home: HOME, dryRun: DRY, platform: process.platform, aosRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), env: process.env, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
+      if (!always.includes(id) && !(pkg.present ? pkg.present(c) : (await pkg.detect(c)).installed)) continue;
       const r = await pkg.uninstall(c);
-      if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
+      if (r && r.error) { failures.push(`${pkg.name}: ${r.error}`); console.log(`  ${pkg.name}: ${r.error}`); }
       else if (r && (r.changed || !always.includes(id))) console.log(`  ${pkg.name} removed`);
-    } catch (e) { console.log(`  ${pkg.name}: ${e.message} — check by hand`); }
+    } catch (e) { failures.push(`${pkg.name}: ${e.message}`); console.log(`  ${pkg.name}: ${e.message} — check by hand`); }
   }
 
   // The package loop skips gateway/hub when detect() is false; the Startup .vbs must still go, or both autostart again.
-  removeWinServices(p.winSvc);
+  attempt('Windows services', () => removeWinServices(p.winSvc));
 
   // A2A MCP entries (agy + Cursor): only the AOS-owned ones leave the harness
   // configs, each file backed up first (writeConfigWithBackup inside).
@@ -426,16 +576,16 @@ async function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} install markers removed`);
 
-  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) console.log(`  ${l}`);
+  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner, failures })) console.log(`  ${l}`);
 
-  const reg = pm.readState(HOME).registered.claudecode;
-  if (reg) {
+  attempt('Claude plugin registration', () => {
+    const reg = pm.readState(HOME).registered.claudecode;
+    if (!reg) return;
     const r = pm.deregisterClaude({ home: HOME, record: reg });
     if (r.changed) console.log(`  bdb-aos plugin registration removed from settings.json${reg.replaced ? ` (external marketplace ${reg.replaced.key} restored)` : ''}`);
-  }
+  });
 
-  const cx = cp.uninstallCodexPlugin({ home: HOME });
-  for (const l of cx.lines) console.log(`  ${l}`);
+  attempt('Codex plugin', () => { for (const l of cp.uninstallCodexPlugin({ home: HOME }).lines) console.log(`  ${l}`); });
 
   // Only the BDB hook entries leave settings.json; everything else in it is
   // the user's and must survive an uninstall exactly as it survives an install.
@@ -446,33 +596,49 @@ async function execute(p) {
       const bdb = profile.HOOK_SCRIPTS;
       let touched = false;
       for (const [event, entries] of Object.entries(s.hooks || {})) {
-        const kept = entries.filter((e) => !(e.hooks || []).some((x) => bdb.some((n) => String(x.command).includes(n))));
-        if (kept.length !== entries.length) { touched = true; s.hooks[event] = kept; }
+        if (!Array.isArray(entries)) continue;
+        // Handler level: a matcher group keeps its foreign handlers and goes only when it ends up empty.
+        const kept = [];
+        for (const e of entries) {
+          const hooks = Array.isArray(e && e.hooks) ? e.hooks : null;
+          const left = hooks ? hooks.filter((x) => !ur.commandRunsScript(x && x.command, bdb)) : null;
+          if (!hooks || left.length === hooks.length) { kept.push(e); continue; }
+          touched = true;
+          if (left.length) kept.push({ ...e, hooks: left });
+        }
+        s.hooks[event] = kept;
         if (!kept.length) delete s.hooks[event];
       }
       if (touched) {
+        copyFileSync(settings, `${settings}.${stamp}.bak`);
         writeFileSync(settings, JSON.stringify(s, null, 2) + '\n');
-        console.log('  BDB hooks removed from settings.json, everything else unchanged');
+        console.log('  AOS hook handlers removed from settings.json; other handlers and settings unchanged');
       }
-    } catch { console.log('  settings.json unreadable — check by hand'); }
+    } catch { failures.push('settings.json unreadable'); console.log('  settings.json unreadable — check by hand'); }
   }
 
   for (const d of data) {
     try { rmSync(d.path, { recursive: true, force: true }); console.log(`  \x1b[31mdeleted:\x1b[0m ${tilde(d.path)}`); }
-    catch (e) { console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
+    catch (e) { failures.push(`${tilde(d.path)}: ${e.message}`); console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
   }
 
-  for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
+  // With a failed step the manifest stays, so a rerun sees the install and finishes the job.
+  if (!failures.length) for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
     try { rmSync(f); } catch { /* already gone */ }
   }
-  pm.retireState(HOME);
+  if (!failures.length) pm.retireState(HOME);
   ur.retireRecords(HOME);
+  if (failures.length) {
+    console.log('\nThese steps failed; the rest ran. Fix the cause and run aos-uninstall again:');
+    for (const f of failures) console.log(`    ${f}`);
+  }
+  return failures;
 }
 
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan, removeWinServices };
+export { plan, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -522,6 +688,7 @@ async function main() {
   }
 
   console.log('');
-  await execute(p);
+  const failures = await execute(p);
+  if (failures.length) { process.exitCode = 1; return; }
   console.log('\nDone. Reinstall with: npx -y @hybridlabor-api/aos@latest');
 }

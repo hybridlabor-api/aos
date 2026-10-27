@@ -99,7 +99,7 @@ test('failures are silent, exit 0, and fast', () => {
 });
 
 test('registration: settings.json entry, installer merge is idempotent and keeps foreign hooks', () => {
-  const repo = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude', 'settings.json'), 'utf8'));
+  const repo = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'claude-hooks.json'), 'utf8'));
   const entry = repo.hooks.PreToolUse.find((e) => e.hooks.some((h) => h.command.includes('trail-autostart.mjs')));
   assert.equal(entry.matcher, 'Agent|Task');
   assert.equal(entry.hooks[0].timeout, 3);

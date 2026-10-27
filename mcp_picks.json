@@ -114,6 +114,24 @@
           }
         }
       ]
+    },
+    {
+      "group": "reverse_engineering",
+      "note": "Reverse engineering is dual-use. This pick is opt-in only (AOS_REA_MCP=on) and never a default selection.",
+      "candidates": [
+        {
+          "name": "rea_mcp",
+          "requires": {
+            "env": {
+              "AOS_REA_MCP": "on"
+            }
+          },
+          "entry": {
+            "command": "npx",
+            "args": ["-y", "rea-agents@6.5.0", "mcp"]
+          }
+        }
+      ]
     }
   ]
 }

@@ -1,6 +1,8 @@
 ---
 name: bdb-adobe-suite-mcp
-description: Utilizes the Adobe Suite MCP servers (adobe_mcp.py and adobe_uxp_mcp) to automate Photoshop, Illustrator, Premiere Pro, and After Effects using ExtendScript and UXP WebSocket bridges.
+description: >-
+  Automate Photoshop, Illustrator, Premiere Pro and After Effects via the
+  Adobe Suite MCP servers (ExtendScript and UXP WebSocket bridges).
 category: media-eventtech
 ---
 

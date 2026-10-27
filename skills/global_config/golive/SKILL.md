@@ -1,6 +1,6 @@
 ---
 name: golive
-description: Take an agent-written app from repo to live production on the user's OWN accounts, with providers they choose (hosting, database, auth, payments, email, domain/DNS). The human connects accounts and approves changes; supported wiring operations run through a local CLI and produce verification evidence with explicit limits. Use when the user wants to ship, deploy, go live, launch, publish, or put their app online, or asks to wire up env vars, webhooks, auth settings (signup, email confirmation, password policy), a real signup → confirmation email → login journey, password recovery, account isolation between two users, auth redirects, email DNS or a custom domain.
+description: Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
 category: saas-ops
 source: "vendored from mikehasa/golive-skill (MIT) — https://github.com/mikehasa/golive-skill/tree/main/skills/golive"
 license: MIT
@@ -19,6 +19,18 @@ node <this-skill-dir>/scripts/golive.mjs <command> --json
 
 `<this-skill-dir>` is the folder containing this SKILL.md. Every command prints one JSON document.
 Exit code `2` means "worked, but something needs attention": read the JSON.
+
+## Plan first
+
+Plan the go-live with the `release` template — staged rollout and a way back:
+
+```bash
+aos-plan-canvas new release <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Start with a verified release
 

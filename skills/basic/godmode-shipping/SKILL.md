@@ -1,12 +1,26 @@
 ---
 name: godmode-shipping
-description: BDB Shipping Godmode, the final gatekeeper for production releases. Use when running pre-launch checks, feature-flag rollouts, or rollback planning under Spec-Driven Development before a release ships.
+description: Final gatekeeper for production releases. Pre-launch checks, feature flags, rollback, Spec-Driven Development.
 category: engineering-method
 ---
 
 # 🚀 BDB Shipping Godmode
 
 This skill is the final gatekeeper. No code reaches production without passing these rigorous checks. It orchestrates release management and workflow discipline for the BDB ecosystem across all supported harnesses (Cursor, Claude Code, Agy, Copilot).
+
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- Shipping a version to users → `release`; a reviewer deciding on a merge (verified vs not verified) → `recap-review`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve` of a `release` plan, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build; a `recap-review` plan is the artifact itself (no components, no map). The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## 1. Spec-Driven Development
 Writing code without a specification is guessing.
@@ -68,7 +82,7 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 |---|---|
 | "The code change was small, so I skipped updating OpenWiki docs." | Every state change must be reflected in the relevant system records. |
 | "The ingest script exited without an error, so the memB index must be updated." | Silent failures happen; explicit verification of the side effect is mandatory. |
-| "I'll let the /startcycle proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
+| "I'll let the /fabric proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
 | "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
 
 ## Going live
@@ -83,3 +97,46 @@ The release report is not a deployment. If the user wants the product live on th
 - [ ] Verified script exit codes are explicitly checked.
 - [ ] Confirmed target files or database records reflect the expected change.
 - [ ] Ensured no silent failures were ignored before reporting success.
+
+
+---
+
+## App dev Pack Skills
+
+<!-- aos:pack-index:start -->
+- **software-architecture** — Quality-focused architecture guidance (Clean Architecture, DDD). Use when designing architecture, writing or analyzing code in projects.
+- **api-design-principles** — Master REST and GraphQL API design principles to build intuitive, scalable, and maintainable APIs that delight developers and stand the test of time.
+- **test-driven-development** — Use when implementing any feature or bugfix, before writing implementation code
+- **systematic-debugging** — Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+- **clean-code** — This skill embodies the principles of \"Clean Code\" by Robert C. Martin (Uncle Bob). Use it to transform \"code that works\" into \"code that is clean.\"
+- **concise-planning** — Use when a user asks for a plan for a coding task, to generate a clear, actionable, and atomic checklist.
+- **planning-with-files** — Work like Manus: Use persistent markdown files as your \"working memory on disk.\"
+- **subagent-driven-development** — >-
+- **dispatching-parallel-agents** — >-
+- **using-git-worktrees** — >-
+- **finishing-a-development-branch** — Use when implementation is complete, all tests pass, and you need to decide how to integrate the work
+- **architect-review** — Master software architect specializing in modern architecture
+- **bdb-security-audit** — Comprehensive security auditing, diff analysis, defensive checklists, and vulnerability testing.
+- **bdbresilience** — >-
+- **bdb-shipping-skill** — Pre-flight shipping decisions: problem-framing, one/two-way door classification, ADR logging, outcome loop. Complements godmode-shipping and bdbresilience.
+- **webapp-testing** — To test local web applications, write native Python Playwright scripts.
+- **playwright-skill** — Use when a task needs custom Playwright code: end-to-end testing, scraping a JS-rendered page, or driving a browser interactively via a universal executor.
+- **github** — Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries.
+- **github-repo** — Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill.
+- **ci-pipeline** — >-
+- **github-actions-generator** — Create, generate, or scaffold GitHub Actions workflows, action.yml, or .github/workflows CI/CD pipelines.
+- **github-actions-validator** — Validate, lint, audit, fix GitHub Actions workflows (.github/workflows).
+- **requesting-code-review** — Use when completing tasks, implementing major features, or before merging to verify work meets requirements
+- **two-axis-code-review** — Two-axis review since a fixed point: Standards (repo standards) and Spec (matches the issue) in parallel sub-agents. Use to review a branch, PR or WIP changes.
+- **simplify-code** — Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes.
+- **pr-recap** — Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts.
+- **typescript-pro** — Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns.
+- **modern-javascript-patterns** — Modern JavaScript: ES6+, functional patterns, best practices. Clean, maintainable, performant code.
+- **docker-expert** — >-
+- **bdb-deploy** — >-
+- **golive** — Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
+- **vercel-deployment** — Expert knowledge for deploying to Vercel with Next.js
+- **cloudflare-workers-expert** — Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage.
+
+**Install:** `aos store install --pack app-dev`
+<!-- aos:pack-index:end -->

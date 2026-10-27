@@ -24,11 +24,12 @@ if (process.argv.includes('--relay-worker')) {
     try { for await (const c of process.stdin) workerBody += c; } catch {}
   }
   if (!workerBody) process.exit(0);
-  const hubPort = Number(process.env.AGENTTRAIL_PORT) || 5350;
-  if (hubPort === 1) process.exit(0);
-  const legacy = process.env.AGENTTRAIL_LEGACY === '1';
-  const legacyPorts = legacy ? Array.from({ length: 15 }, (_, i) => 5330 + i).filter((p) => p !== hubPort) : [];
-  const targets = [{ url: `http://127.0.0.1:${hubPort}/hook`, body: workerBody }, ...legacyPorts.map((p) => ({ url: `http://127.0.0.1:${p}/hook`, body: workerBody }))];
+  const explicit = Number(process.env.AGENTTRAIL_PORT) || 0;
+  if (explicit === 1) process.exit(0);
+  // default = the per-repo maps (5330-5344); AGENTTRAIL_PORT targets one port instead, AGENTTRAIL_LEGACY=1 adds the range to it
+  const range = Array.from({ length: 15 }, (_, i) => 5330 + i);
+  const ports = explicit ? [explicit, ...(process.env.AGENTTRAIL_LEGACY === '1' ? range.filter((p) => p !== explicit) : [])] : range;
+  const targets = ports.map((p) => ({ url: `http://127.0.0.1:${p}/hook`, body: workerBody }));
   try {
     await Promise.allSettled(targets.map((t) => fetch(t.url, { method: 'POST', body: t.body, signal: AbortSignal.timeout(500) }).catch(() => {})));
   } catch {}
@@ -78,15 +79,24 @@ if (!ev || typeof ev !== 'object') process.exit(0);
 ev.agent = arg('--agent') || ev.agent || 'claude';
 ev.hook_event_name ||= arg('--event');
 ev.cwd ||= process.cwd();
-// A dispatcher sets AOS_TRAIL_NODE (+ AOS_TRAIL_PLAN) when it starts a worker: the node is live on the map.
-if (process.env.AOS_TRAIL_NODE && !ev.task) {
-  ev.task = { id: process.env.AOS_TRAIL_NODE, status: 'doing', ...(process.env.AOS_TRAIL_PLAN ? { plan: process.env.AOS_TRAIL_PLAN } : {}) };
+// Attribution: AOS_TRAIL_NODE env wins (dispatcher intent); a [trail-node:<id>]
+// marker anywhere in the payload (subagent prompt/brief) is the fallback.
+// stampTrailNode lives in the agenttrail lib; the hook dir may sit next to it
+// (repo checkout) or detached (installed copies), so try the known homes.
+let stampTrailNode = ({ env: e } = {}) => {
+  if (e?.AOS_TRAIL_NODE && !ev.task) ev.task = { id: e.AOS_TRAIL_NODE, status: 'doing', ...(e.AOS_TRAIL_PLAN ? { plan: e.AOS_TRAIL_PLAN } : {}) };
+};
+for (const rel of ['../global_config/agenttrail/lib/events.mjs', '../../skills/global_config/agenttrail/lib/events.mjs', './lib/events.mjs']) {
+  try {
+    ({ stampTrailNode } = await import(new URL(rel, import.meta.url)));
+    break;
+  } catch {}
 }
+stampTrailNode(ev, { env: process.env });
 const body = JSON.stringify(ev);
 
 // Detach slow network I/O: spawn a background worker so the hook returns immediately.
-const hubPort = Number(process.env.AGENTTRAIL_PORT) || 5350;
-if (hubPort !== 1) {
+if (Number(process.env.AGENTTRAIL_PORT) !== 1) {
   try {
     const here = fileURLToPath(import.meta.url);
     if (body.length < 65536) {

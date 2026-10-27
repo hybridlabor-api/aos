@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
-Default destination: a markdown file `production_artifacts/spec-<slug>.md`. Publish it as a GitHub issue (`gh issue create`) only when the user asks for it and says it is OK, since that is outward-facing. The spec then feeds the Architect step of `/startcycle`.
+Default destination: a markdown file `production_artifacts/spec-<slug>.md`. Publish it as a GitHub issue (`gh issue create`) only when the user asks for it and says it is OK, since that is outward-facing. The spec then feeds the Architect step of `/fabric`.
 
 ## Process
 
@@ -19,6 +19,17 @@ Default destination: a markdown file `production_artifacts/spec-<slug>.md`. Publ
 Check with the user that these seams match their expectations.
 
 3. Write the spec using the template below, then save it (or, on request, publish it to the issue tracker with the `ready-for-agent` triage label from the `triage` skill, no further triage).
+
+## Plan review
+
+Before treating the spec as approved, open it in the Plan Canvas for visual review:
+
+1. Give the top-level heading a stable ID, e.g. `## Spec Name {#spec-name}`.
+2. Run `aos-plan-canvas open production_artifacts/spec-<slug>.md`.
+3. Run `aos-plan-canvas await production_artifacts/spec-<slug>.md` and wait for the human verdict.
+4. Proceed only after an `approve` verdict.
+
+*(If running in OpenCode, always print the Canvas URL in chat.)*
 
 <spec-template>
 

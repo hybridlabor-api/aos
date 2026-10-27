@@ -99,15 +99,16 @@ test('dropContextHooks keeps gate and foreign hooks, drops context and emptied e
 
 test('settings: profile persists in the v5 settings file next to the disabled list', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-opt-'));
-    assert.deepStrictEqual(p.readSettings(home), { disabled: [] });
+    assert.deepStrictEqual(p.readSettings(home), { disabled: [], updates: 'notify' });
     p.writeSettings(home, { ...p.readSettings(home), profile: 'minimal', disabled: ['fleet'] });
-    assert.deepStrictEqual(p.readSettings(home), { disabled: ['fleet'], profile: 'minimal' });
+    assert.deepStrictEqual(p.readSettings(home), { disabled: ['fleet'], profile: 'minimal', updates: 'notify' });
     assert.ok(p.settingsFile(home).endsWith(path.join('.aos', 'v5-settings.json')));
 });
 
 test('installer: --hooks-only --no-hooks keeps the gate hooks (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
+    // The container's detected harnesses decide where hooks go; name Claude Code so the settings file is the one read below.
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-opt-home-'));
-    const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'installer.js'), '--hooks-only', '--no-hooks', '-y', '--no-intro'], {
+    const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'installer.js'), '--hooks-only', '--no-hooks', '--platforms=2', '-y', '--no-intro'], {
         env: { ...process.env, HOME: home, USERPROFILE: home, AOS_PLUGIN_CLI: 'off' }, encoding: 'utf8', timeout: 120000,
     });
     assert.strictEqual(r.status, 0, r.stderr);
@@ -193,7 +194,7 @@ test('S2: a corrupt or odd settings file never throws and falls back to defaults
     }
     const none = tmpHome();
     const [quiet, warn] = collect();
-    assert.deepStrictEqual(p.readSettings(none, warn), { disabled: [] });
+    assert.deepStrictEqual(p.readSettings(none, warn), { disabled: [], updates: 'notify' });
     assert.strictEqual(quiet.length, 0, 'a missing file is silent');
 });
 
@@ -233,19 +234,19 @@ test('S3: uninstall moves the saved options aside and keeps foreign keys', () =>
     const aside = names.find((n) => n.startsWith('v5-settings.json.removed-'));
     assert.ok(aside, 'the file is moved aside, not removed');
     assert.strictEqual(fs.readFileSync(path.join(dir, aside), 'utf8'), before);
-    assert.deepStrictEqual(p.readSettings(home), { disabled: [] });
+    assert.deepStrictEqual(p.readSettings(home), { disabled: [], updates: 'notify' });
     assert.deepStrictEqual(ur.resetV5Settings({ home, dryRun: false }), []);
 
     const home2 = tmpHome();
     p.writeSettings(home2, { profile: 'full', keep: 'me' });
     ur.resetV5Settings({ home: home2, dryRun: false });
-    assert.deepStrictEqual(p.readSettings(home2), { disabled: [], keep: 'me' });
+    assert.deepStrictEqual(p.readSettings(home2), { disabled: [], updates: 'notify', keep: 'me' });
     const lines = ur.reverseRegistrations({ home: home2, dryRun: true });
     assert.ok(!lines.some((l) => /Saved install options/.test(l)), 'nothing owned is left to reset');
 });
 
 test('S6: update and repair skip what the profile excludes, like disabled ids', async () => {
-    assert.deepStrictEqual([...p.excludedIds({ profile: 'minimal', disabled: ['synapse'] })].sort(), ['alert', 'codenotch', 'deja', 'fleet', 'gateway', 'hub', 'memb', 'openwiki', 'sessions', 'synapse', 'token-saver']);
+    assert.deepStrictEqual([...p.excludedIds({ profile: 'minimal', disabled: ['synapse'] })].sort(), ['alert', 'codenotch', 'control', 'deja', 'fleet', 'gateway', 'hub', 'memb', 'openwiki', 'sessions', 'synapse', 'token-saver']);
     assert.deepStrictEqual([...p.excludedIds(null)], ['token-saver']); // the standard profile leaves the opt-in Token Saver out
     assert.deepStrictEqual([...p.excludedIds({ profile: 'constructor' })], ['token-saver']);
 
@@ -270,12 +271,13 @@ test('S6: update and repair skip what the profile excludes, like disabled ids', 
 test('R1: one hook list; the shipped Claude template is covered exactly once', () => {
     const lists = [p.ALWAYS_HOOKS, p.CONTEXT_HOOKS, p.OTHER_HOOKS];
     for (const l of lists) assert.strictEqual(new Set(l).size, l.length);
-    // gate-profile.mjs is an import-only helper of go-gate.mjs: copied with the hooks, never wired, so in no list.
-    assert.deepStrictEqual([...p.HOOK_SCRIPTS].sort(), ['gate-profile.mjs', ...lists.flat()].sort());
+    // gate-profile.mjs and session-cap.mjs are import-only helpers (of go-gate / memb-inject and aos-session-hint):
+    // copied with the hooks, never wired, so in no list.
+    assert.deepStrictEqual([...p.HOOK_SCRIPTS].sort(), ['gate-profile.mjs', 'session-cap.mjs', ...lists.flat()].sort());
     assert.strictEqual(new Set(p.HOOK_SCRIPTS).size, p.HOOK_SCRIPTS.length, 'no script in two lists');
     assert.ok(p.CLAUDE_MERGE_HOOKS.every((n) => p.HOOK_SCRIPTS.includes(n)));
 
-    const template = fs.readFileSync(path.join(__dirname, '..', '.claude', 'settings.json'), 'utf8');
+    const template = fs.readFileSync(path.join(__dirname, '..', 'config', 'claude-hooks.json'), 'utf8');
     const named = [...new Set([...template.matchAll(/\.claude\/hooks\/([\w-]+\.mjs)/g)].map((m) => m[1]))];
     assert.ok(named.length >= 10, 'the template names the hooks');
     for (const n of named) {

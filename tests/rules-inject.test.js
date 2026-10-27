@@ -9,31 +9,50 @@ const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const HOOK = path.join(ROOT, '.claude', 'hooks', 'rules-inject.mjs');
 const { BLOCK, START, END, CLAUDE_DENY_RULES } = require('../lib/destructive-rules.js');
+const { BLOCK: ROUTING_BLOCK, START: ROUTING_START, END: ROUTING_END } = require('../lib/routing-rules.js');
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-inject-'));
 test.after(() => fs.rmSync(base, { recursive: true, force: true }));
 const tmp = (n) => fs.mkdtempSync(path.join(base, `${n}-`));
 
 const runHook = (hook, home, input) => spawnSync(process.execPath, [hook], { input, env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home }, encoding: 'utf8' });
 const bullets = (text) => text.split('\n').filter((l) => l.startsWith('- ')).length;
+const stripped = (block, start, end) => block.replace(start, '').replace(end, '').trim();
+const expectedRulesText = () => [stripped(BLOCK, START, END), stripped(ROUTING_BLOCK, ROUTING_START, ROUTING_END)].join('\n\n');
+const ruleCount = bullets(stripped(BLOCK, START, END));
 
-test('Claude Code / Codex: additionalContext carries the five rules from the single source', () => {
+test('Claude Code / Codex: additionalContext carries the destructive rules from the single source', () => {
     const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi' }));
     assert.strictEqual(r.status, 0);
     const out = JSON.parse(r.stdout);
     assert.strictEqual(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
     const text = out.hookSpecificOutput.additionalContext;
-    assert.strictEqual(text, BLOCK.replace(START, '').replace(END, '').trim());
-    assert.strictEqual(bullets(text), 5);
+    assert.strictEqual(text, expectedRulesText());
+    assert.strictEqual(bullets(text), ruleCount);
+    assert.ok(text.includes('plan-canvas'), 'routing block must mention plan-canvas');
+    assert.ok(text.includes('## Tool routing (automatic)'), 'routing block heading must be present');
 });
 
 test('agy gets injectSteps; garbage or empty stdin still injects; never blocks', () => {
     const agy = JSON.parse(runHook(HOOK, tmp('h'), JSON.stringify({ conversationId: 'c1', workspacePaths: ['/x'] })).stdout);
-    assert.strictEqual(bullets(agy.injectSteps[0].ephemeralMessage), 5);
+    const text = agy.injectSteps[0].ephemeralMessage;
+    assert.strictEqual(bullets(text), ruleCount);
+    assert.ok(text.includes('## Tool routing (automatic)'), 'agy routing block heading must be present');
     for (const input of ['', 'not json']) {
         const r = runHook(HOOK, tmp('h'), input);
         assert.strictEqual(r.status, 0);
-        assert.strictEqual(bullets(JSON.parse(r.stdout).hookSpecificOutput.additionalContext), 5);
+        assert.strictEqual(bullets(JSON.parse(r.stdout).hookSpecificOutput.additionalContext), ruleCount);
     }
+});
+
+test('rules-inject output contains the routing block with plan-canvas and agenttrail triggers', () => {
+    const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'plan' }));
+    assert.strictEqual(r.status, 0);
+    const text = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(text.includes('<!-- aos:routing:start -->') === false, 'markers should be stripped');
+    assert.ok(text.includes('## Tool routing (automatic)'));
+    assert.ok(text.includes('plan-canvas'));
+    assert.ok(text.includes('agenttrail'));
+    assert.ok(text.includes('Never a GO by side channel'));
 });
 
 test('installed layout: reads ~/.agents/lib, and fails open (no output, exit 0) when the text is missing', () => {
@@ -46,7 +65,10 @@ test('installed layout: reads ~/.agents/lib, and fails open (no output, exit 0) 
     assert.strictEqual(missing.stdout, '');
     fs.mkdirSync(path.join(dir, '.agents', 'lib'), { recursive: true });
     fs.copyFileSync(path.join(ROOT, 'lib', 'destructive-rules.js'), path.join(dir, '.agents', 'lib', 'destructive-rules.js'));
-    assert.strictEqual(bullets(JSON.parse(runHook(path.join(hooks, 'rules-inject.mjs'), dir, '{}').stdout).hookSpecificOutput.additionalContext), 5);
+    fs.copyFileSync(path.join(ROOT, 'lib', 'routing-rules.js'), path.join(dir, '.agents', 'lib', 'routing-rules.js'));
+    const text = JSON.parse(runHook(path.join(hooks, 'rules-inject.mjs'), dir, '{}').stdout).hookSpecificOutput.additionalContext;
+    assert.strictEqual(bullets(text), ruleCount);
+    assert.ok(text.includes('## Tool routing (automatic)'), 'installed hook must inject routing block');
 });
 
 test('deny rules are home-level only, never a broad rm -rf prefix', () => {
@@ -80,6 +102,7 @@ test('installer wires the hook on every harness, adds deny rules idempotently, r
     assert.strictEqual(cmds.filter((c) => c.includes('rules-inject.mjs')).length, 1);
     assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', 'rules-inject.mjs')));
     assert.ok(fs.existsSync(path.join(home, '.agents', 'lib', 'destructive-rules.js')));
+    assert.ok(fs.existsSync(path.join(home, '.agents', 'lib', 'routing-rules.js')));
 
     assert.match(fs.readFileSync(path.join(home, '.codex', 'config.toml'), 'utf8'), /command = .*rules-inject\.mjs/);
     const agy = JSON.parse(fs.readFileSync(path.join(home, '.gemini', 'config', 'hooks.json'), 'utf8'));
@@ -147,4 +170,46 @@ test('rules-inject: does not inject when ancestor project root AGENTS.md holds t
     const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi', cwd: subDir }));
     assert.strictEqual(r.status, 0);
     assert.strictEqual(r.stdout, '');
+});
+
+test('rules-inject: once per session; SessionStart clear/compact re-arms it; other sessions are independent', () => {
+    const home = tmp('once');
+    const run = (o) => runHook(HOOK, home, JSON.stringify(o)).stdout;
+    const p = (id) => ({ hook_event_name: 'UserPromptSubmit', session_id: id, prompt: 'hi' });
+    assert.ok(run(p('s1')).includes('additionalContext'));
+    assert.strictEqual(run(p('s1')), '', 'second prompt of the same session injects nothing');
+    assert.ok(run(p('s2')).includes('additionalContext'), 'a new session injects again');
+    assert.strictEqual(run({ hook_event_name: 'SessionStart', session_id: 's1', source: 'resume' }), '');
+    assert.strictEqual(run(p('s1')), '', 'resume keeps the marker');
+    assert.strictEqual(run({ hook_event_name: 'SessionStart', session_id: 's1', source: 'compact' }), '', 'SessionStart prints nothing');
+    assert.ok(run(p('s1')).includes('additionalContext'), 'compact re-arms');
+    run({ hook_event_name: 'SessionStart', session_id: 's1', source: 'clear' });
+    assert.ok(run(p('s1')).includes('additionalContext'), 'clear re-arms');
+    assert.ok(run({ conversationId: 'c9', workspacePaths: ['/x'] }).includes('injectSteps'));
+    assert.strictEqual(run({ conversationId: 'c9', workspacePaths: ['/x'] }), '', 'agy: once per conversation');
+});
+
+test('rules-inject: markers older than 7 days are removed', () => {
+    const home = tmp('ttl');
+    const dir = path.join(home, '.aos', 'state', 'rules-seen');
+    fs.mkdirSync(dir, { recursive: true });
+    const old = path.join(dir, 'old');
+    fs.writeFileSync(old, '1');
+    const t = new Date(Date.now() - 8 * 24 * 3600 * 1000);
+    fs.utimesSync(old, t, t);
+    runHook(HOOK, home, JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 'new', prompt: 'x' }));
+    assert.ok(!fs.existsSync(old));
+    assert.ok(fs.existsSync(path.join(dir, 'new')));
+});
+
+test('session-cap: small context profile caps SessionStart text at 1000 chars, default 2000', async () => {
+    const { sessionStartCap, capText } = await import(path.join(ROOT, '.claude', 'hooks', 'session-cap.mjs'));
+    const home = tmp('cap');
+    assert.strictEqual(sessionStartCap(home), 2000);
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ context: 'small' }));
+    assert.strictEqual(sessionStartCap(home), 1000);
+    assert.strictEqual(capText('x'.repeat(3000), home).length, 1000);
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ context: 'worker' }));
+    assert.strictEqual(sessionStartCap(home), 2000);
 });

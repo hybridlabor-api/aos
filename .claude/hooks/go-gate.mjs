@@ -51,7 +51,7 @@
 // Origin: only human-typed entries count, as GO and as gogate commands
 // (isHumanEntry). Loops, peers, task notifications, SDK and system prompts never.
 
-import { constants as FS, readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync, opendirSync } from "node:fs";
+import { constants as FS, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync, opendirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID, createPublicKey, verify as cryptoVerify, timingSafeEqual } from "node:crypto";
@@ -72,12 +72,25 @@ const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:=|[^\s;&|()'"]{0,128}/
 const G = String.raw`git(?:\s+(?:-[cC]\s*(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=(?:"[^"]*"|'[^']*'|\S+))?))+\s+`;
 const GH = String.raw`gh(?:\s+(?:-R|--repo)(?:\s+|=)\S+)+\s+`;
 const S = String.raw`[^;&|\n]*`;
+const prefixes = (w, min) => Array.from({ length: w.length - min + 1 }, (_, i) => w.slice(0, min + i));
+// PowerShell accepts any unique prefix of a parameter name: -e/-en/.../-encodedcommand, -ec, -encodeda.../-encodedarguments.
+const PS_ENC = [...prefixes("encodedcommand", 1), "ec", ...prefixes("encodedarguments", 8)].join("|");
+const PS_CMD = prefixes("command", 1).join("|");
 const re = (s, f = "i") => new RegExp(A + s, f);
 
 // The aos-gate token anywhere in the command (node/npx/env/bash -c wrappers, any path); grant, work and every profile but strict widen the gate. strict and revoke only narrow it.
 export const GATE_WIDEN = new RegExp(String.raw`(?:^|[\s\/\\'"=;&|(\x60])aos-gate(?:\.mjs)?['"]?\s+(?:grant|work|profile(?!\s+['"]?strict\b))\b`, "i");
 // A command no profile and no global grant may free: only a typed GO (or a human-typed gogate grant) opens it.
 export const neverGrantable = (command) => typeof command === "string" && [command, unIFS(command), unIFS(commandView(command).text)].some((t) => GATE_WIDEN.test(t));
+
+// PowerShell: running a string as code, or a state-changing web request, is a plain GO (a plain GET stays free, see psReadOnly).
+const PS_GUARDED = [
+  re(String.raw`(?:^|[\s;|({"'])(?:iex|Invoke-Expression)(?=[\s;|)}'"]|$)`),
+  re(String.raw`\b(?:Invoke-(?:WebRequest|RestMethod)|iwr|irm)\b[^;|\n]*?\s-m\w*[\s:=]+['"]?(?:POST|PUT|DELETE|PATCH)\b`),
+  // Exec by indirection: the target (git push, a shell with a quoted body) is not read through Start-Process, so it is a plain GO whatever it starts.
+  re(String.raw`(?:Start-Process|saps|start|Invoke-Item|ii)(?=[\s;|)}'"]|$)`),
+  /\[(?:System\.)?Diagnostics\.Process\]\s*::\s*Start/i,
+];
 
 export const GUARDED_PATTERNS = [
   re(String.raw`(?:git\s+push|${G}push)\b`),
@@ -97,8 +110,9 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})release\s+(?:edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})repo\s+(?:create|edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b`),
+  ...PS_GUARDED,
   // A base64 PowerShell command cannot be read at all. No scope: a plain GO.
-  re(String.raw`(?:powershell|pwsh)(?:\.exe)?['"]?${S}\s-(?:e|ec|en|enc|enco|encodedcommand)\b`),
+  re(String.raw`(?:powershell|pwsh)(?:\.exe)?['"]?${S}\s-(?:${PS_ENC})\b`),
   // The AOS uninstaller deletes through Node's rmSync, which the rm analysis never sees. No scope: a plain GO.
   re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-uninstall(?:\.mjs)?\b(?!${S}\s--dry-run(?=\s|$))`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
@@ -115,12 +129,52 @@ export const GUARDED_PATTERNS = [
   re(String.raw`opencode\s+run\b${S}\s(?:-[a-zA-Z]*[sc]\S*|--session|--continue)(?=[\s=]|$)`, ""),
   re(String.raw`claude\b${S}\s(?:-[a-zA-Z]*[cr]\S*|--resume|--continue)(?=[\s=]|$)`, ""),
   re(String.raw`opencode\s+attach\b`),
+  re(String.raw`opencode\s+run\b[^;|\n]*\s--attach\b`),
   /\/session\/[^\s/'"]+\/(?:message|prompt_async|command|shell)\b/i,
   /\/\/[^\s'"]*\/tui\/|\/tui\/(?:append|submit|clear|execute|open|show|publish|control)/i,
 ];
 
 // The two OpenCode HTTP-API patterns also apply to interpreter code (fetch() inside node).
 export const HTTP_PATTERNS = GUARDED_PATTERNS.slice(-2);
+
+// Routes by which an agent can post a prompt that looks human; `gogate off` never lifts these (OpenCode plugin).
+const OC_ROUTE_PATTERNS = GUARDED_PATTERNS.slice(-6);
+
+// Content-independent cover for the same self-unlock: any network client talking to the OpenCode server's own port on
+// loopback is guarded whatever the path (globs, braces, variables, quote splits and concatenation defeat a path regex).
+// Only a provable plain GET stays free. Ports: 4096 (default), the plugin's serverUrl and a --port of this process.
+const ocPorts = new Set(["4096"]);
+export function setOpencodeServer(url) {
+  try { const p = new URL(String(url)).port; if (/^\d{1,5}$/.test(p)) ocPorts.add(p); } catch { /* no usable url */ }
+}
+const NET_CLIENT = /(?:^|[\s;&|(`'"{])(?:curl|wget|http|https|xh|nc|ncat|netcat|socat|telnet|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)(?:\.exe)?(?=[\s'"])/i;
+const NET_CODE = /\b(?:fetch\s*\(|XMLHttpRequest|http\.request|https?\.(?:get|request)|urllib|requests\.|httpx|aiohttp|socket|net\.(?:connect|Socket|createConnection)|Net::HTTP|open-uri|URI\.open|WebClient|curl_)/;
+const LOOPBACK = /127(?:\.\d{1,3}){0,3}|localhost|::1|0\.0\.0\.0|0x7f[0-9a-f]*|2130706433|::ffff:/i;
+const LOOP_NAME = /(?:^|\.)(?:localhost|localtest\.me|lvh\.me|nip\.io|sslip\.io|xip\.io|local|lan|internal|test|localdomain)$/i;
+export function opencodeSelfPost(command) {
+  if (typeof command !== "string") return false;
+  const t = normDash(command);
+  const flat = t.replace(/["'\\]/g, ""), joined = flat.replace(/[+\s]+/g, "");
+  const client = NET_CLIENT.test(t) || NET_CODE.test(t);
+  if (!client) return false;
+  const ports = [...ocPorts].join("|");
+  const portHit = (x) => new RegExp(`(?<!\\d)(?:${ports})(?!\\d)`).test(x);
+  const loop = [t, flat, joined].some((x) => LOOPBACK.test(x));
+  // Only a literal public name is foreign; names that resolve to loopback or the LAN (localtest.me, *.localhost, nip.io) are self.
+  const foreign = [...flat.matchAll(/https?:\/\/(?!(?:127|localhost|\[?::1|0\.0\.0\.0))([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})/gi)].some((m) => !LOOP_NAME.test(m[1]));
+  // a computed port or host next to a loopback host, or a computed URL: cannot be resolved here
+  const computed = /(?:127(?:\.\d+){0,3}|localhost|::1|0\.0\.0\.0)[^\s/]*:(?:\d*[$`{\[(]|[^\s/]*[$`{\[(])|https?:\/\/[^\s/]*[$`{\[(]/i.test(flat);
+  if (!([t, flat, joined].some(portHit) && (loop || !foreign)) && !computed) return false;
+  // provably plain GET: curl/wget without a body or method, a PowerShell GET; code, nc, socat, telnet never
+  if (!NET_CODE.test(t) && /(?:^|[\s;&|(`'"{])(?:curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod|http)(?:\.exe)?\s/i.test(t) && !/(?:^|[\s;&|(`'"{])(?:nc|ncat|netcat|socat|telnet)\s/i.test(t)) {
+    const body = /(?:^|\s)(?:-[a-zA-Z]*[dFTX]|--(?:data[\w-]*|form[\w-]*|upload-file|json|request|post-\w+|body-\w+|method)|-Method|-Body|-Form|-InFile)(?=[\s=:]|$)/i.test(flat);
+    const method = /(?:-X\s*|--request[\s=]+|--method[\s=]+|-Method[\s:=]+)(?!(?:GET|HEAD)\b)\S/i.test(flat);
+    if (!body && !method && !computed && !/@\w/.test(flat)) return false;
+  }
+  return true;
+}
+// `gogate off` also never lifts the never-grantable set (aos-gate grant|work|profile writes a global grant that outlives the session).
+export const opencodeRoute = (command) => typeof command === "string" && (opencodeSelfPost(command) || neverGrantable(command) || [command, unIFS(command), unIFS(commandView(command).text)].some((t) => OC_ROUTE_PATTERNS.some((r) => r.test(t))));
 
 // ---------------------------------------------------------------------------
 // Scopes: each guarded command segment maps to the grant scope(s) it needs.
@@ -655,9 +709,31 @@ const gluedHead = (w) => {
 
 // Precise classification of one segment: array of scopes, [] = not guarded,
 // null = guarded but not classifiable (never grantable).
+// PowerShell web cmdlets: a request is free only when the method is provably GET/HEAD and nothing implies a body or a file.
+// A splat (`@p`), a variable method or an unknown method cannot be judged: plain GO. A known write method is github-write.
+const PS_WEB = /^(?:invoke-webrequest|invoke-restmethod|iwr|irm)$/i;
+function psWebScopes(args) {
+  let method = null, unknown = false, write = false;
+  for (let i = 0; i < args.length; i++) {
+    const raw = unq(args[i]);
+    if (raw.startsWith("@")) { unknown = true; continue; }
+    const m = /^-([a-z]+)(?::(.*))?$/i.exec(raw);
+    if (!m) continue;
+    const name = m[1].toLowerCase();
+    if (name[0] === "m" && !name.startsWith("max") && "method".startsWith(name)) method = (m[2] ?? unq(args[++i] ?? "")).toLowerCase();
+    else if (/^[bfio]/.test(name) && !name.startsWith("information")) write = true; // Body, Form, InFile, OutFile
+  }
+  if (method !== null) {
+    if (/^(?:post|put|delete|patch)$/.test(method)) write = true;
+    else if (!/^(?:get|head)$/.test(method)) unknown = true;
+  }
+  return write ? ["github-write"] : unknown ? null : [];
+}
+
 export function classify(seg, protectedFor = staticResolver) {
   const { rest: tok, opaque, gitEnv, xargs, xargsReplace } = stripPrefix(tokens(seg));
   const cmd = base(tok[0] ?? "");
+  if (PS_WEB.test(cmd)) return psWebScopes(tok.slice(1));
   // xargs takes its command words from stdin (`echo push origin HEAD:main | xargs git`,
   // `echo -rf build | xargs rm`): when NO argument of its own is visible after the guarded
   // program the whole guarded word is stdin-fed and the segment is unscoped. An rm row that
@@ -1292,7 +1368,9 @@ function blankData(text, keepCode = false) {
     if (!keepCode && !opaque && INTERP.test(h) && !/^(?:pwsh|powershell|cmd)/i.test(h) && scriptFile(h, rest.slice(1).map(unqQ)).inline) return blankQuotes(p.t) + p.sep;
     const sub = h === "git" ? rest.slice(1).map(unq).find((t, i, a) => !t.startsWith("-") && !/^-[cC]$/.test(a[i - 1] ?? "")) : "";
     const prog = rest.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
-    const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog));
+    // git grep -O<cmd> / --open-files-in-pager=<cmd> runs a shell command: its quoted text is code, never data.
+    const gitPager = sub === "grep" && rest.slice(1).map(unq).some((t) => /^--open-files-in-pager\b/.test(t) || /^-[A-Za-z]*O/.test(t));
+    const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog)) || gitPager;
     // `aos-a2a send|reply ... "<message>"` (also `node <dir>/aos-a2a.mjs ...`): the quoted message is data for the A2A client and
     // is never run; read as command text, words like `; git push` inside a peer message made the whole send guarded (GO only).
     // The script file of a `node` run is still analysed on its own (scriptInto), so a planted aos-a2a.mjs gains nothing.
@@ -1922,6 +2000,8 @@ const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|st
 // Windows spellings read like their POSIX twins: a drive path's backslashes become slashes
 // (C:\x\bin\aos-uninstall.cmd) and git.exe / GH.EXE / npm.cmd / aos-*.ps1 lose the suffix.
 // Without this, gh.exe pr merge, git.exe push and a full-path aos-uninstall.cmd were free.
+const shellHead = (names) => new RegExp(String.raw`(^|[;&|(\n]\s*)(?:&\s*)?(?:"(?:[^"]{0,256}[\\/])?(${names})(?:\.exe)?"|'(?:[^']{0,256}[\\/])?(${names})(?:\.exe)?'|(?:[^\s"';&|()]{0,256}[\\/])?(${names})(?:\.exe)?)(?=\s)`, "gi");
+const shellHeadName = (_m, pre, a, b, c) => pre + (a || b || c);
 export function winNorm(command) {
   let s = String(command)
     .replace(/(?<![\w\\])[A-Za-z]:\\[^\s;&|'"<>]*/g, (m) => m.replace(/\\/g, "/"))
@@ -1929,15 +2009,82 @@ export function winNorm(command) {
   // Codex on Windows wraps every command as `powershell.exe -NoProfile -Command "<cmd>"`; cmd /c does
   // the same. Read both like `bash -c`, whose quoted body the classifier already opens (Lenovo P15).
   // Only when the word is there: the path prefix would otherwise cost time on pathological input.
-  if (/powershell|pwsh/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:c|command)\b)[\w:]+(?:\s+(?!-)\w+)?){0,16})\s+-(?:c|command)(?=\s)/gi, "bash -c");
+  // Head spellings (.\powershell.exe, 'pwsh', "C:\..\pwsh.exe", & 'powershell.exe') reduce to the bare name before any rule reads them.
+  if (/powershell|pwsh/i.test(s)) s = s.replace(shellHead("powershell|pwsh"), shellHeadName);
+  if (/\bcmd\b/i.test(s)) s = s.replace(shellHead("cmd"), shellHeadName);
+  if (/powershell|pwsh/i.test(s)) s = s.replace(new RegExp(String.raw`(?:"?[^\s"]{0,256}\/)?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:${PS_CMD})\b)[\w:]+(?:\s+(?!-)\w+)?){0,16})\s+-(?:${PS_CMD})(?=\s)`, "gi"), "bash -c");
   if (/\bcmd\b/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?\bcmd(?:\.exe)?"?\s+\/[ck](?=\s)/gi, "bash -c");
   return s;
 }
 
+// Read-only PowerShell, judged by content: every statement head must be a known read-only command
+// and nothing may write, redirect, call a method or static member, or invoke through `&`/`.`/iex.
+// Anything unclear returns false and falls through to the ordinary classifier (never frees by shape).
+const PS_CMDLET = /^(?:Get-\w+|Select-String|Select-Object|Where-Object|ForEach-Object|Sort-Object|Measure-Object|Group-Object|Compare-Object|Format-(?:Table|List|Wide|Custom|Hex)|Out-String|Out-Null|Write-(?:Output|Host|Warning|Error)|Test-Path|Join-Path|Split-Path|Resolve-Path|Start-Sleep|Convert(?:From|To)-\w+|Invoke-(?:WebRequest|RestMethod)|gci|ls|dir|gc|cat|type|sls|select|where|sort|measure|ft|fl|iwr|irm|echo|pwd|gi|gp|gm|%|\?)$/i;
+const PS_KEYWORD = /^(?:try|catch|finally|foreach|if|else|elseif|for|while|break|continue)$/i;
+const PS_GIT = /^(?:log|status|diff|show|rev-parse|ls-files|describe|blame|shortlog)$/i;
+const PS_METHOD = /^(?:ToString|Trim|TrimEnd|TrimStart|Split|Contains|StartsWith|EndsWith|Replace|Substring|ToLower|ToUpper|IndexOf|GetType)$/i;
+const PS_OP = /^-(?:eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|is|isnot|and|or|xor|not|replace|split|join|f|ceq|cne|ieq|ine|imatch|cmatch|as)$/i;
+const PS_SORT_PARAM = /^-(?:Property|Descending|Unique|Top|Bottom|CaseSensitive|Culture|Stable|InputObject)(?::\S+)?$/i;
+const PS_PLAIN =/^(?:-\S*|\$[\w:.\[\]]*|\u0001|\d+|in|\[\w.\[\]]*\])$/;
+
+export function psReadOnly(command) {
+  let t = String(command);
+  const w = new RegExp(String.raw`^\s*(?:"?[^\s"]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:${PS_CMD})\b)[\w:]+(?:\s+(?!-)\w+)?)*)\s+-(?:${PS_CMD})\s+(["'])([\s\S]*)\2\s*$`, "i").exec(t);
+  if (w) t = w[2] === '"' ? w[3].replace(/\\"/g, '"') : w[3].replace(/''/g, "'");
+  if (t.length > 4096) return false;
+  const isPs = !!w || /(?:^|[\s;|{(])[A-Z][a-z]+-[A-Z][A-Za-z]+\b/.test(t);
+  let live = false;
+  t = t.replace(/'(?:[^']|'')*'|"(?:[^"`]|"")*"/g, (m) => { if (m[0] === '"' && /\$[({]/.test(m)) live = true; return "\u0001"; });
+  t = t.replace(/\b[1-6*]?>&[12]\b/g, " ").replace(/\b[1-6*]?>\s*\$null\b/gi, " ");
+  if (live || /['"`&<>]|::|\$[({]|@/.test(t)) return false;
+  for (const m of t.matchAll(/\.(\w+)\s*\(/g)) if (!PS_METHOD.test(m[1])) return false;
+  t = t.replace(/(\$\w+)\s*[-+*/%]?=(?!=)/g, "$1 ;"); // only a plain local variable; `$x.Prop =` and `$env:X =` stay unreadable
+  const queue = t.split(/[;|{}()\n\r]+/);
+  let seen = 0;
+  while (queue.length) {
+    const frag = queue.shift().trim();
+    if (!frag) continue;
+    const inM = /^(\$\S+)\s+in\s+([\s\S]+)$/i.exec(frag);
+    if (inM) { queue.unshift(inM[1], inM[2]); continue; }
+    seen++;
+    const words = frag.split(/\s+/), head = words[0];
+    if (PS_KEYWORD.test(head)) { if (words.length > 1 && !/^catch$/i.test(head)) return false; continue; }
+    // A variable, operator or literal statement is an expression; `$SHELL -c ...` or `"x.cmd" --yes` is a command call.
+    if (/^\$[\w:.\[\]]*$/.test(head) || PS_OP.test(head)) { if (words.length > 1 && !((/^\$/.test(head) ? PS_OP.test(words[1]) : true) && words.slice(1).every((x) => PS_PLAIN.test(x)))) return false; continue; }
+    if (/^git$/i.test(head)) { if (!PS_GIT.test(words[1] ?? "") || words.some((x) => /^--output/i.test(x))) return false; continue; }
+    if (/^node$/i.test(head)) { if (!(/^(?:--check|-c)$/.test(words[1] ?? "") ? words.length > 2 && words.slice(2).every((x) => !x.startsWith("-")) : /^(?:-v|--version)$/.test(words[1] ?? "") && words.length === 2)) return false; continue; }
+    if (!PS_CMDLET.test(head)) return false;
+    // `sort` is also a POSIX command that writes (-o) and execs (--compress-program): only PowerShell's own parameters pass.
+    if (/^sort$/i.test(head) && !(isPs && words.slice(1).every((x) => !/^-/.test(x) || PS_SORT_PARAM.test(x)))) return false;
+    if (/^(?:Invoke-(?:WebRequest|RestMethod)|iwr|irm)$/i.test(head)) {
+      for (let i = 1; i < words.length; i++) {
+        if (!words[i].startsWith("-")) continue;
+        const [name, inline] = words[i].slice(1).split(":");
+        if (/^[oibf]/i.test(name)) return false;
+        if (/^m/i.test(name) && !/^max/i.test(name) && !/^(?:get|head)$/i.test(inline ?? words[i + 1] ?? "")) return false;
+      }
+    }
+  }
+  return seen > 0;
+}
+
+// PowerShell takes en/em dash and horizontal bar as a parameter dash.
+const normDash = (c) => (typeof c === "string" ? c.replace(/[\u2013\u2014\u2015]/g, "-") : c);
+
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
+  command = normDash(command);
   nest++;
-  try { return withBudget(() => scopesOf(winNorm(command), protectedFor), null); } finally { nest--; }
+  try {
+    return withBudget(() => {
+      tick();
+      if (opencodeSelfPost(command)) return null;
+      if (typeof command === "string" && PS_GUARDED.some((r) => r.test(command))) return null; // raw text: a powershell -Command body is quoted
+      if (psReadOnly(command) && !neverGrantable(command) && !GUARDED_PATTERNS.some((r) => r.test(command))) return [];
+      return scopesOf(winNorm(command), protectedFor);
+    }, null);
+  } finally { nest--; }
 }
 
 function scopesOf(orig, protectedFor) {
@@ -2068,7 +2215,7 @@ function scopesOf(orig, protectedFor) {
 }
 
 export const isGuardedCommand = (command) =>
-  typeof command === "string" && (commandTooLong(command) || neverGrantable(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
+  typeof (command = normDash(command)) === "string" && (commandTooLong(command) || neverGrantable(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
 
 // ---------------------------------------------------------------------------
 // Grant store protection (Bash side; Write/Edit side is env-file-protection).
@@ -2102,14 +2249,32 @@ export function gateStoreReason(command) {
   // Backslashes are tried both ways: stripped (escape tricks like ~/\.aos/gate) and as path separators (C:\x\.aos\gate).
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
   const slashed = command.replace(/\\/g, "/");
-  if (slashed !== command && !STORE_REF.test(norm) && STORE_REF.test(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return gateStoreReason(slashed);
-  // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
-  const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
-  if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
+  const touched = (t) => {
+    // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
+    const cd = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(t);
+    return STORE_REF.test(t) || (!!cd && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cd[1]));
+  };
+  if (slashed !== command && !touched(norm) && !touched(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return null;
+  // Judge write targets, not the argument text (audit P1-11): quoted search patterns of
+  // grep/echo/... and print-only heredoc bodies that merely mention the store are stripped
+  // by commandView before the path is looked at again. Interpreter code (node -e, python
+  // heredocs) is kept fail-closed: a store path inside it blocks whatever the surrounding text is.
   const why = "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail/wc/stat with plain options, and a redirect to /dev/null, are allowed.";
+  if (!touched(norm)) { if (touched(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return gateStoreReason(slashed); return null; }
+  const view = commandView(command, true);
+  let judged = view.text;
+  for (const c of view.code) judged += "\n" + c.body;
+  const vnorm = judged.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/").replace(/\\/g, "/");
+  if (!touched(vnorm)) {
+    // A redirection whose target spells the store blocks even when blankData hid the target
+    // inside a quoted argument of a data head (`printf x > "$HOME/.aos/gate/y"`): taken from
+    // the quote-stripped raw text. Redirect targets, not argv text.
+    for (const m of norm.matchAll(REDIR)) if (STORE_REF.test(m[0]) && !/\/dev\/null|&\d/.test(m[0])) return why;
+    return null;
+  }
   // Command and process substitution run commands of their own.
-  if (/\$\(|\x60|<\(|>\(/.test(norm)) return why;
-  const plain = norm.replace(STORE_NULL_REDIR, "");
+  if (/\$\(|\x60|<\(|>\(/.test(vnorm)) return why;
+  const plain = vnorm.replace(STORE_NULL_REDIR, "");
   // Any other redirect or --output writes a file that may be the store.
   if (/>/.test(plain) || /--output\b/.test(plain)) return why;
   // No env-assignment prefix is stripped: `PATH=/tmp/x cat ...` or `LD_PRELOAD=...` is not a read-only head and blocks.
@@ -2120,9 +2285,37 @@ export function gateStoreReason(command) {
   return readOnly ? null : why;
 }
 
-// Unreadable stdin throws: safeMain denies (exit 2) instead of allowing with empty input.
-function readStdin() {
-  return readFileSync(0, "utf8");
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+export function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
 }
 
 // Block cooldown: the first block of a session writes <gate dir>/<session key>.block. For 10
@@ -2546,7 +2739,7 @@ export function gateLog(key, line) {
   try {
     mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
     const f = join(gateDir(), `${key}.log`);
-    writeNoHang(f, `${new Date().toISOString()} ${String(line).slice(0, 400).replace(/[\r\n]+/g, " ")}\n`, FS.O_APPEND);
+    writeNoHang(f, `${new Date().toISOString()} ${maskSecrets(line).slice(0, 400).replace(/[\r\n]+/g, " ")}\n`, FS.O_APPEND);
     if (statSync(f).size > LOG_MAX) { const t = readSmallRegular(f, 16 << 20, true); writeNoHang(f, typeof t === "string" ? t.split("\n").filter(Boolean).slice(-LOG_KEEP).join("\n") + "\n" : "", FS.O_TRUNC); }
   } catch { /* logging never blocks */ }
 }
@@ -2592,8 +2785,7 @@ export function claudeGogateCommands(transcriptPath) {
 }
 
 const WEAK_HINT = "it came from a slash command, which Claude Code stores without human-origin data; type the plain form as the whole message instead, e.g. `gogate grant merge 2h` or `gogate off`";
-const OC_HINT = "OpenCode accepts only the plain form (`gogate grant merge 2h`) typed as the whole message";
-export const OPENCODE_MAX_GRANT_MS = 2 * 3600e3;
+const OC_HINT = "OpenCode accepts only the plain form (`gogate off`, `gogate grant merge 2h`) typed as the whole message";
 
 // Resolves mode and active grants for a session, verified against `cmds` (gogate commands
 // of the session, oldest first, each marked `strict` when it has human-origin evidence).
@@ -2603,16 +2795,17 @@ export const OPENCODE_MAX_GRANT_MS = 2 * 3600e3;
 //   needs no proof), or a strict `soft`/`off`. A non-strict soft/off is ignored and leaves
 //   the previous mode. soft/off also need their own store entry (written by go-grant), else hard.
 // - OpenCode has no human-origin signal at all (a prompt posted through the HTTP API is a
-//   plain text part), so there `off` is never honoured and grants last at most 2h.
+//   plain text part), so there only the plain form counts (and the known agent routes that
+//   post a prompt are blocked); `off` and grants behave like on Claude.
 // - Grants need a strict entry after the last hard; `until` is clamped to the typed duration.
 export function effectiveGate(key, { source, cmds, opencode = false }, now = Date.now()) {
   const st = readState(key);
   const state = st && typeof st === "object" ? st : {};
   const rejected = [];
-  const usable = (c) => c.parsed.cmd === "hard" || (c.strict && !(opencode && c.parsed.cmd === "off"));
+  const usable = (c) => c.parsed.cmd === "hard" || c.strict;
   for (const c of cmds) {
     if (["soft", "off"].includes(c.parsed.cmd) && !usable(c)) {
-      rejected.push(opencode && c.strict ? "mode off is never honoured on OpenCode" : `mode ${c.parsed.cmd} ignored: ${opencode ? OC_HINT : WEAK_HINT}`);
+      rejected.push(`mode ${c.parsed.cmd} ignored: ${opencode ? OC_HINT : WEAK_HINT}`);
     }
   }
   const lastMode = [...cmds].reverse().find((c) => ["hard", "soft", "off"].includes(c.parsed.cmd) && usable(c));
@@ -2647,12 +2840,12 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
     if (cmds.indexOf(c) < lastHard) { rejected.push(`grant ${g.scope} revoked by a later hard`); continue; }
     if (revokeTs && !(Number.isFinite(c.ts) && c.ts > revokeTs)) { rejected.push(`grant ${g.scope} revoked from the trail UI`); continue; }
     if (c.parsed.session && g.session_key !== key) { rejected.push(`session grant ${g.scope} belongs to another session`); continue; }
-    const until = Math.min(Date.parse(g.until), c.ts + (opencode ? Math.min(c.parsed.ms, OPENCODE_MAX_GRANT_MS) : c.parsed.ms));
+    const until = Math.min(Date.parse(g.until), c.ts + c.parsed.ms);
     if (!(now < until)) continue; // expired
     grants.push({ scope: g.scope, until, session: !!c.parsed.session });
   }
   const hardTs = lastHard >= 0 ? (Number.isFinite(cmds[lastHard].ts) ? cmds[lastHard].ts : Infinity) : -Infinity;
-  grants.push(...clickGrants(key, now, { opencode, hardTs, revokeTs }));
+  grants.push(...clickGrants(key, now, { opencode, hardTs, revokeTs }), ...localClickGrants(key, now, { opencode, hardTs, revokeTs }));
   return { mode, grants, rejected };
 }
 
@@ -3086,11 +3279,90 @@ function clickGrants(key, now, { opencode, hardTs, revokeTs }) {
       if (p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS)) continue;
       const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
       if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
-      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
+      const until = Math.min(p.expires_at, p.issued_at + p.ms);
       if (!(now < until) || !receiptValid(rec, cred, now)) continue;
       for (const scope of parsed.scopes) out.push({ scope, until, session: false });
     }
   } catch { /* fail closed: no click grants */ }
+  return out;
+}
+
+// Local map clicks: the agenttrail map server writes <go dir>/<key>.local-<id>.json = {via:"map-click", payload} after a plain
+// click behind its page token and CSRF/origin guards (owner decision: no WebAuthn). Same payload shape, caps, single use and
+// revoke/hard handling as click receipts; the file must be owned by this uid with mode 0600. Every failure means "not covered".
+function loadLocalReceipt(key, name) {
+  const txt = readOwnedPrivate(join(goDir(), name), CLICK_FILE_MAX);
+  if (!txt) return null;
+  try {
+    const r = JSON.parse(txt);
+    const p = r?.payload;
+    if (r?.via !== "map-click" || !clickPayloadOk(p) || p.session_key !== key || name !== (p.kind === "grant" ? `${key}.local-g-${p.request_id}.json` : `${key}.local-${p.request_id}.json`)) return null;
+    return p;
+  } catch { return null; }
+}
+
+// A map click never approves release-class scopes (destructive, push to main, publish); a grant is capped like any other (MAX_GRANT_MS).
+const LOCAL_NEVER = new Set(["destructive", "push-main", "publish"]);
+const LOCAL_REQUEST_MAX_MS = 10 * 60e3;
+const localTimeOk = (p, now) => p.issued_at <= now && now < p.expires_at && p.expires_at - p.issued_at <= (p.kind === "go" ? TOKEN_TTL_MS : MAX_GRANT_MS);
+const localNever = (p, r) => [...(p.scopes ?? []), ...(r.scopes ?? [])].some((s) => LOCAL_NEVER.has(s));
+
+// A receipt must answer a request the gate recorded: same id (a go receipt also the same command hash), not a hard block,
+// recorded no later than the receipt and at most 10 min before it; a go receipt is also refused once the request is 10 min old.
+function recordedRequest(key, p, now) {
+  try {
+    if (!p) return null;
+    const txt = readSmallRegular(join(gateDir(), `${key}.req.json`), 64 * 1024);
+    if (!txt) return null;
+    const a = JSON.parse(txt);
+    const r = (Array.isArray(a) ? a : [a]).find((x) => x && x.id === p.request_id && x.hard !== true && (p.kind === "grant" || x.cmd_hash === p.cmd_hash));
+    const ts = Date.parse(r?.ts);
+    if (!r || !Number.isFinite(ts) || ts > p.issued_at || p.issued_at - ts > LOCAL_REQUEST_MAX_MS || (p.kind === "go" && now - ts > LOCAL_REQUEST_MAX_MS)) return null;
+    return r;
+  } catch { return null; }
+}
+
+// A later typed `hard` in the transcript cancels receipts issued before it.
+function lastHardTs(transcriptPath) {
+  try {
+    const cmds = claudeGogateCommands(transcriptPath);
+    const i = cmds.findLastIndex((c) => c.parsed.cmd === "hard");
+    return i < 0 ? -Infinity : Number.isFinite(cmds[i].ts) ? cmds[i].ts : Infinity;
+  } catch { return Infinity; }
+}
+
+export function localClickCovers(command, key, { now = Date.now(), consume = true, hardTs = -Infinity } = {}) {
+  try {
+    if (typeof command !== "string" || !command.trim() || typeof key !== "string" || !CLICK_KEY.test(key) || !clickEligible(command)) return false;
+    if ((inferredReleaseScopes(command) ?? []).some((s) => LOCAL_NEVER.has(s))) return false;
+    const want = textHash(command);
+    const revokeTs = readRevokeTs(key, now);
+    for (const name of clickNames(`${key}.local-`)) {
+      if (name.startsWith(`${key}.local-g-`)) continue;
+      const p = loadLocalReceipt(key, name);
+      const r = p && p.kind === "go" && p.cmd_hash === want ? recordedRequest(key, p, now) : null;
+      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !localTimeOk(p, now) || localNever(p, r) || clickSpent(key, p.request_id)) continue;
+      if (!consume) return true;
+      if (claimClick(key, p.request_id)) return true;
+    }
+  } catch { /* fail closed */ }
+  return false;
+}
+
+function localClickGrants(key, now, { opencode, hardTs, revokeTs }) {
+  const out = [];
+  try {
+    if (typeof key !== "string" || !CLICK_KEY.test(key)) return out;
+    for (const name of clickNames(`${key}.local-g-`)) {
+      const p = loadLocalReceipt(key, name);
+      const r = p && p.kind === "grant" && p.cmd_hash === "" && Array.isArray(p.scopes) && p.scopes.length ? recordedRequest(key, p, now) : null;
+      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS) || !localTimeOk(p, now) || localNever(p, r)) continue;
+      const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
+      if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
+      const until = Math.min(p.expires_at, p.issued_at + p.ms);
+      if (now < until) for (const scope of parsed.scopes) out.push({ scope, until, session: false });
+    }
+  } catch { /* fail closed */ }
   return out;
 }
 
@@ -3393,17 +3665,19 @@ export function profileAllows(command) {
   return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !(indirectReleaseRisk(command) || contentReleaseRisk(command));
 }
 
-function main() {
+async function main() {
+  // Fail closed: no complete payload before the timeout or a stdin error is denied like unparseable input.
+  const rawInput = await readStdinBounded(2000);
   hookDeadline = Date.now() + SCAN_MS;
-  const rawInput = readStdin();
   // Opt-in payload capture for harness debugging; never on by default, never fatal.
   const dbg = process.env.AOS_GATE_DEBUG;
   if (dbg && isAbsolute(dbg)) {
-    try { appendFileSync(dbg, `${maskSecrets(rawInput.replace(/\r?\n/g, " "))}\n`); } catch { /* debug only */ }
+    try { appendFileSync(dbg, `${maskSecrets((rawInput ?? "").replace(/\r?\n/g, " "))}\n`); } catch { /* debug only */ }
   }
   let input = {};
-  if (rawInput.trim()) {
+  if (rawInput === null || rawInput.trim()) {
     try {
+      if (rawInput === null) throw new Error("no complete payload on stdin (timeout or read error)");
       input = JSON.parse(rawInput);
     } catch (e) {
       // Harness unknown: deny JSON on stdout (Antigravity) plus stderr + exit 2 (Claude Code/Codex) closes every path.
@@ -3526,7 +3800,7 @@ function main() {
   if (key && !cooling && !tooLong && !codexOpaque) {
     const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
-    if (eff.mode === "off") {
+    if (eff.mode === "off" && !neverGrantable(command)) {
       gateLog(key, `off: allowed ${JSON.stringify(command.slice(0, 200))}`);
       return respond(isAgy, true, "", command);
     }
@@ -3541,7 +3815,7 @@ function main() {
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
   // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
-  if (key && !tooLong && !cooling && !codexOpaque && clickReceiptCovers(command, key)) {
+  if (key && !tooLong && !cooling && !codexOpaque && (clickReceiptCovers(command, key) || localClickCovers(command, key, { hardTs: lastHardTs(transcriptPath) }))) {
     gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
     return respond(isAgy, true, "", command);
   }
@@ -3549,9 +3823,9 @@ function main() {
 }
 
 // Never fail open: any exception (bad input shape, unreadable state, a bug) denies.
-function safeMain() {
+async function safeMain() {
   try {
-    main();
+    await main();
   } catch (e) {
     const reason = `go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}`;
     if (codexMode) codexDeny(`[MECHANICAL GO-GATE BLOCKED] ${reason}`);

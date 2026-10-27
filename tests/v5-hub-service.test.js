@@ -19,7 +19,7 @@ const realAosRoot = ROOT;
 function mkCtx(home, extra = {}) {
     const calls = [];
     const run = async (cmd, args) => { calls.push([cmd, ...args]); return { ok: true, status: 0, stdout: '', stderr: '' }; };
-    return { calls, ctx: { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: NODE, aosRoot: realAosRoot, uid: 501, sleep: async () => {}, hubPort: 1, ...extra } };
+    return { calls, ctx: { home, run, serviceRunner: true, dryRun: false, platform: 'darwin', log: () => {}, nodePath: NODE, aosRoot: realAosRoot, uid: 501, sleep: async () => {}, hubPort: 1, ...extra } };
 }
 
 describe('service definitions', () => {
@@ -237,5 +237,41 @@ describe('beta.2 Windows hub migration through the menu', () => {
         assert.match(m.out.join(''), /✔ AOS Hub/);
         assert.doesNotMatch(m.out.join(''), /Optional, not installed: .*hub/);
         assertMigrated(m);
+    });
+});
+
+describe('uninstall after the hub bin is gone', () => {
+    for (const platform of ['linux', 'darwin']) {
+        test(`${platform}: present() sees the AOS unit without the bin and uninstall removes it`, async () => {
+            const home = tmp();
+            const { ctx } = mkCtx(home, { platform });
+            await pkg.install(ctx);
+            const gone = { ...ctx, aosRoot: path.join(home, 'no-such-root') };
+            assert.equal(pkg.detect(gone), false);
+            assert.equal(pkg.present(gone), true);
+            await pkg.uninstall(gone);
+            assert.equal(pkg.present(gone), false);
+            const left = platform === 'linux' ? path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.hub.service') : path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.hub.plist');
+            assert.ok(!fs.existsSync(left));
+        });
+    }
+
+    test('uninstall removes the hub runtime state files', async () => {
+        const home = tmp();
+        const { ctx } = mkCtx(home, { platform: 'linux' });
+        await pkg.install(ctx);
+        const state = [['.aos', 'hub', 'hub.json'], ['.aos', 'status.json'], ['.aos', 'endpoints.json']].map((p) => path.join(home, ...p));
+        fs.mkdirSync(path.join(home, '.aos', 'hub'), { recursive: true });
+        for (const f of state) fs.writeFileSync(f, '{}');
+        await pkg.uninstall(ctx);
+        for (const f of state) assert.ok(!fs.existsSync(f), f);
+    });
+
+    test('a foreign file at the unit path is not ours', () => {
+        const home = tmp();
+        const f = path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.hub.service');
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        fs.writeFileSync(f, '[Service]\nExecStart=/bin/true # my-aos-hub.mjs\n');
+        assert.equal(pkg.present({ home, platform: 'linux' }), false);
     });
 });

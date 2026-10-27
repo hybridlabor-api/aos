@@ -1,7 +1,7 @@
 ---
 type: concept
 title: Hooks & Safety
-description: PreToolUse and lifecycle hooks in bdb-dev-optimized-agent-skills — go-gate blocks outward-facing commands without a GO, graph-gate enforces the startcycle-graph contract, memb-inject loads project context, and trail-relay streams events to agenttrail.
+description: PreToolUse and lifecycle hooks in bdb-dev-optimized-agent-skills — go-gate blocks outward-facing commands without a GO, graph-gate enforces the fabric-graph contract, memb-inject loads project context, and trail-relay streams events to agenttrail.
 tags: [hooks, safety, go-gate, release-policy, pretooluse, claude-code]
 verified:
   - by: openwiki/0.5.0
@@ -20,7 +20,7 @@ generated: { by: "codex", at: "2026-09-30T02:05:01.845Z" }
 
 # Hooks & Safety
 
-AOS registers several hooks in `.claude/settings.json` that run transparently on every tool call. They enforce the release policy, pipeline contract, memory injection, and audit trail.
+AOS registers several hooks in `~/.claude/settings.json` (installed from the template `config/claude-hooks.json`) that run transparently on every tool call. They enforce the release policy, pipeline contract, memory injection, and audit trail.
 
 ## go-gate — outward-facing command guard
 
@@ -44,11 +44,11 @@ Blocks a fixed set of hard-to-reverse or outward-facing commands unless the user
 
 **Fails open:** if the hook cannot read its input or the transcript, it exits 0 silently. A wedged session is the worse failure.
 
-## graph-gate — startcycle-graph contract enforcer
+## graph-gate — fabric-graph contract enforcer
 
 `.claude/hooks/graph-gate.mjs` · registered as `PreToolUse` (and/or `Stop`)
 
-Enforces the `startcycle-graph` pipeline contract during a dispatcher run. Prevents agents from routing outside the declared graph contract in `.agents/graph.md`.
+Enforces the `fabric-graph` pipeline contract during a dispatcher run. Prevents agents from routing outside the declared graph contract in `.agents/graph.md`.
 
 ## memb-inject — context injection
 

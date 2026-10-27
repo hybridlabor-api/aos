@@ -1,10 +1,9 @@
 ---
 name: pb-crew-call-sheet
 description: >-
-  Build a crew call sheet and a load-in / load-out plan for one show day from
-  your event tracker or brief and your crew list, and send it to the crew only
-  after your GO. Use for "call sheet", "crew call times", "load-in plan",
-  "load-out schedule".
+  Build a crew call sheet and load-in / load-out plan for one show day from
+  your event tracker or brief and crew list; sent to the crew only after
+  your GO.
 category: media-eventtech
 kind: playbook
 trigger: ["call sheet", "crew call times", "load-in plan"]
@@ -23,6 +22,18 @@ est_time: 10-20 min
 
 # Crew call sheet
 What you get: a call sheet and a load-in / load-out plan for one show day.
+
+## Plan first
+
+The show day is planned in the `show-control` template; the call sheet derives from it:
+
+```bash
+aos-plan-canvas new show-control <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Inputs
 - The `tracker.csv` from pb-event-tracker, or an event brief — a text or document file

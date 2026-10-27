@@ -1,10 +1,9 @@
 ---
 name: pb-ci-fix
 description: >-
-  Fix red CI or set up GitHub Actions end to end: read the failing run, find
-  the root cause, patch and validate the workflow, push only after GO, and
-  watch the run go green on the pushed commit. Use for "CI is red", "the
-  build fails on GitHub", "set up CI for this repo", "fix the workflow".
+  Fix red CI or set up GitHub Actions: read the failing run, find the
+  root cause, patch and validate the workflow, push after GO, watch the
+  run go green.
 category: engineering-method
 kind: playbook
 trigger: ["CI is red", "set up CI", "fix the GitHub Actions run"]
@@ -23,6 +22,18 @@ est_time: 15-45 min
 
 # Fix red CI or set up GitHub Actions
 What you get: a green GitHub Actions run on a pushed commit, with the cause and the fix written down.
+
+## Plan first
+
+Write the failing run into the `bugfix` template before patching the workflow:
+
+```bash
+aos-plan-canvas new bugfix <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Inputs
 - repo — the current directory, or the one the user names

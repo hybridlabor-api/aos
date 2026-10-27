@@ -24,7 +24,7 @@ chk "no memb-mcp venv created" "[ ! -d $F/.gemini/config/mcps/memb-mcp/.venv ]"
 echo "── fresh install ──"
 run
 chk "manifest written"        "[ -f $F/.agents/.bdb-manifest.json ]"
-chk "skills synced"           "[ -d $F/.claude/skills/startcycle ]"
+chk "skills synced"           "[ -d $F/.claude/skills/fabric ]"
 chk "memb-inject delivered"   "[ -f $F/.claude/hooks/memb-inject.mjs ]"
 chk "hook is current (v2)"    "grep -q 'aos-hook-version: 2' $F/.claude/hooks/memb-inject.mjs"
 chk "hook wired"              "grep -q 'memb-inject' $F/.claude/settings.json"
@@ -36,13 +36,13 @@ chk "no .roo/skills"          "[ ! -d $F/.roo/skills ]"
 
 echo "── update refreshes what a fresh install would ──"
 echo '// aos-hook-version: 1' > $F/.claude/hooks/memb-inject.mjs
-echo 'STALE' > $F/.claude/skills/startcycle/SKILL.md
+echo 'STALE' > $F/.claude/skills/fabric/SKILL.md
 rm -rf $F/.claude/workflows
 run
 chk "stale hook replaced"     "grep -q 'aos-hook-version: 2' $F/.claude/hooks/memb-inject.mjs"
 chk "workflows restored"      "[ -d $F/.claude/workflows ]"
-chk "stale skill replaced"    "! grep -q 'STALE' $F/.claude/skills/startcycle/SKILL.md"
-chk "and backed up"           "ls $F/.claude/skills/startcycle/SKILL.md.*.bak >/dev/null 2>&1"
+chk "stale skill replaced"    "! grep -q 'STALE' $F/.claude/skills/fabric/SKILL.md"
+chk "and backed up"           "ls $F/.claude/skills/fabric/SKILL.md.*.bak >/dev/null 2>&1"
 
 echo "── the user's own files survive ──"
 mkdir -p $F/.claude/skills/my-own && echo 'MINE' > $F/.claude/skills/my-own/SKILL.md

@@ -9,16 +9,40 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import crypto from 'node:crypto'
 import { serveShared } from '../lib/shared-static.mjs'
+import { announceTrail } from '../lib/endpoints-lite.mjs'
+import { injectEmbed } from '../../plan-canvas/scripts/lib/loopback-guard.js'
 import { codeStampOf, watchCodeStamp } from '../lib/code-stamp.mjs'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
-import { parsePlan, lintPlan } from '../lib/plan.mjs'
+import { parsePlan, lintPlan, tickTask } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
 import { enrolRefusal, createEnrolCode } from '../lib/click.mjs'
+import { embedAncestors, securityHeaders, csrfToken, hostOk as strictHostOk, corsRead, loadCorsOrigins, originOk, sameOriginFetchSite, contentTypeOk, csrfOk } from '../lib/httpguard.mjs'
+import { sideModel, publicModel, decide, DecisionError } from '../lib/sidepanel.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ---------- CLI ----------
 const argv = process.argv.slice(2)
+// Answered before any flag is parsed: without this, `--help` was taken as a repo path and the daemon started.
+if (argv[0] === 'help' || argv.includes('--help') || argv.includes('-h')) {
+  process.stdout.write(`aos-trail - AgentTrail live map of plans and agent activity
+Usage:
+  aos-trail [repo-path] [--port N] [--open|--no-open]   start the map daemon for a repo (side effects)
+  aos-trail init [repo-path] [--hooks-only] [-y]        install the hooks for a repo
+  aos-trail up                                          start the daemons of all known repos
+  aos-trail autostart [--remove] [--print]              install, remove or print the autostart entry
+  aos-trail hook                                        relay a harness hook payload from stdin
+  aos-trail enroll [--replace] [--no-open]              one-time GO-click enrolment (terminal only)
+  aos-trail emit <kind> [--agent A] [--session S] [--name N] [--detail D] [--task T] [--status S] [--file F] [--message M] [--plan P] [--cwd DIR]
+  aos-trail emit --json -                               read one event from stdin
+  aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]
+  aos-trail ask "<question>" [--timeout 10s|30m|2h|N]   block until the human answers
+  aos-trail --ensure [--cwd DIR] [--plan FILE] [--session ID] [--json]
+Exit: emit and --ensure always 0; tick and enroll 1 on failure; ask 0 = go, 1 = deny or timeout.
+Env: AGENTTRAIL_PORT (default 5350), AOS_NO_OPEN=1. Details: aos help aos-trail
+`, () => process.exit(0))
+  await new Promise(() => {})
+}
 let cmd = null
 let repo = process.cwd()
 let port = probePorts()[0]
@@ -26,8 +50,12 @@ const spawningPaths = new Set()
 let openBrowser = process.stdout.isTTY && process.env.AOS_NO_OPEN !== '1' ? true : false
 let noOpen = process.env.AOS_NO_OPEN === '1'
 let hooksOnly = false
+let supervised = process.env.AOS_SUPERVISED === '1' // a supervised service never idle-exits: its supervisor restarts it anyway
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_CONTROL_BODY_BYTES = 4 * 1024
+// Side panel: one random page token per process, delivered only in the same-origin HTML.
+const SIDE_TOKEN = csrfToken()
+const sideDismissed = new Set()
 let assumeYes = false
 let removeFlag = false
 let printFlag = false
@@ -62,6 +90,8 @@ for (let i = 0; i < argv.length; i++) {
   // AOS patch: ask engine CLI — asks the human a question via the map
   else if (a === 'ask') cmd = 'ask'
   else if (a === 'emit') cmd = 'emit'
+  // AOS patch: `tick <plan-file> <task-id> [--doing|--done|--todo]` — set one checklist mark
+  else if (a === 'tick') cmd = 'tick'
   else if (a === 'enroll' && cmd === null) cmd = 'enroll'
   else if (a === '--replace') replaceFlag = true
   else if (a === '--ensure') ensureMode = true
@@ -86,6 +116,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--remove') removeFlag = true
   else if (a === '--print') printFlag = true
   else if (a === '--hooks-only') hooksOnly = true
+  else if (a === '--supervised') supervised = true
   // AOS patch: --plan <path> and --agent <name> flags
   else if (a === '--plan') planArg = argv[++i]
   else if (a === '--agent') agentArg = argv[++i]
@@ -173,6 +204,26 @@ if (cmd === 'hook') { await relayHook(); process.exit(0) }
 if (cmd === 'enroll') { process.exit(await enrollFlow()) }
 // AOS v2: report one event to the hub. Always exits 0 — a reporting hook never fails a tool call.
 if (cmd === 'emit') { await emitFlow(); process.exit(0) }
+
+// AOS patch: tick — `tick <plan-file> <task-id> [--doing|--done|--todo]`. Pure file
+// edit, no daemon needed; the map reloads the plan (fs watcher) and the node updates
+// on its own. Default --done keeps the original behaviour.
+let tickPlanFile = null
+let tickTaskId = null
+let tickMode = 'done'
+if (cmd === 'tick') {
+  const rest = argv.slice(argv.indexOf('tick') + 1)
+  const pos = rest.filter((a) => !a.startsWith('-'))
+  for (const a of rest) if (['--doing', '--done', '--todo'].includes(a)) tickMode = a.slice(2)
+  tickPlanFile = pos[0] ? path.resolve(pos[0]) : null
+  tickTaskId = pos[1] || null
+  if (!tickPlanFile || !tickTaskId) { console.error('usage: aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]'); process.exit(1) }
+  const text = fs.readFileSync(tickPlanFile, 'utf8')
+  const r = tickTask(text, tickTaskId, tickMode)
+  if (!r.changed) { console.error(`tick: task id "${tickTaskId}" not found, already in that state, or ambiguous in ${tickPlanFile}`); process.exit(1) }
+  fs.writeFileSync(tickPlanFile, r.text)
+  process.exit(0)
+}
 // AOS patch: ask engine CLI — blocks until the map answers; exit 0 = go, 1 = deny/timeout
 if (cmd === 'ask') { process.exit(await askFlow()) }
 
@@ -673,7 +724,16 @@ function expireAsks() {
   }
   if (changed) { stateDirty = true; broadcastTick() }
 }
-setInterval(expireAsks, 1000).unref()
+// event-driven: one timer aimed at the next pending deadline instead of a 1s tick
+let askTimer = null
+function scheduleAskExpiry() {
+  clearTimeout(askTimer)
+  const next = Math.min(...asks.filter(a => a.status === 'pending').map(a => a.expiryAt))
+  if (!Number.isFinite(next)) return
+  askTimer = setTimeout(() => { expireAsks(); scheduleAskExpiry() }, Math.min(Math.max(next - Date.now(), 0) + 5, 2 ** 31 - 1))
+  askTimer.unref()
+}
+scheduleAskExpiry()
 
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
 const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv|\.build|\.pytest_cache|\.ruff_cache|\.cache|\.DS_Store)(\/|$)/
@@ -790,9 +850,11 @@ function send(obj) {
   const data = `data: ${JSON.stringify(obj)}\n\n`
   for (const res of clients) res.write(data)
 }
-function broadcast() { send(model()) }
+// no viewer: skip the build; treeDirty stays set, so the next /events connect rebuilds the tree
+function broadcast() { if (clients.size) send(model()) }
 // activity ticks carry only what moved — the 600KB tree stays home
 function broadcastTick() {
+  if (!clients.size) return
   send({ partial: true, runs: liveRuns(), activity, recentActivity, touched: { ...compTouched }, compRecent, handoffs, asks, hotFiles: hotFiles(), now: Date.now() }) // AOS patch: asks ride along so open questions update live
 }
 
@@ -800,7 +862,7 @@ function broadcastTick() {
 let planDebounce = null
 refreshLanes()
 reloadPlans()
-setInterval(() => { if (refreshLanes()) { reloadPlans(); broadcast() } }, 30000).unref()
+setInterval(() => { if (clients.size && refreshLanes()) { reloadPlans(); broadcast() } }, 30000).unref() // lanes only matter to a viewer; a client connect refreshes them
 let lastActivityPush = 0
 function throttleBroadcast() {
   const now = Date.now()
@@ -825,7 +887,7 @@ async function discoverBoards() {
 }
 discoverBoards()
 for (const t of [3000, 8000]) setTimeout(discoverBoards, t).unref() // cold-start: siblings may not be up yet
-setInterval(discoverBoards, 30000).unref()
+setInterval(() => { if (clients.size) discoverBoards() }, 30000).unref()
 
 // ---------- fleet (the zoomed-out altitude) ----------
 function summaryModel() {
@@ -886,10 +948,24 @@ watchCodeStamp({
   stamp: ownStamp,
   server: () => server, // declared below; read only when a restart happens
 })
+const CORS_EXTRA = loadCorsOrigins()
 const server = http.createServer((req, res) => {
+  // DNS-rebinding guard for every route; the click routes keep their stricter check further down.
+  if (!strictHostOk(req.headers.host, port)) { res.writeHead(403).end(); return }
+  lastSeen = Date.now()
   const u = new URL(req.url, 'http://x')
+  if ((u.pathname === '/model' || u.pathname === '/events') && (req.method === 'OPTIONS' || req.method === 'GET') && corsRead(req, res, CORS_EXTRA)) return
   if (u.pathname === '/') {
-    res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
+    // The page builds markup with style attributes and data: icons; scripts stay 'self' only.
+    securityHeaders(res, process.env, ["style-src 'self' 'unsafe-inline'", "img-src 'self' data:"])
+    const html = injectEmbed(fs.readFileSync(indexPath, 'utf8').replace('__TRAIL_SIDE_TOKEN__', SIDE_TOKEN), embedAncestors(), 'ao-embed-bridge.js')
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html)
+  } else if (req.method === 'GET' && u.pathname === '/ao-embed-bridge.js') {
+    const bridgeFile = path.join(__dirname, '..', 'public', 'hub', 'ao-embed-bridge.js')
+    let data
+    try { data = fs.readFileSync(bridgeFile) } catch { res.writeHead(404).end(); return }
+    securityHeaders(res)
+    res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8' }).end(data)
   } else if (req.method === 'GET' && u.pathname.startsWith('/shared/')) {
     serveShared(u.pathname, res)
   } else if (u.pathname.startsWith('/production_artifacts/')) {
@@ -1018,18 +1094,40 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(summaryModel()))
   } else if (u.pathname === '/fleet') {
     fleetModel().then(d => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(d)))
-  } else if (u.pathname === '/model') {
+  } else if (u.pathname === '/model' && req.method === 'GET') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(model()))
-  } else if (u.pathname === '/events') {
+  } else if (u.pathname === '/events' && req.method === 'GET') {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
     res.write(`data: ${JSON.stringify(model())}\n\n`)
     clients.add(res)
-    req.on('close', () => clients.delete(res))
+    req.on('close', () => { clients.delete(res); lastSeen = Date.now() })
+    if (refreshLanes()) { reloadPlans(); broadcast() }
+    discoverBoards()
   } else if (u.pathname === '/hook' && req.method === 'POST') {
     readCapped(req, res, body => {
       try { if (handleHookEvent(JSON.parse(body || '{}'))) hookTick() } catch {}
       res.writeHead(200).end()
     }, MAX_CONTROL_BODY_BYTES)
+  } else if (u.pathname === '/side/model' && req.method === 'GET') {
+    securityHeaders(res)
+    if (!strictHostOk(req.headers.host, port)) { res.writeHead(421).end(); return }
+    if (!sameOriginFetchSite(req.headers)) { res.writeHead(403).end(); return }
+    sideModel({ dismissed: sideDismissed }).then(m => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(publicModel(m))))
+      .catch(() => res.writeHead(500, { 'content-type': 'application/json' }).end('{"error":"internal"}'))
+  } else if (u.pathname === '/side/decision' && req.method === 'POST') {
+    // Plain click, no WebAuthn. Order of checks: Host, Origin, fetch site, content type, page token.
+    const reply = (st, o) => res.writeHead(st, { 'content-type': 'application/json' }).end(JSON.stringify(o))
+    if (!strictHostOk(req.headers.host, port, { click: true })) { res.writeHead(421).end(); return }
+    if (!originOk(req.headers.origin, port)) { reply(403, { error: 'origin' }); return }
+    if (!sameOriginFetchSite(req.headers)) { reply(403, { error: 'fetch-site' }); return }
+    if (!contentTypeOk(req)) { reply(415, { error: 'content-type' }); return }
+    if (!csrfOk(req.headers, SIDE_TOKEN)) { reply(403, { error: 'csrf' }); return }
+    readCapped(req, res, body => {
+      let j = null
+      try { j = JSON.parse(body || '{}') } catch { reply(400, { error: 'bad-body' }); return }
+      decide(j, { dismissed: sideDismissed }).then(r => { broadcastTick(); reply(200, r) })
+        .catch(e => e instanceof DecisionError ? reply(e.status, { error: e.code }) : reply(500, { error: 'internal' }))
+    })
   } else if (u.pathname === '/ask' && req.method === 'POST') {
     // AOS patch: ask engine — register a question the human answers on the map.
     // Pure relay: an answer here never runs anything (go-gate keeps sole authority).
@@ -1045,6 +1143,7 @@ const server = http.createServer((req, res) => {
       const now = Date.now()
       const ask = { id: crypto.randomUUID(), question: q, askedBy, askedAt: now, expiryAt: now + timeoutMs, status: 'pending', decidedAt: null, by: null, expired: false }
       asks.push(ask)
+      scheduleAskExpiry()
       if (asks.length > 100) { const i = asks.findIndex(x => x.status !== 'pending'); asks.splice(i === -1 ? 0 : i, 1) } // cap: drop oldest resolved
       stateDirty = true
       broadcastTick()
@@ -1060,7 +1159,7 @@ const server = http.createServer((req, res) => {
   } else if (u.pathname === '/answer' && req.method === 'POST') {
     // AOS patch: ask engine, CSRF-hard. Requires exact `content-type: application/json`
     // (foreign form posts die here; cross-origin fetches die in the preflight this
-    // server never answers — no OPTIONS handler, no Access-Control-* headers anywhere)
+    // route never answers — Access-Control-* exists only on the read-only GET /model and /events)
     // and, when an `origin` header is present, it must be the map's own
     // http://localhost:<port> / http://127.0.0.1:<port>. Non-browser local callers
     // (AO, scripts) legitimately send no Origin and stay allowed. Loopback-only bind.
@@ -1120,6 +1219,25 @@ function hookTick() {
   const now = Date.now()
   if (now - lastHookTick > 300) { lastHookTick = now; broadcastTick() }
 }
+// On-demand map: exit once nobody has asked for it (no request, no viewer, no open question) for the idle window.
+// ensure/up restart it on the next session. AOS_TRAIL_IDLE_MS=0|off disables; test sandboxes get a short window.
+let lastSeen = Date.now()
+function idleMs() {
+  const raw = String(process.env.AOS_TRAIL_IDLE_MS || '').trim().toLowerCase()
+  if (raw === '0' || raw === 'off') return 0
+  const n = Number.parseInt(raw, 10)
+  return n > 0 ? n : process.env.AOS_TEST_SANDBOX ? 60e3 : 30 * 60e3
+}
+function armIdleExit() {
+  const ms = idleMs()
+  if (supervised || !ms) return
+  const t = setInterval(() => {
+    const repoGone = !fs.existsSync(repo) // a removed worktree leaves nothing to serve
+    if (!repoGone && (clients.size || asks.some(a => a.status === 'pending') || Date.now() - lastSeen < ms)) return
+    stateDirty = true; saveState(); process.exit(0)
+  }, Math.min(ms, 60e3))
+  t.unref()
+}
 function listenWithFallback(tries = 20) {
   server.once('error', e => {
     if (e.code === 'EADDRINUSE' && tries > 0) { port += 1; listenWithFallback(tries - 1) }
@@ -1142,7 +1260,9 @@ async function firstRunFlow() {
   }
 }
 function onListen() {
+  announceTrail({ repo, port })
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
+  armIdleExit()
   // AOS patch: when --plan is given, show a different startup message
   if (!planText) {
     if (planArg) {

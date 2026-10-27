@@ -65,7 +65,7 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 |---|---|
 | "The code change was small, so I skipped updating OpenWiki docs." | Every state change must be reflected in the relevant system records. |
 | "The ingest script exited without an error, so the memB index must be updated." | Silent failures happen; explicit verification of the side effect is mandatory. |
-| "I'll let the /startcycle proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
+| "I'll let the /fabric proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
 | "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
 
 ## 5. Red Flags

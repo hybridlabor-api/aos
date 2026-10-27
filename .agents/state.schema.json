@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/.agents/state.schema.json",
   "title": "BDB Graph Run State",
-  "description": "Typed hand-off record for a /startcycle-graph run, replacing free-form production_artifacts/*.md prose as the transport edges evaluate. See .agents/graph.md for the dispatcher loop this state drives. Persisted at production_artifacts/state.json.",
+  "description": "Typed hand-off record for a /fabric-graph run, replacing free-form production_artifacts/*.md prose as the transport edges evaluate. See .agents/graph.md for the dispatcher loop this state drives. Persisted at production_artifacts/state.json.",
   "type": "object",
   "required": ["run_id", "goal", "phase", "iteration", "max_iterations", "gate", "findings", "approvals"],
   "properties": {
     "run_id": {
       "type": "string",
-      "description": "Unique id for this /startcycle-graph run, e.g. a timestamp or short hash. Lets a fresh dispatcher invocation resume the right run instead of guessing."
+      "description": "Unique id for this /fabric-graph run, e.g. a timestamp or short hash. Lets a fresh dispatcher invocation resume the right run instead of guessing."
     },
     "goal": {
       "type": "string",
@@ -74,7 +74,7 @@
       "type": "integer",
       "minimum": 1,
       "default": 3,
-      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/startcycle-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
+      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/fabric-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
     },
     "approvals": {
       "type": "array",
@@ -94,11 +94,11 @@
       "type": "array",
       "items": { "type": "string" },
       "default": [],
-      "description": "Skill names the user required via /startcycle-graph's --skill=<name> flag (repeatable), validated to exist before the run proceeds. Empty when the user didn't ask for one. Build nodes (and Architect) are told to actually apply these, not just have them available; Reviewer checks the resulting artifacts for evidence they were used and flags a contract-misread finding if not. See .agents/graph.md's 'Mandatory Skill Injection' section."
+      "description": "Skill names the user required via /fabric-graph's --skill=<name> flag (repeatable), validated to exist before the run proceeds. Empty when the user didn't ask for one. Build nodes (and Architect) are told to actually apply these, not just have them available; Reviewer checks the resulting artifacts for evidence they were used and flags a contract-misread finding if not. See .agents/graph.md's 'Mandatory Skill Injection' section."
     },
     "pipeline": {
       "type": "string",
-      "description": "AO scaffold metadata: which pipeline bootstrapped this run, e.g. startcycle-graph."
+      "description": "AO scaffold metadata: which pipeline bootstrapped this run, e.g. fabric-graph."
     },
     "planCanvasRequired": {
       "type": "boolean",
@@ -123,10 +123,89 @@
       "type": "boolean",
       "default": false,
       "description": "Any node can set this to force an in-loop feedback edge back to the user (per B5's reference diagram), independent of the gate/iteration state."
+    },
+    "team": {
+      "type": "object",
+      "description": "Team configuration driving this run (roles, playbooks, gates, effort).",
+      "required": ["id", "roles"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "label": { "type": "string" },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[a-z0-9_]+$" }
+        },
+        "playbooks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "gates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "effort": {
+          "type": "string",
+          "enum": ["S", "M", "L"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution_manifest": {
+      "type": "object",
+      "description": "Dynamic workstreams plan authored by Architect and approved by TechLead.",
+      "required": ["workstreams", "createdBy"],
+      "properties": {
+        "createdBy": { "type": "string", "enum": ["architect"] },
+        "effort": { "type": "string", "enum": ["S", "M", "L"] },
+        "workstreams": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/workstream" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "workstreams": {
+      "type": "array",
+      "description": "Active workstream definitions or runtime state.",
+      "items": { "$ref": "#/$defs/workstream" }
     }
   },
   "additionalProperties": false,
   "$defs": {
+    "workstream": {
+      "type": "object",
+      "required": ["id", "agentType", "skills", "artifactKey"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "agentType": { "type": "string" },
+        "role": { "type": "string", "enum": ["plan", "approve", "build", "review", "gate", "specialist"] },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "playbooks": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "phase": { "type": "string", "enum": ["before", "during", "after"] }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "artifactKey": { "type": "string" },
+        "gates": { "type": "array", "items": { "type": "string" } },
+        "iteration": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "stateFragment": {
       "description": "Shape of one production_artifacts/state.d/<nodeId>.json file. During a parallel pipeline() fan-out (the build nodes, or a gate-fix repair round), each participating node writes ONLY this fragment for itself -- never production_artifacts/state.json directly, since two concurrently-running nodes writing the same file would race and the last writer would silently drop the other's update. Immediately after the pipeline() call returns, one dedicated merge agent (role merge_state; its model comes only from pipeline.json, haiku in the shipped default) reads every production_artifacts/state.d/*.json fragment and folds it into production_artifacts/state.json (per the top-level schema above) before the workflow run continues or returns -- this is what .claude/hooks/graph-gate.mjs ends up reading, so the merge must happen inside the run, never deferred. Sequential nodes (architect, techlead, reviewer, shipping) are not part of this race and keep writing state.json directly.",
       "type": "object",

@@ -200,6 +200,9 @@ test("plugin monitor script prints the injection for a waiting message (end to e
     assert.match(line, /> wake up/);
     assert.match(line, /reply --name claude-e2e00001 e-1/);
     assert.match(line, /never counts as a GO/);
+    // The monitor writes the line first and claims (renames) the message right after; killing it between the two is a race of the test, not a defect.
+    const claimed = () => readdirSync(inboxDir("claude-e2e00001")).some((f) => f.endsWith("e-1.delivered"));
+    for (let i = 0; i < 40 && !claimed(); i++) await new Promise((r) => setTimeout(r, 50));
   } finally {
     child.kill();
   }
@@ -214,6 +217,7 @@ test("SessionStart hook binds the Claude process (its parent) to the session nam
     input: JSON.stringify({ session_id: "hookbind-0000" }), encoding: "utf8", env: testEnv({ AOS_A2A_NAME: "claude-hookbind" }),
   });
   assert.equal(r.status, 0, r.stderr);
-  // the hook's parent is this test process (comm "node", not a shell): exactly that pid is bound
-  assert.equal(mon.readBinding(process.pid), "claude-hookbind");
+  // the hook binds bindTargets(its chain): the test process, or a claude ancestor when the test runs under Claude Code
+  const [target] = mon.bindTargets(mon.ancestorChain(process.pid, { depth: 4 }));
+  assert.equal(mon.readBinding(target), "claude-hookbind");
 });

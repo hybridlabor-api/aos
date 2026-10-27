@@ -14,6 +14,31 @@ export const KINDS = Object.freeze([
 export const AGENTS = Object.freeze(['claude', 'opencode', 'agy', 'codex', 'other'])
 const TASK_STATUS = Object.freeze(['todo', 'doing', 'done', 'stuck'])
 
+// The node marker a worker brief carries: "... brief ... [trail-node:<id>]".
+// Marker is the fallback attribution path; AOS_TRAIL_NODE wins when both exist.
+export const NODE_MARKER = /\[trail-node:([A-Za-z0-9_.:-]+)\]/
+export function trailNodeFromText(text) {
+  const m = typeof text === 'string' && text.length <= 1024 * 1024 ? text.match(NODE_MARKER) : null
+  return m ? m[1] : null
+}
+
+// One place decides attribution: env first (dispatcher intent), marker second.
+export function stampTrailNode(ev, { node, env } = {}) {
+  const plan = env?.AOS_TRAIL_PLAN
+  const envNode = node || env?.AOS_TRAIL_NODE
+  if (envNode) {
+    if (!ev.task) ev.task = { id: String(envNode), status: 'doing' }
+    if (plan && !ev.task.plan) ev.task.plan = plan
+    return ev
+  }
+  const marked = trailNodeFromText(JSON.stringify(ev))
+  if (marked && !ev.task) {
+    ev.task = { id: marked, status: 'doing' }
+    if (plan) ev.task.plan = plan
+  }
+  return ev
+}
+
 const CONTROL = /[\u0000-\u001f\u007f]/g
 const clean = (s, max) => String(s).replace(CONTROL, '').slice(0, max)
 const plain = (v) => (typeof v === 'string' || typeof v === 'number' ? v : undefined)

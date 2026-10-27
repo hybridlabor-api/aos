@@ -21,6 +21,14 @@ node ~/.aos/bin/go-check.mjs --session <Name> --command "<shell string>" [--cons
 - `--command` is a **shell string**, not an argv array. The patterns are anchored on `^`, `;`, `|`, `&&`, `$(`, backticks and wrappers (`sudo`, `env`, `bash -c`, ...). The caller must build the string from its provider's tool input (for ACP, `RawInput`). If the form of an `execute` call is unknown, treat it as guarded-unknown: hand it to the human approval surface, never allow it automatically.
 - Without `--consume` the token is only verified. With `--consume` it is used up (one token, one guarded command). Pass `--consume` only on the final allow.
 
+### Reference mode (`--ref`)
+
+```
+node ~/.aos/bin/go-check.mjs --session <Name> --ref <id> [--consume]
+```
+
+Checks a GO-over-A2A reference (the first 12 hex characters of the sha256 of the session's token file) instead of a command. Without `--consume` it verifies read-only; with `--consume` it consumes once and marks the reference as used in `.a2a-consumed` inside the GO store, so a replay is told apart from a forged reference. Output and exit codes are the same as below. `node ~/.aos/bin/go-check.mjs --write-patterns <file>` writes the guarded patterns as JSON. `--help` prints the usage and exits 0 (the full spec is in `docs/cli-reference.md`).
+
 ## Output and exit codes
 
 stdout is one JSON line: `{"guarded": bool|null, "ok": bool, "scope": [...]|null, "reason": "..."}`.

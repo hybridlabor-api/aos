@@ -29,9 +29,9 @@ AOS pins no model. Every harness gets agent files without a `model` and the agen
 - A value that is empty, contains whitespace or a newline, is not a string, or (OpenCode) is not `provider/model` is skipped with a warning when agent files are compiled: no model is written and no other model is substituted.
 - Role keys must be agent slugs with `-` as `_`; a key matching no agent in `.agents/AGENTS.md` is inert and the doctor warns. `setup-subagents --set-role` still accepts the old short keys (`ui_ux`, `engineering`, `media_eventtech`, `shipping`) and writes the real slug.
 
-### /startcycle-graph dispatcher and helper agents
+### /fabric-graph dispatcher and helper agents
 
-`.agents/nodes.json` pins no model. The dispatcher (`.claude/workflows/startcycle-dispatch.mjs`) passes `model` to `agent()` only when `pipeline.json` has a `claude` model for the node (role = agent slug, then node id: `godmode_ui_ux` or `ui_ux`); otherwise it passes none and the agent inherits the session model.
+`.agents/nodes.json` pins no model. The dispatcher (`.claude/workflows/fabric-dispatch.mjs`) passes `model` to `agent()` only when `pipeline.json` has a `claude` model for the node (role = agent slug, then node id: `godmode_ui_ux` or `ui_ux`); otherwise it passes none and the agent inherits the session model.
 
 Helper agents use these role keys (valid for `aos-doctor`): `load_registry`, `merge_state`, `archify_verify`, `validate_skills`. The `escalate` step has no key and always inherits.
 

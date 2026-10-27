@@ -1,12 +1,9 @@
 ---
 name: prototype
 description: >-
-  Build a throwaway prototype to answer a design question, as UI variations or
-  a state-model walkthrough. Use when the user types /prototype, wants to
-  sanity-check whether a state model or logic feels right, wants to explore
-  what a UI should look like, or as the prototype step of the web design flow
-  with brainstorm or grill before the final plan goes to plan-canvas (annotate
-  the running prototype with the plan-canvas annotation tool).
+  Build a throwaway prototype to answer a design question via UI variations
+  or a state walkthrough. Use for /prototype, the plan-canvas design flow or
+  brainstorm.
 category: engineering-method
 source: "adapted from mattpocock/skills (MIT) — https://github.com/mattpocock/skills/tree/main/skills/engineering/prototype"
 ---
@@ -14,6 +11,18 @@ source: "adapted from mattpocock/skills (MIT) — https://github.com/mattpocock/
 # Prototype
 
 A prototype is **throwaway code that answers a question**. The question decides the shape.
+
+## Plan first
+
+A prototype run that needs a plan starts from the `feature` template — screens first:
+
+```bash
+aos-plan-canvas new feature <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Pick a branch
 

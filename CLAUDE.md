@@ -10,12 +10,12 @@ This file covers only what is specific to Claude Code.
 
 ## The release gate is a real hook here
 
-`.claude/hooks/go-gate.mjs` (registered in `.claude/settings.json`) mechanically
+`.claude/hooks/go-gate.mjs` (wired into `~/.claude/settings.json` by the installer from the template `config/claude-hooks.json`; the repo `.claude/settings.json` deliberately carries no hooks, so they never run twice) mechanically
 blocks `git push`, `npm publish`, `npm version`, and recursive `rm` unless your
 immediately preceding message is the literal word **GO**. On this harness the
 gate is enforced, not merely honoured — you cannot argue around it, and it works
 whether or not this file was loaded. See AGENTS.md for the policy layer and the
-three clarifications that have caused real incidents.
+clarifications.
 
 ## Delegating to other harnesses
 
@@ -37,14 +37,14 @@ identically.
 
 ## Pipeline entry points
 
-- `/startcycle` — `skills/basic/startcycle/SKILL.md`
-- `/startcycle-graph` — `skills/basic/startcycle-graph/SKILL.md`, contract in `.agents/graph.md`, registry in `.agents/nodes.json`, dispatcher at `.claude/workflows/startcycle-dispatch.mjs`
-- `/startcycle-graph-user` — `skills/basic/startcycle-graph-user/SKILL.md`
+- `/fabric` — `skills/basic/fabric/SKILL.md` (master: picks the mode)
+- `/fabric-graph` — `skills/basic/fabric-graph/SKILL.md`, contract in `.agents/graph.md`, registry in `.agents/nodes.json`, dispatcher at `.claude/workflows/fabric-dispatch.mjs`
+- `/fabric-multigraph` — `skills/basic/fabric-multigraph/SKILL.md`
+- `/fabric-teamwork`, `/fabric-swarm`, `/fabric-loop` — `skills/basic/fabric-*/SKILL.md`
 
 Agent personas live in `.claude/agents/`. Agent Teams were evaluated and
-deferred for `/startcycle-graph` — it runs headless and teams need an
-interactive session. Read `.agents/graph.md` and F-17's addendum in
-`docs/sessions/audit-agents.md` before reversing that.
+deferred for `/fabric-graph` — it runs headless and teams need an
+interactive session. Read `.agents/graph.md` before reversing that.
 
 ## Validating a skill change
 

@@ -3,7 +3,7 @@
 **Target:** `bdb-dev-optimized-agent-skills` @ `39c7462` (v3.12.0), work continuing on branch `feat/agent-skills-v3.13`
 **Date:** 2026-08-27 (original audit) · updated 2026-08-27 (Phase −1 reference deep-dive)
 **Type:** Read-only structural audit. Findings below informed Phase 0 (dedup + domain tagging, already applied on the branch — see commit `e4036aa`). No further changes applied by this document.
-**Scope:** Skill layer (`SKILL.md`), instruction layer (`CLAUDE.md`, `agent.md`, `GEMINI.md`, `CODEX.md`), agent layer (`.agents/agents.md`, `.roomodes`, `.cursor/rules`), workflow layer (`startcycle`), distribution layer (`installer.js`).
+**Scope:** Skill layer (`SKILL.md`), instruction layer (`CLAUDE.md`, `agent.md`, `GEMINI.md`, `CODEX.md`), agent layer (`.agents/agents.md`, `.roomodes`, `.cursor/rules`), workflow layer (`fabric`), distribution layer (`installer.js`).
 
 **Count correction:** the original pass below cites 334 SKILL.md / "270 files, 160 unique" — that included vendored third-party MCP repos under `mcps/`. The correct pre-dedup count for this repo's own skills was **257 SKILL.md / 160 unique names**. Post-Phase-0 the tree holds **161 SKILL.md**, each tagged with a `category:` domain (`media-eventtech`, `saas-ops`, `design-ui-ux`, `bdb-core`, `engineering-method`, `library`). Findings below that reference the old counts are left as originally written (they were directionally correct); treat the counts here as current.
 
@@ -27,7 +27,7 @@
 |---|---|---|---|
 | `skills/global_config/` | 134 SKILL.md | Primary distribution set | **Canonical** |
 | `skills/global_legacy/` | 95 SKILL.md | Legacy set | **93 byte-identical to global_config**, 1 differs (`landing-page-generator`), 1 unique (`brainstorming`) |
-| `skills/basic/` | 9 SKILL.md | godmode-*, startcycle, bdbmediastorm, bdbhtmlmanueldocs | Subset overlap with global_config |
+| `skills/basic/` | 9 SKILL.md | godmode-*, fabric, bdbmediastorm, bdbhtmlmanueldocs | Subset overlap with global_config |
 | `skills/workspace_agents/` | 13 SKILL.md | firecrawl family | Duplicate of `.agents/skills/` |
 | `.agents/skills/` | 13 SKILL.md | firecrawl family | Duplicate of `skills/workspace_agents/` |
 | Root-level skills | 6 dirs | bdbrainstorm, bdbsaastraining, github-repo, memb-ingest, bdb-dev-os-skill, synapse-integration-skill | Not in any distribution tree |
@@ -39,13 +39,13 @@
 
 | File | Size | Role |
 |---|---|---|
-| `CLAUDE.md` | 9.8 KB / 126 lines | Global rules + full `/startcycle` spec + ASCII architecture diagram |
+| `CLAUDE.md` | 9.8 KB / 126 lines | Global rules + full `/fabric` spec + ASCII architecture diagram |
 | `GEMINI.md` | 4.0 KB | Global rules only (drift: missing "Plans are not approval" + "No inheritance" clauses present in CLAUDE.md) |
 | `agent.md` | 1.5 KB | Condensed rules (tracked lowercase; `AGENT.md` resolves to the same inode on case-insensitive macOS) |
 | `CODEX.md` | 1.1 KB | Marketing/install text, **no behavioural rules** |
 | `.codex-plugin/system.md` | 9.5 KB | Codex system prompt |
 | `.claude/CLAUDE.md` | 271 B | memB injection block, contents are `- None` ×4 |
-| `.cursor/rules/*.mdc` | 5 files | Generated from `agent.md` + `startcycle.md` + `agents.md` |
+| `.cursor/rules/*.mdc` | 5 files | Generated from `agent.md` + `fabric.md` + `agents.md` |
 | `.roomodes` | 78 lines | 7 Roo custom modes |
 
 ### 1.3 What is absent at repo level
@@ -63,13 +63,13 @@
 ### F-01 — `CLAUDE.md` violates the include/exclude contract *(P0)*
 B1: *"only include things that apply broadly … For domain knowledge or workflows that are only relevant sometimes, use skills instead"* and *"Bloated CLAUDE.md files cause Claude to ignore your actual instructions."*
 
-`CLAUDE.md` is 126 lines, of which **~70 lines are the full `/startcycle` pipeline spec plus a 30-line ASCII diagram** — content that is already duplicated verbatim in `.agents/workflows/startcycle.md`, `skills/basic/startcycle/SKILL.md` and `.cursor/rules/startcycle.mdc`. It is loaded into **every** session regardless of whether a cycle is running.
+`CLAUDE.md` is 126 lines, of which **~70 lines are the full `/fabric` pipeline spec plus a 30-line ASCII diagram** — content that is already duplicated verbatim in `.agents/workflows/fabric.md`, `skills/basic/fabric/SKILL.md` and `.cursor/rules/fabric.mdc`. It is loaded into **every** session regardless of whether a cycle is running.
 
 Additional exclusion violations: §4 "Domain Adaptation" and §3 "Minimalist Comments" are generic advice the model already follows; B1 explicitly lists *"Self-evident practices like 'write clean code'"* as exclude-tier.
 
 **Impact:** dilutes the one rule that actually matters (the GO gate). B1: *"If you emphasize many lines, none of them stands out."* The current file emphasises **ABSOLUTE OVERRIDE**, **STRICT**, **CRITICAL**, **MUST NOT**, **ONLY**, **EXCLUSIVELY**, **LITERALLY** in a single section.
 
-**Target:** ≤ 30 lines. Keep: GO gate, git-snapshot rule, English-content rule, private-repo rule. Move: entire `/startcycle` block → skill (already exists), diagram → `.openwiki/architecture.md`.
+**Target:** ≤ 30 lines. Keep: GO gate, git-snapshot rule, English-content rule, private-repo rule. Move: entire `/fabric` block → skill (already exists), diagram → `.openwiki/architecture.md`.
 
 ### F-02 — No verification loop anywhere in the skill layer *(P0)*
 B1 opens with *"Give Claude a way to verify its work"* and grades verification by how hard it gates the stop: prompt-level → `/goal` → **Stop hook** → verification subagent.
@@ -86,7 +86,7 @@ Measured across the 134 canonical skills:
 | `## Anti-Patterns` | 14 / 134 |
 | `## Checklist` | 25 / 134 |
 
-The only verification gate in the entire system is `startcycle` §3 — a prose sentence, *"Must achieve `Status: SUCCESS (100% Green)`"*, with no mechanism that blocks anything. This is B1's named failure pattern **"the trust-then-verify gap."**
+The only verification gate in the entire system is `fabric` §3 — a prose sentence, *"Must achieve `Status: SUCCESS (100% Green)`"*, with no mechanism that blocks anything. This is B1's named failure pattern **"the trust-then-verify gap."**
 
 ### F-03 — Zero hooks *(P0)*
 B1: *"Unlike CLAUDE.md instructions which are advisory, hooks are deterministic and guarantee the action happens."*
@@ -106,10 +106,10 @@ The same ruleset exists in `CLAUDE.md`, `GEMINI.md`, `agent.md`, `.codex-plugin/
 
 ### F-07 — No `disable-model-invocation`, no argument contract *(P1)*
 
-> **Superseded (2026-10).** The flag was later set on pipeline and role skills and playbooks, which stopped the Master and every orchestrator from starting `/startcycle` through the Skill tool. It was removed again; go-gate guards the side effects and `validate-skills` (E-DMI01, E-PB06) keeps pipeline skills model-invocable. Kept only on `bdb-updater` and `triage`.
+> **Superseded (2026-10).** The flag was later set on pipeline and role skills and playbooks, which stopped the Master and every orchestrator from starting `/fabric` through the Skill tool. It was removed again; go-gate guards the side effects and `validate-skills` (E-DMI01, E-PB06) keeps pipeline skills model-invocable. Kept only on `bdb-updater` and `triage`.
 B1: *"Use `disable-model-invocation: true` for workflows with side effects that you want to trigger manually."*
 
-`/startcycle`, `/ship`, `/build` and `bdbsaastraining` all have side effects (git commit, git push, npm publish, cloud calls). **0 of 134** skills set `disable-model-invocation`. Only 2 skills use `$ARGUMENTS`. Frontmatter census:
+`/fabric`, `/ship`, `/build` and `bdbsaastraining` all have side effects (git commit, git push, npm publish, cloud calls). **0 of 134** skills set `disable-model-invocation`. Only 2 skills use `$ARGUMENTS`. Frontmatter census:
 
 | Key | Count |
 |---|---|
@@ -164,7 +164,7 @@ B3 groups skills into Define / Plan / Build / Verify / Review / Ship. This repo 
 Cross-check against B2 (Prompt Library, confirmed in Phase −1): Anthropic's own taxonomy is **5 phases** — `discover / design / build / ship / operate` — not 6. The two schemes are close but not identical: B2 has no separate "Review" phase (folded into `build/Review` as a category, not a phase) and adds `operate` (Debug/Incident/Data/Automate — post-ship work) which the BDB 6-stage pipeline has no equivalent for. Recommendation for Phase 4/5: keep the BDB 6-stage pipeline as the primary taxonomy (it maps cleanly to the 5 agents) but note `operate` as a real gap — none of the 6 stages own post-ship incident/debug work, which is exactly the domain of `godmode-eventtech`'s live-show failure modes (§6 addendum below).
 
 ### F-12 — Command mirroring is one-directional *(P2)*
-B3 ships `.claude/commands/`, `.gemini/commands/` and `commands/` side by side so the same 8 commands exist natively in all three harnesses. This repo ships slash commands only as *documented conventions* inside skill bodies (`/spec`, `/plan`, `/build`, `/test`, `/review`, `/ship`, `/startcycle`) with no command files in any harness directory.
+B3 ships `.claude/commands/`, `.gemini/commands/` and `commands/` side by side so the same 8 commands exist natively in all three harnesses. This repo ships slash commands only as *documented conventions* inside skill bodies (`/spec`, `/plan`, `/build`, `/test`, `/review`, `/ship`, `/fabric`) with no command files in any harness directory.
 
 **Confirmed in Phase −1** (previously assumed, now verified byte-for-byte): `.gemini/commands/build.toml` and `commands/build.toml` are **identical**; `.claude/commands/build.md` carries the same numbered steps and the same git-safety rules (baseline `git status --porcelain` check, never `git add -A` blindly, one commit per task) word-for-word, differing only in syntax (Markdown+YAML vs. TOML) and in one convention: Claude's version prefixes skill references with the plugin namespace (`agent-skills:test-driven-development`), the other two use bare names. One filename diverges on purpose — `.claude/commands/plan.md` vs. `commands/planning.toml` — likely to dodge a reserved name in the non-Claude tooling. **Conclusion for Phase 2:** command files should be generated from one canonical source per command, with per-harness syntax adaptation and namespace prefixing as the only allowed variation — exactly the pattern `installer.js` already uses for the Antigravity agent JSON.
 
@@ -187,7 +187,7 @@ The graph design proposed in §6.2 below — `Architect → TechLead → {UI_UX 
 
 - **Hooks propagate regardless of nesting** — *"a `PreToolUse` hook in `settings.json` also runs before every tool a subagent uses"* — so the GO-gate hook (Phase 1) covers the whole tree automatically; hook coverage was never a reason to prefer dispatcher-mediation and isn't used as one above.
 - **Bounded fan-out inside a single node is explicitly sanctioned and different from top-level chaining** — the docs' own example is *"a reviewer subagent that dispatches a verifier per finding, so the intermediate output never reaches your main conversation."* This is fine, and worth using: the Reviewer node in §6.2 can internally fan out to one verifier per finding without violating F-17, because from the dispatcher's perspective Reviewer is still a single leaf call that returns one summary. F-17 constrains the *top-level pipeline stages* from calling each other; it says nothing against a node organizing its own internal work.
-- **Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) was considered and rejected for `/startcycle` specifically.** It offers a genuinely richer coordination primitive — a shared, dependency-aware task list, direct teammate-to-teammate messaging, and `TeammateIdle`/`TaskCreated`/`TaskCompleted` hooks for quality gates — that would fit a graph model closely. It is disqualified for this repo's core pipeline by one stated limitation: *"Spawning teammates also requires an interactive session. In non-interactive mode with the `-p` flag ... Claude doesn't spawn teammates."* `/startcycle` is documented as "zero-prompting" and needs to run unattended/headless; Agent Teams cannot. It remains a good candidate for `/bdbrainstorm` (its "competing hypotheses" pattern suits open-ended ideation) but not for the deterministic build pipeline — noted here so a future contributor doesn't rediscover and reverse this choice without the reasoning.
+- **Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) was considered and rejected for `/fabric` specifically.** It offers a genuinely richer coordination primitive — a shared, dependency-aware task list, direct teammate-to-teammate messaging, and `TeammateIdle`/`TaskCreated`/`TaskCompleted` hooks for quality gates — that would fit a graph model closely. It is disqualified for this repo's core pipeline by one stated limitation: *"Spawning teammates also requires an interactive session. In non-interactive mode with the `-p` flag ... Claude doesn't spawn teammates."* `/fabric` is documented as "zero-prompting" and needs to run unattended/headless; Agent Teams cannot. It remains a good candidate for `/bdbrainstorm` (its "competing hypotheses" pattern suits open-ended ideation) but not for the deterministic build pipeline — noted here so a future contributor doesn't rediscover and reverse this choice without the reasoning.
 
 Secondary finding from the same source: B3 ships a `doubt-driven-development` skill that operationalizes exactly the "Reviewer" node from §6.2 as a concrete process, not a principle. Its core discipline, worth adopting verbatim for our Reviewer node: pass the reviewer **ARTIFACT + CONTRACT only, never the CLAIM or the implementer's reasoning** (biases toward agreement otherwise), use an explicitly adversarial prompt (*"Find what is wrong... Do NOT validate. Do NOT summarize."*), and classify every finding against a fixed precedence order (contract misread → valid+actionable → valid trade-off → noise) with a named failure mode to watch for: **"doubt theater"** — 2+ review cycles producing zero actionable findings means the reviewer is validating, not doubting, and the loop should stop and escalate rather than continue.
 
@@ -200,13 +200,13 @@ Secondary finding from the same source: B3 ships a `doubt-driven-development` sk
 Confirmed schema: `{ id, sdlc, cat, roles, prompt, slots?, needs?, paste?, startN?, src, nextHref? }`, joined at render time with a separate `text` dictionary (`title`, `teaches`, `next`) keyed by the same `id`. 52 entries total: `discover` 7, `design` 6, `build` 22 (42% — the largest phase), `ship` 5, `operate` 12.
 
 ### F-13 — No slot-templated prompt assets *(P2)*
-B2 entries are structured records with named slots, a phase, target roles, and a link to the next step. The repo contains no equivalent asset. `bdbrainstorm` and `grill-me` produce free-form markdown; `startcycle` consumes it by convention, not by contract. This is the direct upstream cause of F-16: without a typed hand-off record there is nothing for a graph edge to route on.
+B2 entries are structured records with named slots, a phase, target roles, and a link to the next step. The repo contains no equivalent asset. `bdbrainstorm` and `grill-me` produce free-form markdown; `fabric` consumes it by convention, not by contract. This is the direct upstream cause of F-16: without a typed hand-off record there is nothing for a graph edge to route on.
 
-**Confirmed schema details worth adopting for our own slot-templated assets** (e.g. `bdbrainstorm` → `startcycle` hand-off, or any future `/spec`-style prompt library entry):
+**Confirmed schema details worth adopting for our own slot-templated assets** (e.g. `bdbrainstorm` → `fabric` hand-off, or any future `/spec`-style prompt library entry):
 - Placeholders are `{word}` (single token, no defaults inline); `slots` is a separate object of the *same keys*, holding example fill-ins — never raw numbers, always strings (`n: '20'`, not `20`), and the UI shows them as editable placeholder text, not literal substitutions.
 - `needs` is a **small closed enum** (`tracker`, `gh`, `browser`, `db`) resolved through a separate label dictionary — a clean way to flag "this prompt needs an external tool/connector" without repeating boilerplate prose in every entry.
 - `paste` is a **separate** closed enum (`mockup`, `design`, `screenshot`, `plan`, `error`, `csv`) — distinct from `slots`: it signals "the user must attach/paste a blob before sending" rather than "fill in this typed field." Worth keeping as two separate concepts if `bdbrainstorm` output ever becomes schema'd.
-- `nextHref` is **not** "read this next" — it is *"graduate this one-off prompt into a durable Claude Code feature"* (a skill, `/goal`, CLAUDE.md/memory, an MCP connector, or a built-in command). E.g. `review-your-changes-before` (a manual review prompt) points to `/en/commands` with the CTA *"Run `/code-review` for the same check in one command."* Direct implication for this repo: `/bdbrainstorm` and `/grill-me` output should point forward to `/startcycle` the same way — "graduate this brainstorm into the pipeline" — which is closer to what already happens, but the *mechanism* (a `nextHref`-style pointer plus a stated CTA) is more explicit than the current prose convention.
+- `nextHref` is **not** "read this next" — it is *"graduate this one-off prompt into a durable Claude Code feature"* (a skill, `/goal`, CLAUDE.md/memory, an MCP connector, or a built-in command). E.g. `review-your-changes-before` (a manual review prompt) points to `/en/commands` with the CTA *"Run `/code-review` for the same check in one command."* Direct implication for this repo: `/bdbrainstorm` and `/grill-me` output should point forward to `/fabric` the same way — "graduate this brainstorm into the pipeline" — which is closer to what already happens, but the *mechanism* (a `nextHref`-style pointer plus a stated CTA) is more explicit than the current prose convention.
 
 ### F-14 — No role dimension *(P3, correction: not directly reusable)*
 B2 tags prompts by role — confirmed values: `pm, design, marketing, docs, security, ops, data` (7 roles, ~48% of prompts have none i.e. apply to everyone). **Correction from Phase −1:** these are **human job functions**, not AI-agent-routing targets — a `pm`-tagged prompt is one a product manager would run, not one routed to a "PM agent." This repo's 5 agents (`Godmode_UI_UX`, `_Engineering`, …) are a different axis entirely (which AI persona executes) and B2's `roles` field is not the right vocabulary to reuse for that. The underlying gap stands — skills are not tagged by which agent should own them — but the fix is a repo-specific field (e.g. `agent:` or reuse of Phase 0's `category:` domain tag, which already does most of this job), not an import of B2's `roles` enum.
@@ -226,7 +226,7 @@ Note the tension worth deciding explicitly: B4 recommends `defaultMode: "auto"` 
 
 ### 6.1 Current state
 
-`/startcycle` as specified in `.agents/workflows/startcycle.md`:
+`/fabric` as specified in `.agents/workflows/fabric.md`:
 
 ```
 Planner ──▶ [UI/UX ∥ Engineering ∥ Media] ──▶ Shipping ──▶ ship
@@ -246,12 +246,12 @@ Mapped against B5's four primitives:
 
 Also missing relative to the Architect/Tech-Lead/Developer diagram (B5, image 1):
 - **No Tech Lead node.** `Planner_Orchestrator` collapses Architect (system plan) and Tech Lead (execution coordination) into one node. The diagram separates them precisely because planning and coordination have different context needs and different failure modes.
-- **No in-loop feedback edges.** The diagram has two edges back to the user (`In-loop feedback`) and one from Developer back to Architect (`Analyzes and responds to`). `/startcycle` is explicitly branded "zero-prompting" — it has *removed* the human edges that the reference pattern treats as load-bearing.
-- **AI Document as a node, not a substrate.** In the diagram the AI Document *supports the task of* the Developer — a shared artifact both Tech Lead and Developer address. In `/startcycle` the artifacts are one-way drops; no node reads back its own output or another node's revision.
+- **No in-loop feedback edges.** The diagram has two edges back to the user (`In-loop feedback`) and one from Developer back to Architect (`Analyzes and responds to`). `/fabric` is explicitly branded "zero-prompting" — it has *removed* the human edges that the reference pattern treats as load-bearing.
+- **AI Document as a node, not a substrate.** In the diagram the AI Document *supports the task of* the Developer — a shared artifact both Tech Lead and Developer address. In `/fabric` the artifacts are one-way drops; no node reads back its own output or another node's revision.
 
 ### 6.2 Proposed target contract *(revised per F-17 — see correction below)*
 
-**Correction (F-17):** the version of this section as originally written implied nodes hand off directly to each other (`Architect → TechLead → {...} → Reviewer → Shipping` read as a call chain). Claude Code actually permits nested subagent calls up to 3 levels deep by default — this is not platform-forbidden — but F-17 recommends against it anyway: nested subagents don't inherit the caller's full context, so a 3-level chain compounds exactly the "state gets re-parsed as prose" problem already flagged in §6.1, and depth-limited nesting is Claude-Code-specific machinery with no equivalent in the other harnesses this repo targets. The graph below keeps the same nodes and edges but makes explicit that **routing is evaluated by a single dispatcher** (the main session, or a slash command like `/startcycle` acting on the user's behalf) after each node returns — the arrows are dispatcher decisions, not node-to-node calls.
+**Correction (F-17):** the version of this section as originally written implied nodes hand off directly to each other (`Architect → TechLead → {...} → Reviewer → Shipping` read as a call chain). Claude Code actually permits nested subagent calls up to 3 levels deep by default — this is not platform-forbidden — but F-17 recommends against it anyway: nested subagents don't inherit the caller's full context, so a 3-level chain compounds exactly the "state gets re-parsed as prose" problem already flagged in §6.1, and depth-limited nesting is Claude-Code-specific machinery with no equivalent in the other harnesses this repo targets. The graph below keeps the same nodes and edges but makes explicit that **routing is evaluated by a single dispatcher** (the main session, or a slash command like `/fabric` acting on the user's behalf) after each node returns — the arrows are dispatcher decisions, not node-to-node calls.
 
 The concrete deliverable would be a new `.agents/graph.md` (harness-neutral, plus generated bindings) defining:
 
@@ -301,7 +301,7 @@ Markdown artifacts stay as the human-readable payload; `state.json` becomes what
 | Shipping | all gates pass ∧ `approvals` contains GO | ship |
 
 **Harness** — the loop-keeper is the piece that has no equivalent today. Two implementations, both needed:
-- *Advisory:* the graph contract in `.agents/graph.md`, read by the dispatcher (main session or `/startcycle` command logic) — this is also where the F-17 reasoning is written down explicitly, so a future contributor doesn't "optimize" the pipeline into direct node-to-node hand-offs and reintroduce the context-fidelity problem F-17 exists to avoid.
+- *Advisory:* the graph contract in `.agents/graph.md`, read by the dispatcher (main session or `/fabric` command logic) — this is also where the F-17 reasoning is written down explicitly, so a future contributor doesn't "optimize" the pipeline into direct node-to-node hand-offs and reintroduce the context-fidelity problem F-17 exists to avoid.
 - *Deterministic:* a `Stop` hook that reads `state.json` and blocks turn-end while `gate.* == fail ∧ iteration < max_iterations` — B1's exact prescription for closing a loop without human attention, using the exact hook shape B3 already ships (`PreToolUse`/`Stop` hook exits 2 to block, message goes back over stderr — see the Phase −1 addendum below). `max_iterations` prevents the runaway that hooks otherwise enable.
 
 This is the smallest change set that turns the existing pipeline into a graph: the nodes already exist, the artifacts already exist. What is missing is **typed state, predicates evaluated by a single dispatcher (not node-to-node calls), and a loop-keeper** — and one of those three (the Stop hook) also happens to fix F-02 and F-03.
@@ -356,7 +356,7 @@ The matrix above yields one constraint: **anything that only works in Claude Cod
 
 | ID | Finding | Prio | Effort | Impact |
 |---|---|---|---|---|
-| F-01 | `CLAUDE.md` 126 lines, `/startcycle` spec duplicated 4× | **P0** | S | High — dilutes the GO gate |
+| F-01 | `CLAUDE.md` 126 lines, `/fabric` spec duplicated 4× | **P0** | S | High — dilutes the GO gate |
 | F-02 | Verification sections in 7/134 skills; no enforced gate | **P0** | L | High — trust-then-verify gap |
 | F-03 | Zero hooks; GO gate is advisory prose only | **P0** | S | High — the one rule that must be deterministic isn't |
 | F-04 | No `.claude/agents/`; agents unusable as subagents in Claude Code | **P0** | M | High — the multi-agent team doesn't exist at runtime |

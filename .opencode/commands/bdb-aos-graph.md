@@ -1,5 +1,5 @@
 ---
-description: "Run the startcycle-graph pipeline: durable state, repair loop, quality gate, escalation."
+description: "Run the fabric-graph pipeline: durable state, repair loop, quality gate, escalation."
 ---
 
-Run the `startcycle-graph` skill; its contract defines the flow. Task: $ARGUMENTS
+Run the `fabric-graph` skill; its contract defines the flow. Task: $ARGUMENTS

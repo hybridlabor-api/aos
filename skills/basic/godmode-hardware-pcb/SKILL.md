@@ -1,6 +1,6 @@
 ---
 name: godmode-hardware-pcb
-description: "Use when designing electrical schematics, PCB layouts, KiCad projects, or OpenSCAD enclosures — trace geometry, impedance, stackup, DFM/DRC/ERC sign-off, and hardware-software co-design boundaries."
+description: "Electrical schematics, PCB layouts, KiCad, OpenSCAD. Impedance, stackup, DFM/DRC/ERC, hardware-software co-design."
 category: engineering-hardware
 ---
 
@@ -9,6 +9,20 @@ category: engineering-hardware
 This skill is the architectural authority for **Electrical Schematics, PCB Layout, Physical Constraints, and Manufacturing Sign-Off** in the AOS hardware engineering pipeline. It defines how agents must derive physical parameters from first principles, validate designs against IPC standards, and gate release to fabrication — without compromising on measurable, machine-checkable evidence.
 
 ---
+
+## Plan first
+
+Planning starts on the plan canvas with the `architecture` template, and the human approves it there — not in chat.
+
+Board and enclosure design: structure, physical constraints and sign-off agreed before layout begins.
+
+```bash
+aos-plan-canvas new architecture <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## 1. Role & Architectural Boundaries
 
@@ -154,3 +168,19 @@ This skill acts as the architectural authority for electrical and PCB design, en
 - [ ] DFM limits were checked against the real target fab house, not a generic assumption.
 - [ ] Any pinout/connector change was cross-checked against firmware assumptions and enclosure geometry.
 - [ ] Reverse-engineered parts cite a real manufacturer part number and source, not memory.
+
+
+---
+
+## Hardware Pack Skills
+
+<!-- aos:pack-index:start -->
+- **code-first-hardware-design** — code-first-hardware-design
+- **pcb-constraint-definition** — pcb-constraint-definition
+- **pcb-layout-routing-automation** — pcb-layout-routing-automation
+- **pcb-validation-dfm-signoff** — pcb-validation-dfm-signoff
+- **schematic-datasheet-analysis** — schematic-datasheet-analysis
+- **schematic-reverse-engineering** — schematic-reverse-engineering
+
+**Install:** `aos store install --pack hardware`
+<!-- aos:pack-index:end -->

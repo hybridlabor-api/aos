@@ -26,6 +26,19 @@ test('install writes the hooks to config.toml and creates no hooks.json', () => 
     assert.strictEqual(fs.existsSync(path.join(dir, 'hooks.json')), false);
 });
 
+test('an old startcycle-dispatch.mjs entry outside the block is migrated away; a foreign one with that name stays', () => {
+    const dir = path.join(mk(), '.codex');
+    fs.mkdirSync(dir, { recursive: true });
+    const old = JSON.stringify(`node "${path.join(dir, 'workflows', 'startcycle-dispatch.mjs')}"`);
+    const foreign = JSON.stringify('node "/mine/startcycle-dispatch.mjs"');
+    fs.writeFileSync(path.join(dir, 'config.toml'), `[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = "command"\ncommand = ${old}\n\n[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = "command"\ncommand = ${foreign}\n`);
+    mergeCodexTomlHooks(path.join(dir, 'config.toml'));
+    const toml = fs.readFileSync(path.join(dir, 'config.toml'), 'utf8');
+    assert.ok(!toml.includes(path.join(dir, 'workflows', 'startcycle-dispatch.mjs').replace(/\\/g, '\\\\')), toml);
+    assert.match(toml, /\/mine\/startcycle-dispatch\.mjs/);
+    assert.ok(toml.split('fabric-dispatch.mjs').length - 1 <= 1, 'at most one fabric-dispatch entry: the fresh AOS block');
+});
+
 test('AOS entries in hooks.json are migrated: foreign entries stay, the original is backed up', () => {
     const dir = path.join(mk(), '.codex');
     fs.mkdirSync(dir, { recursive: true });
@@ -114,7 +127,10 @@ test('merge reports a changed AOS hook stanza only when it changed, and snapshot
 
 test('the trust reminder has the exact text and is printed after the outro, only when the stanza changed', () => {
     const { CODEX_TRUST_REMINDER } = require('../installer.js');
-    assert.strictEqual(CODEX_TRUST_REMINDER, 'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.');
+    assert.strictEqual(
+        CODEX_TRUST_REMINDER,
+        'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.\nNon-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.'
+    );
     const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
     assert.match(src, /if \(mergeCodexTomlHooks\(path\.join\(targetHome, '\.codex', 'config\.toml'\)\)\) codexHooksChanged = true;/);
     const print = src.indexOf('if (codexHooksChanged) console.log(');

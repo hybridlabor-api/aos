@@ -25,20 +25,11 @@ const frontmatter = (name) => {
 // has to show; only a real bare segment (e.g. `/Users/tim/`) is a leak.
 const absHomePath = (text) => /((?:\/|\\)(?:Users|home)(?:\/|\\)[^<>/\s`'")\],\\]+)/.test(text) || /C:\\Users\\[^<>/\s`'")\],\\]+/.test(text);
 
-// A basic skill registers the same way in every manifest: as
-// `./skills/basic/<name>` in each plugin.json's `skills` array, and by bare
-// name in a skills.sh.json grouping. startcycle is the reference basic skill.
-const REFERENCE = 'startcycle';
+// Slim plugins carry no skills array: a basic skill registers by bare name in a
+// skills.sh.json grouping. fabric is the reference basic skill.
+const REFERENCE = 'fabric';
 
 const parseJson = (rel) => JSON.parse(readFileSync(join(ROOT, rel), 'utf8'));
-
-const basicSkillKeys = (rel, name) => {
-  const manifest = parseJson(rel);
-  assert.ok(Array.isArray(manifest.skills), `${rel}: no skills array`);
-  const entries = manifest.skills.filter((s) => s === `./skills/basic/${REFERENCE}` || s === `./skills/basic/${name}`);
-  assert.equal(entries.length, 2, `${rel}: ${name} not registered beside ${REFERENCE}`);
-  return entries;
-};
 
 const groupedSkill = (name) => {
   const grouped = parseJson('skills.sh.json');
@@ -175,24 +166,17 @@ describe('instinct & skill-create ecosystem skills', () => {
     }
   });
 
-  test('all four are registered wherever basic skills are registered, exactly like startcycle', () => {
-    const manifests = [
-      'plugin.json',
-      'plugins/bdb-aos/plugin.json',
-    ];
-    for (const rel of manifests) {
-      for (const name of SKILLS) {
-        const entry = basicSkillKeys(rel, name);
-        assert.deepEqual([...entry].sort(), [`./skills/basic/${REFERENCE}`, `./skills/basic/${name}`].sort(),
-          `${rel}: ${name} registration format differs from ${REFERENCE}'s`);
-      }
+  test('all four are registered in skills.sh.json exactly like fabric; the plugin manifests stay slim', () => {
+    for (const rel of ['plugin.json', 'plugins/bdb-aos/plugin.json']) {
+      assert.equal(parseJson(rel).skills, undefined, `${rel}: slim plugins carry no skills array`);
     }
+    const ref = groupedSkill(REFERENCE);
+    assert.equal(typeof ref.skill, 'string', 'skills.sh.json: fabric not listed as a string');
     for (const name of SKILLS) {
       const hit = groupedSkill(name);
       assert.ok(hit, `skills.sh.json: \`${name}\` not grouped`);
-      const ref = groupedSkill(REFERENCE);
       assert.equal(typeof hit.skill, 'string', `skills.sh.json: ${name} not listed as a string like ${REFERENCE}`);
-      assert.equal(typeof ref.skill, 'string', 'skills.sh.json: startcycle not listed as a string');
+      assert.equal(existsSync(join(ROOT, 'skills', 'basic', name, 'SKILL.md')), true, `${name}: SKILL.md missing under skills/basic`);
     }
   });
 });

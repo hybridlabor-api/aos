@@ -1,0 +1,91 @@
+name: AOS Skill Request
+description: Request a new skill implementation via Google Labs Jules
+title: "[Skill]: "
+labels: ["aos-skill-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Jules Autonomous Skill Implementer
+        This issue triggers the Jules Cloud Worker pilot to implement a BDB Agent OS (AOS) skill.
+        
+        **Instructions for Jules:**
+        1. Read `skills/skill-create/SKILL.md` and the skill contract in `AGENTS.md` before authoring.
+        2. Create `skills/<name>/SKILL.md` matching the standard frontmatter and section structure.
+        3. Run `npm run validate` (or `node scripts/validate-skills.mjs`) inside the cloud VM and ensure all checks pass (0 errors).
+        4. Commit using Conventional Commits (`feat(skills): add <name> skill`) and open a Pull Request.
+
+  - type: input
+    id: name
+    attributes:
+      label: Skill Name
+      description: The directory and skill name (lowercase letters, digits, single hyphens, max 64 chars).
+      placeholder: e.g. flutter-skill
+    validations:
+      required: true
+
+  - type: input
+    id: source_url
+    attributes:
+      label: Source URL
+      description: Upstream repository, documentation, or canonical skill source URL.
+      placeholder: e.g. https://github.com/ai-dashboad/flutter-skill
+    validations:
+      required: true
+
+  - type: input
+    id: source_license
+    attributes:
+      label: Source License
+      description: Upstream open-source license (must be permissive, e.g. MIT, Apache-2.0, BSD-3-Clause).
+      placeholder: e.g. MIT
+    validations:
+      required: true
+
+  - type: input
+    id: attribution
+    attributes:
+      label: Attribution
+      description: Original author or upstream project name for attribution notices (or 'community').
+      placeholder: e.g. ai-dashboad/flutter-skill
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Skill Category
+      description: Select the exact category enum defined in AGENTS.md and validate-skills.mjs.
+      options:
+        - design-ui-ux
+        - engineering-method
+        - media-eventtech
+        - bdb-core
+        - saas-ops
+        - library
+        - engineering-hardware
+        - business-ops
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Skill Description & Scope
+      description: Detailed description of what the skill does, trigger guidelines, and key rules.
+      placeholder: Explain what this skill does and what guidelines Jules must implement.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Implementation Guardrails
+      description: Standards that Jules and reviewers must follow
+      options:
+        - label: Jules must read `skills/skill-create/SKILL.md` or the skill contract in `AGENTS.md`.
+          required: true
+        - label: Jules must run `npm run validate` (or `node scripts/validate-skills.mjs`) and ensure 0 errors.
+          required: true
+        - label: Jules must follow Conventional Commits (e.g. `feat(skills): add <name> skill`).
+          required: true

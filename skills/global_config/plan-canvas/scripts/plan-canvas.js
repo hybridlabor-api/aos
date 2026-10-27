@@ -24,6 +24,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const endpoints = require('./lib/endpoints-lite');
 
 const {
   canonicalizeArtifactPath,
@@ -35,12 +36,13 @@ const {
   DEFAULT_HOST,
   codeStampOf,
   createPlanCanvasServer,
+  realRoot,
   resolveIdleTimeoutMs,
   resolvePort,
   watchCodeStamp
 } = require('./lib/plan-canvas/server');
 
-const VERSION = '1.1.0';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
+const VERSION = '1.2.0';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
                            // Bump when the vendored JS changes, to force a stale detached server to restart.
 
 const SAFE_REQUEST_PATHS = new Set([
@@ -64,20 +66,23 @@ function usage() {
     '  aos-plan-canvas templates        List plan templates as JSON ({id,label,description,useWhen,hasBoard})',
     '  aos-plan-canvas new <template-id> <target-dir>  Copy a plan template into a new folder',
     '  aos-plan-canvas open <file>      Open (or resume) a review session',
+    '  aos-plan-canvas open <file> --await  Open, then block like await in the same call',
     '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
     '  aos-plan-canvas annotate <app-url>  Print the script tag that lets you annotate a running dev app',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
     '  aos-plan-canvas pending          Show feedback queued for no listener',
     '  aos-plan-canvas typing <file>    Show a thinking/typing indicator in chat',
     '  aos-plan-canvas end <file>       End a session as the agent',
-    '  aos-plan-canvas stop             Shut down the canvas server',
+    '  aos-plan-canvas stop             Shut down the canvas server (only one started from this workspace)',
     '  aos-plan-canvas server           Run the server in the foreground',
     '',
     'Options:',
-    '  open:  --mode <id>    Select planning mode (default: standard)',
+    '  open:  --mode <id>    Select planning mode (default: bdb-plan-builder when available, else standard)',
     '                   bdb-plan-builder builds <plan-dir>/plan.builder.html from',
     '                   plan.mdx and opens that file instead',
     '         --no-open      Do not launch a browser window',
+    '         --await        After opening, block until the human sends feedback (same output contract as await)',
+    '         --reply <msg>  With --await: show an agent reply in the canvas chat before waiting',
     '         --reopen       Reopen a session the user ended from the browser',
     '  new:   --mode <id>    bdb-plan-builder (default: plan.mdx, canvas.mdx) or standard (plan.md);',
     '                   refuses a non-empty target (exit 2)',
@@ -190,6 +195,19 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// The workspace root this CLI invocation runs from, realpathed the way the server reports it
+// in /health. A server of ANOTHER project/root must never be stopped or restarted from here
+// (audit port-collision): both share the documented port, and /shutdown answers anyone.
+function ownWorkspaceRoot() {
+  return realRoot(process.cwd());
+}
+
+function foreignWorkspace(health) {
+  const reported = health && typeof health.root === 'string' ? health.root : null;
+  if (!reported) return null; // a server without a reported root cannot be judged: treated as same/legacy
+  return ownWorkspaceRoot() === reported ? null : reported;
+}
+
 function parseVersion(value) {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(value));
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -210,6 +228,7 @@ function isOlderVersion(running, mine) {
 async function ensureServer({ stateDir, port }) {
   const health = await healthCheck(port);
   if (health && !isOlderVersion(health.version, VERSION)) return port;
+  if (health && foreignWorkspace(health)) return port; // an older server of ANOTHER root stays up: never stop it
   if (health) {
     await request(port, 'POST', '/shutdown').catch(() => {});
     for (let i = 0; i < 20 && (await healthCheck(port)); i++) await sleep(100);
@@ -234,12 +253,15 @@ async function ensureServer({ stateDir, port }) {
 function openBrowser(url) {
   if (process.env.AOS_NO_OPEN === '1') return false;
   const platform = process.platform;
+  if (platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false;
   const [cmd, args] =
     platform === 'darwin' ? ['open', [url]]
       : platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
         : ['xdg-open', [url]];
   try {
-    spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false }).unref();
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false });
+    child.on('error', () => {});
+    child.unref();
     return true;
   } catch {
     return false;
@@ -281,7 +303,7 @@ function findSkillMd(name) {
   return null;
 }
 
-function resolveModes() {
+function resolveModes(target) {
   const modes = [
     {
       id: 'standard',
@@ -300,18 +322,34 @@ function resolveModes() {
     reason: fs.existsSync(planBuilderPath) ? null : 'bdb-plan-builder not installed'
   });
 
+  // The builder is the default whenever it is available and the target is a plan folder or plan.mdx
+  // (the only inputs it renders); any other file falls back to standard.
+  const builder = modes.find(m => m.id === 'bdb-plan-builder');
+  const isPlanTarget = !target || path.basename(target) === 'plan.mdx' ||
+    (fs.existsSync(target) && fs.statSync(target).isDirectory());
   return {
-    default: 'standard',
+    default: builder.available && isPlanTarget ? 'bdb-plan-builder' : 'standard',
     modes
   };
 }
 
-async function cmdOpen(file, args, { stateDir, port }) {
+async function cmdOpen(file, args, context) {
+  const { stateDir, port } = context;
+  const result = await doOpen(file, args, { stateDir, port });
+  // open --await: one call opens the session AND keeps listening, so the turn
+  // can never end without a listener. Same output contract as await.
+  if (!result.error && args.includes('--await')) {
+    return cmdAwait(file, args.filter(a => a !== '--await'), context);
+  }
+  return result;
+}
+
+async function doOpen(file, args, { stateDir, port }) {
   if (!file) throw new Error('open requires a file path');
   if (!fs.existsSync(path.resolve(file))) throw new Error(`artifact not found: ${file}`);
 
-  const mode = valueAfter(args, '--mode') || 'standard';
-  const modesInfo = resolveModes();
+  const modesInfo = resolveModes(file);
+  const mode = valueAfter(args, '--mode') || modesInfo.default;
   const modeConfig = modesInfo.modes.find(m => m.id === mode);
 
   if (!modeConfig) {
@@ -360,7 +398,17 @@ async function cmdOpen(file, args, { stateDir, port }) {
     };
   }
   if (res.statusCode !== 200) {
-    const err = new Error(res.body.error || `open failed (HTTP ${res.statusCode})`);
+    let message = res.body.error || `open failed (HTTP ${res.statusCode})`;
+    // The shared documented port may hold a server started from another workspace: name the owner
+    // instead of the bare 403, and never suggest stopping it from here (it is left running).
+    if (res.statusCode === 403) {
+      const health = await healthCheck(port);
+      const owner = health && typeof health.root === 'string' ? health.root : null;
+      message = owner && owner !== ownWorkspaceRoot()
+        ? `artifact path is outside the workspace: the canvas server on port ${port} serves ${owner}. Stop it from that workspace (\`aos-plan-canvas stop\` there), or set AOS_PLAN_CANVAS_PORT to run your own.`
+        : message;
+    }
+    const err = new Error(message);
     if (mdxWarning) {
       err.warning = mdxWarning;
       err.warnings = [mdxWarning];
@@ -381,8 +429,8 @@ async function cmdOpen(file, args, { stateDir, port }) {
     ...(built ? { artifact: built.outFile, warnings: built.warnings } : {}),
     ...(mdxWarning ? { warning: mdxWarning, warnings: Array.isArray(built?.warnings) ? [...built.warnings, mdxWarning] : [mdxWarning] } : {}),
     next_step: built && Array.isArray(built.warnings) && built.warnings.length
-      ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas await <dir>/plan.builder.html\` and leave it running.`
-      : 'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
+      ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas open <dir>/plan.builder.html --mode bdb-plan-builder --await\` and leave it running.`
+      : 'Required next step: keep a listener on this session — use `aos-plan-canvas open <file> --await` (or run `aos-plan-canvas await <file>` immediately). Never end the turn without one; it returns when the human sends feedback, a verdict, or ends the session.'
   };
 }
 
@@ -577,7 +625,17 @@ async function cmdEnd(file, { port }) {
 }
 
 async function cmdStop({ stateDir, port }) {
-  if (!(await healthCheck(port))) return { status: 'not running' };
+  const health = await healthCheck(port);
+  if (!health) return { status: 'not running' };
+  const owner = foreignWorkspace(health);
+  if (owner) {
+    return {
+      status: 'refused',
+      port,
+      ownerRoot: owner,
+      hint: `the canvas server on port ${port} serves ${owner}, not this workspace — it is left running. Stop it from that workspace (\`aos-plan-canvas stop\` there), or set AOS_PLAN_CANVAS_PORT to run your own alongside.`
+    };
+  }
   await request(port, 'POST', '/shutdown').catch(() => {});
   fs.rmSync(serverInfoPath(stateDir), { force: true });
   return { status: 'stopping' };
@@ -593,6 +651,7 @@ async function cmdServer(args, { stateDir, port }) {
     if (shuttingDown) return;
     shuttingDown = true;
     fs.rmSync(serverInfoPath(stateDir), { force: true });
+    endpoints.retire('plan-canvas');
     await canvas.close().catch(() => {});
     process.exit(code);
   };
@@ -606,6 +665,7 @@ async function cmdServer(args, { stateDir, port }) {
     log: line => process.stderr.write(`${line}\n`)
   });
   const bound = await canvas.listen(listenPort);
+  endpoints.announce('plan-canvas', { port: bound.port, version: VERSION });
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(
     serverInfoPath(stateDir),

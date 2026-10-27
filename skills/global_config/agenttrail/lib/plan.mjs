@@ -79,3 +79,32 @@ export function lintPlan(parsed, planText) {
   if (comps.length > 9) out.push(`${comps.length} components — over the 5–9 governor, consider merging`)
   return out.slice(0, 12)
 }
+// First open (declared `- [ ]`, in file order) task under a component — what an
+// AOS_TRAIL_NODE worker's node maps to while it works. Blocked and done tasks
+// are never auto-promoted.
+export function firstOpenTaskId(nodes, componentId) {
+  for (const n of nodes) if (n.level === 'task' && n.parent === componentId && n.status === 'pending') return n.id
+  return null
+}
+
+// Ticking from the outside in: a worker or dispatcher names a task id and a
+// mode — --doing (`[~]`), --done (`[x]`, the default), --todo (`[ ]`). Exactly
+// the one line carrying `{#<task-id>}` moves between the states each mode
+// accepts (done takes in-progress work too, todo takes done work back). The
+// from value is the character class of the mark it may sit on — its own
+// brackets are part of the pattern (so it needs literal-bracket escapes
+// around it), to is the mark written.
+const TICK_MODES = {
+  doing: { from: '[ ]', to: '~' },
+  done: { from: '[ ~]', to: 'x' },
+  todo: { from: '[~x]', to: ' ' }
+}
+export function tickTask(text, taskId, mode = 'done') {
+  const m = TICK_MODES[mode]
+  if (!m) return { text, changed: false }
+  const matches = [...String(text || '').matchAll(new RegExp(`^\\s*[-*]\\s+\\[${m.from}\\]\\s+.*\\{#${taskId}\\}\\s*$`, 'gm'))]
+  if (matches.length !== 1) return { text, changed: false }
+  const line = matches[0][0]
+  const flipped = line.replace(/^(\s*[-*]\s+)\[.\]/, `$1[${m.to}]`)
+  return { text: String(text).replace(line, flipped), changed: true }
+}

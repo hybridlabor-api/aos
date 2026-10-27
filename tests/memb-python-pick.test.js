@@ -44,4 +44,11 @@ describe('ensurePythonVenv', () => {
         assert.equal(r.created, true);
         assert.deepEqual(calls, ['python3.12 -m venv --clear .venv']);
     });
+    test('venv failure surfaces stderr, sets the half-built .venv aside and names the OS fix', () => {
+        const dir = tmp();
+        const run = () => { fs.mkdirSync(path.join(dir, '.venv'), { recursive: true }); throw Object.assign(new Error('x'), { stderr: 'ensurepip is not available' }); };
+        assert.throws(() => ensurePythonVenv(dir, { pick: () => ({ cmd: 'python3.12' }), hasUv: false, run }), /ensurepip is not available.*fix: /);
+        assert.equal(fs.existsSync(path.join(dir, '.venv')), false);
+        assert.ok(fs.readdirSync(dir).some((n) => n.startsWith('.venv.broken-')), 'kept aside, not deleted');
+    });
 });

@@ -1,6 +1,6 @@
 ---
 name: bdb-eventagency-skill
-description: "Use for event agency operations: client intake, project scoping, vendor management, crew coordination, production planning, pre-show logistics, and post-show wrap. Delegates technical execution to godmode-eventtech and bdbmediastorm."
+description: "Event agency operations: client intake, scoping, vendors, crew, production planning, logistics, wrap. Delegates technical execution to godmode-eventtech."
 category: media-eventtech
 source: talkvalue/event-agency-skills
 ---
@@ -12,6 +12,20 @@ The **agency-ops layer** for Hybridlabor Global — the business and production-
 Techniques adapted from [talkvalue/event-agency-skills](https://github.com/talkvalue/event-agency-skills) (Apache-2.0). Prose only — no upstream code, no scripts, no dependencies.
 
 ---
+
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- A show day's technical plan → `show-control`; a client project go-live → `release`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## 1. Routing Table
 
@@ -250,3 +264,28 @@ Channel attribution is **inherently imperfect** — most attendees meet several 
 - [ ] Invoice triggers captured within 72 hours of strike.
 - [ ] Attribution figures are presented with their acknowledged uncertainty.
 - [ ] No upstream script, Python file, or Composio tool dependency was added.
+
+
+---
+
+## Business Pack Skills
+
+<!-- aos:pack-index:start -->
+- **product-manager-toolkit** — Essential tools and frameworks for modern product management, from discovery to delivery.
+- **domain-modeling** — Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR.
+- **to-spec** — Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.
+- **triage** — Move issues and external PRs through a state machine of triage roles, categorise, verify, and write agent-ready briefs.
+- **wayfinder** — Plan work too big for one agent session as a shared map of decision tickets on the issue tracker, resolved one at a time until the way is clear.
+- **executing-plans** — Use when you have a written implementation plan to execute in a separate session with review checkpoints
+- **grill-with-docs** — Interview to sharpen plan/design and build domain model. Glossary and ADRs while grilling.
+- **deep-research** — Run autonomous research tasks that plan, search, read, and synthesize information into comprehensive reports.
+- **obsidian-markdown** — Obsidian Flavored Markdown: wikilinks, embeds, callouts, properties. .md files, frontmatter, tags.
+- **openapi-spec-generation** — OpenAPI 3.1 specs from code, design-first approach. API docs, SDKs, contract compliance.
+- **browser-automation** — >-
+- **apify-lead-generation** — Scrape leads from multiple platforms using Apify Actors.
+- **apify-ultimate-scraper** — AI-driven data extraction from 55+ Actors across all major platforms. This skill automatically selects the best Actor for your task.
+- **firecrawl** — |
+- **firecrawl-sdk** — Integrate Firecrawl into product code: SDK setup and FIRECRAWL_API_KEY onboarding, /scrape, /search and /interact endpoints. Use for app code, not the agent.
+
+**Install:** `aos store install --pack business`
+<!-- aos:pack-index:end -->

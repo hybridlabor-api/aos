@@ -1,10 +1,8 @@
 ---
 name: pb-ship
 description: >-
-  Ship the day's work in one repo: triage new issues, review every open PR
-  (description, visual recap, adversarial reviewer, shipping pre-flight and
-  quality gate), merge only after GO, then post a status recap. Use for
-  "ship it", "ship day", "merge the ready PRs", "end of work block".
+  Ship the day's work in one repo: triage issues, review every open PR,
+  merge after GO, post a status recap.
 category: engineering-method
 kind: playbook
 trigger: ["ship it", "ship day", "merge the ready PRs"]
@@ -23,6 +21,18 @@ est_time: 20-60 min
 
 # Ship the day's PRs
 What you get: the ready PRs merged one by one after your GO, each with a reviewed description, findings and a gate result, plus a status line.
+
+## Plan first
+
+The release decision is a `release` plan — scope table and go/no-go gate before merges:
+
+```bash
+aos-plan-canvas new release <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Inputs
 - repo — the local checkout (default: the current directory); `<owner/repo>` comes from `git -C <repo> remote get-url origin`

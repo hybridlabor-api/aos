@@ -1,0 +1,22 @@
+{
+  "id": "web-launch",
+  "label": "Web Launch Team",
+  "roles": [
+    "copywriter",
+    "ui_ux",
+    "engineering",
+    "shipping"
+  ],
+  "playbooks": [
+    "pb-landing-page"
+  ],
+  "gates": [
+    "lint",
+    "typecheck",
+    "tests",
+    "a11y",
+    "seo",
+    "security"
+  ],
+  "effort": "M"
+}

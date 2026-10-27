@@ -16,7 +16,7 @@ const SESSION = {
 }
 
 let now = Date.now()
-const entry = (name: string) => ({ name, kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false })
+const entry = (name: string) => ({ name, kind: 'file' as const, size: 1, mtimeMs: now, isLink: false })
 const crowd = [
   { ...SESSION, id: 'a1', name: 'AO Orchestrator', role: 'orchestrator', reason: 'GO: git push --force origin' },
   { ...SESSION, id: 'a2', name: 'TASK MANAGER', reason: '1 GO' },
@@ -94,7 +94,7 @@ test('a task list older than 15 minutes is marked stale on the fleet line', asyn
 test('the band draws every reporting session', async ($, on) => {
   on('env.get', () => ({ value: '/home' }))
   on('fs.exists', () => ({ value: true }))
-  on('fs.list', () => ({ value: [{ name: 'a1.json', kind: 'file' as const, size: 1, mtimeMs: 0, isLink: false }] }))
+  on('fs.list', () => ({ value: [{ name: 'a1.json', kind: 'file' as const, size: 1, mtimeMs: SESSION.updatedAt, isLink: false }] }))
   on('fs.read', () => ({ value: JSON.stringify(SESSION) }))
   on('clock.now', () => ({ value: SESSION.updatedAt + 1000 }))
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
@@ -119,4 +119,25 @@ test('the band draws every reporting session', async ($, on) => {
     props: { bodyColumns: 80 } as never,
   })
   expect(await pane.findAll({ type: 'Raster' })).toHaveLength(1)
+})
+
+test('loadFleet skips files untouched for longer than the stale window without reading them', async ($, on) => {
+  const reads: string[] = []
+  on('env.get', () => ({ value: '/home' }))
+  on('fs.exists', () => ({ value: true }))
+  on('fs.list', () => ({
+    value: [
+      { name: 'old.json', kind: 'file' as const, size: 1, mtimeMs: SESSION.updatedAt - 24 * 3_600_000, isLink: false },
+      { name: 'a1.json', kind: 'file' as const, size: 1, mtimeMs: SESSION.updatedAt, isLink: false },
+    ],
+  }))
+  on('fs.read', (_$, e) => {
+    reads.push(e.path)
+    return { value: JSON.stringify(SESSION) }
+  })
+  on('clock.now', () => ({ value: SESSION.updatedAt + 1000 }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  await $.command.run({ command: 'aos-fleet', args: '' } as never)
+  expect(reads.some(r => r.endsWith('/old.json'))).toBe(false)
+  expect(reads.some(r => r.endsWith('/a1.json'))).toBe(true)
 })

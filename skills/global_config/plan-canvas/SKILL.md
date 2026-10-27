@@ -1,17 +1,12 @@
 ---
 name: plan-canvas
 description: >-
-  Use when the user just says "plan", "planen" or "roadmap": offer a template via aos-plan-canvas templates.
-  Open plans and HTML artifacts in a local browser canvas where the human
-  annotates elements, chats, and approves or requests changes without leaving
-  the page. Use for planning, whenever a user says "plan", "roadmap",
-  "visualize the plan", "review the plan" or /plan-canvas, right after a
-  brainstorm or grill interview has produced a plan, and whenever any skill's
-  artifact (plan, design, comparison, report, diagram) can be reviewed
-  visually instead of with typed feedback.
+  Open a plan in a browser canvas to visualize the plan, annotate, approve.
+  Use for "plan", "planen", "roadmap", /plan-canvas, planning or a
+  brainstorm review.
 category: bdb-core
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   origin: affaan-m/ECC
   license: MIT
 ---
@@ -31,11 +26,11 @@ AOS from [affaan-m/ECC](https://github.com/affaan-m/ECC).
 
 ## When to Use
 
-- You just wrote the `/startcycle` plan artifact,
+- You just wrote the `/fabric` plan artifact,
   `production_artifacts/00_execution_plan.md`, and need the CONFIRM/approve
   decision — the canvas verdict replaces a typed "yes/proceed".
 - **Mandatory, not optional**, at the end of `bdbrainstorm` (before writing
-  `state.goal` / handing off to `/startcycle-graph`) and `bdbmediastorm`
+  `state.goal` / handing off to `/fabric-graph`) and `bdbmediastorm`
   (before the show-control architecture is considered final) — both produce
   a plan/spec artifact a human must approve before anything downstream
   proceeds. See each skill's own "Plan Canvas Review" section.
@@ -69,13 +64,20 @@ harness surfaces skills — e.g. `/plan-canvas` in Claude Code, `$plan-canvas` i
 Codex — or just run the `aos-plan-canvas` commands directly.
 
 ```bash
-# 1. Open the artifact in the user's browser (returns immediately)
-aos-plan-canvas open production_artifacts/00_execution_plan.md
+# 1+2 in one call: open the artifact in the user's browser AND block until
+# the human responds. Leave running; re-run if interrupted (queued feedback
+# is never lost). Equivalent to `open` then `await` immediately.
+aos-plan-canvas open production_artifacts/00_execution_plan.md --await
 
-# 2. Block until the human responds. Leave running; re-run if interrupted:
-#    queued feedback is never lost.
+# Or, in two calls (the await must follow immediately):
+aos-plan-canvas open production_artifacts/00_execution_plan.md
 aos-plan-canvas await production_artifacts/00_execution_plan.md
 ```
+
+**Always use `open --await` (or `open` then `await` immediately). Never end
+the turn without a listener parked on the session.** `open --await` prints the
+same JSON as `await` and works identically in every harness — it is a plain
+blocking shell call, no harness-specific API.
 
 When starting a new plan, offer the template choice first: `aos-plan-canvas templates`
 prints the available templates as JSON (`id`, `label`, `description`, `useWhen`,
@@ -88,18 +90,18 @@ On Builder pages, blocks carry ids like `src-plan.mdx-L42`: an annotation `selec
 
 ### Which template when
 
-| Template id | Use when | Not for |
-|---|---|---|
-| `architecture` | Designing or reshaping a service or system; structure, interfaces and trade-offs agreed before building | A single defect (`bugfix`) |
-| `bugfix` | Fixing one defect; cause, fix and proof written down before coding | A new feature (`feature`) or a system design (`architecture`) |
-| `feature` | A user-facing feature with 3-4 screens and a clear build order | System structure without screens (`architecture`) |
-| `migration` | Moving data or a service from an old system to a new one; safe cutover and a way back | Shipping a version to users (`release`) |
-| `recap` | Work is finished and reviewers or teammates need a quick visual summary | Work still in progress |
-| `recap-board` | The change is mostly visible (a screen or a system shape); before and after side by side | A change that is not visible (`recap-review`) |
-| `recap-review` | A reviewer must decide on a merge or take over work; honest account of verified vs not verified | A visible change that needs before/after artboards (`recap-board`) |
-| `release` | Shipping a version to users; agreed scope, go/no-go gate, staged rollout and a way back | Moving data or a service between systems (`migration`) |
-| `research` | Choosing between options; evidence and recommendation reviewed before anyone builds | A defect (`bugfix`) |
-| `show-control` | Lighting, video, audio and network of a live show or event; one reviewable technical document | Non-event software (`feature`, `architecture`) |
+| Template id | Use when | Not for | Used by |
+|---|---|---|---|
+| `architecture` | Designing or reshaping a service or system; structure, interfaces and trade-offs agreed before building | A single defect (`bugfix`) | godmode-engineering, godmode-hardware-pcb, software-architecture, architect-review |
+| `bugfix` | Fixing one defect; cause, fix and proof written down before coding | A new feature (`feature`) or a system design (`architecture`) | godmode-engineering, systematic-debugging, diagnosing-bugs, pb-bug-fix, pb-ci-fix |
+| `feature` | A user-facing feature with 3-4 screens and a clear build order | System structure without screens (`architecture`) | godmode-ui-ux, godmode-media-creation, pb-landing-page, pb-idea-to-launch, prototype |
+| `migration` | Moving data or a service from an old system to a new one; safe cutover and a way back | Shipping a version to users (`release`) | godmode-engineering, database-design |
+| `recap` | Work is finished and reviewers or teammates need a quick visual summary | Work still in progress | quick-recap, pb-handover |
+| `recap-board` | The change is mostly visible (a screen or a system shape); before and after side by side | A change that is not visible (`recap-review`) | godmode-ui-ux, bdb-visual-edit, pb-redesign-app |
+| `recap-review` | A reviewer must decide on a merge or take over work; honest account of verified vs not verified | A visible change that needs before/after artboards (`recap-board`) | godmode-shipping, pr-recap, requesting-code-review, two-axis-code-review, finishing-a-development-branch, pb-worktrees-land |
+| `release` | Shipping a version to users; agreed scope, go/no-go gate, staged rollout and a way back | Moving data or a service between systems (`migration`) | godmode-shipping, bdb-eventagency-skill, pb-ship, pb-release-aos, golive |
+| `research` | Choosing between options; evidence and recommendation reviewed before anyone builds | A defect (`bugfix`) | godmode-engineering, godmode-media-creation, godmode-3d-creation, deep-research, plan-arbiter |
+| `show-control` | Lighting, video, audio and network of a live show or event; one reviewable technical document | Non-event software (`feature`, `architecture`) | godmode-eventtech, bdbmediastorm, bdb-eventagency-skill, pb-show-build, pb-crew-call-sheet |
 
 ### Stay listening, or the human talks to an empty chair
 
@@ -192,7 +194,7 @@ aos-plan-canvas trail <plan-dir>        # writes production_artifacts/00_executi
 aos-trail . --plan production_artifacts/00_execution_plan.md --no-open
 ```
 
-`trail` turns headings tagged `{#id}` and `<Section id title>` into components (`needs` from `<Section needs=[...]>` or frontmatter `needs-<id>: a, b`, `files` from `<ImplementationMap>`, tasks from `<Checklist>`, `url:` from an `<Archify>` whose file lives under `production_artifacts/`). It prints `{out, components, tasks, next_step}`; `--out <file>` must stay inside the workspace, an existing file is never overwritten without `--force`, and a plan with no components exits 2. It starts nothing. Inside an AO session (`AO_BROWSER_CAPABILITY` set), also run `ao preview <url>` with the URL `aos-trail` prints, as the `agenttrail` skill says.
+`trail` turns headings tagged `{#id}` and `<Section id title>` into components (`needs` from `<Section needs=[...]>` or frontmatter `needs-<id>: a, b`, `files` from `<ImplementationMap>`, tasks from `<Checklist>`, `url:` from an `<Archify>` whose file lives under `production_artifacts/`). `files` and `by` may also be declared per section as plain markdown lines — `files: a, b` and `by: opencode` — or as `<Checklist files by>` props; plans written this way light up the agenttrail map natively: the node shows its owner badge, and a task marked `- [~]` (in progress) or `- [x]` (done) reads as such on the map. Regenerating with `--force` never resets live state: marks already in the output file (`[~]`, `[x]`, `[!]`) are carried over the new output, matched by task id. It prints `{out, components, tasks, next_step}`; `--out <file>` must stay inside the workspace, an existing file is never overwritten without `--force`, and a plan with no components exits 2. It starts nothing. Inside an AO session (`AO_BROWSER_CAPABILITY` set), also run `ao preview <url>` with the URL `aos-trail` prints, as the `agenttrail` skill says.
 
 **Prototype hint.** A plan with `web`/`desktop` artboards or screens (or frontmatter `prototype: suggest`) ends with one "Suggested next step" callout naming them and pointing at the `prototype` skill for a throwaway prototype. It is plain text and starts nothing; `prototype: skip` turns it off.
 
@@ -205,10 +207,10 @@ aos-trail . --plan production_artifacts/00_execution_plan.md --no-open
 - The home page (`http://127.0.0.1:4519/`) lists all sessions; ended ones have a Resume button (plain form, no script).
 - A session the user ended refuses a plain `open` (HTTP 409); pass `--reopen` only when they ask.
 
-## Relationship to `/startcycle`
+## Relationship to `/fabric`
 
 An `approve` verdict on `production_artifacts/00_execution_plan.md` satisfies
-the **Architect → TechLead gate (step 1 → 2)** of `/startcycle`: it is a human
+the **Architect → TechLead gate (step 1 → 2)** of `/fabric`: it is a human
 confirmation that the plan is ready for the capability-map review. This is
 optional — the pipeline runs unchanged without it.
 
@@ -262,27 +264,30 @@ mirror at `AOS_PLAN_CANVAS_MERMAID_URL` for air-gapped use.
 
 ## Planning mode choice
 
-Always run `aos-plan-canvas modes` first to discover what planning modes are available in your environment, then present only the available modes to the user with `standard` preselected as the default. Ask every time a plan review begins, even if modes have been configured previously — the environment may have changed between reviews.
+`bdb-plan-builder` is the default whenever it is available; `standard` is only the fallback for environments where the builder mode is not installed. Do not ask which mode to use and do not present a "standard or builder" question. Run `aos-plan-canvas modes` once per environment to detect availability, pick the default accordingly, and open.
 
 ```bash
-# Discover available modes
+# Discover available modes (once per environment)
 aos-plan-canvas modes
-# → { "default": "standard", "modes": [ {"id":"standard","label":"Standard Plan Canvas","available":true,"reason":null}, ... ] }
+# → { "default": "bdb-plan-builder", "modes": [ {"id":"standard","label":"Standard Plan Canvas","available":true,"reason":null}, {"id":"bdb-plan-builder","label":"BDB Plan Builder","available":true,"reason":null}, ... ] }
 ```
 
-After the user chooses (or selects the preselected default), open with that mode:
+Open with the resolved default:
 
 ```bash
-aos-plan-canvas open <file> --mode <chosen-id>
+aos-plan-canvas open <file> --mode bdb-plan-builder
+# builder mode unavailable → aos-plan-canvas open <file> --mode standard
 ```
 
-`bdb-plan-builder` (labeled "BDB Plan Builder") is listed as available only when `lib/plan-builder/index.js` exists in this skill's scripts directory. Until then, only `standard` is available.
+`bdb-plan-builder` (labeled "BDB Plan Builder") is listed as available only when `lib/plan-builder/index.js` exists in this skill's scripts directory. Until then, only `standard` is available and it is the default. Pass `--mode` explicitly: `open` without `--mode` still falls back to `standard` for plain `.md` files.
+
+`open` accepts `--await` (with optional `--reply <msg>`): it opens the session and then blocks exactly like `await`, returning the same JSON. Prefer it — one call keeps the listener up.
 
 ### `bdb-plan-builder`
 
 For an Agent-Native-style **plan folder** (`plan.mdx` plus optional `canvas.mdx`, `prototype.mdx`, `.plan-state.json`), `open` renders the folder into ONE self-contained `plan.builder.html` in the BDB look next to the plan, then opens *that* file through the normal HTML artifact path — so annotation, chat and verdict work with no extra steps. Point it at the folder or at `plan.mdx` itself; a path with no `plan.mdx` exits 2 with the reason. Edit the MDX and re-run `open` to rebuild. Await `<plan-dir>/plan.builder.html`, not the folder.
 
-## Relationship to `/startcycle`
+## Relationship to `/fabric`
 
 **Plan approval flow** — Architect writes
 `production_artifacts/00_execution_plan.md` and must WAIT for confirmation:
@@ -327,7 +332,7 @@ aos-plan-canvas await <file> --reply "Reworked the risk table."
 | `AOS_PLAN_CANVAS_IDLE_MS` | Idle shutdown timeout (`0` or `off` = never) | 30 minutes |
 | `AOS_PLAN_CANVAS_MERMAID_URL` | Mermaid ESM mirror | pinned jsDelivr CDN |
 
-The BDB Launchpad shows a Plan Canvas card with a start command; `aos --autostart-plan-canvas` registers an opt-in login server (idle exit off).
+Plan Canvas is reachable from the AOS Hub (`aos hub`); `aos --autostart-plan-canvas` registers an opt-in login server (idle exit off).
 
 `metadata.version` above and the `VERSION` literal in
 `scripts/plan-canvas.js` are one value in two places — bump them together when

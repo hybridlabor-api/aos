@@ -206,12 +206,16 @@ describe('H1b push destinations proven by the git config files (aos-22b)', () =>
 });
 
 describe('H2 plain-text gogate form, skill name, non-strict modes', () => {
-    test('the skill is named gogate and the plugin lists it', () => {
+    test('the skill is named gogate and the skills manifest registers it', () => {
         const skill = fs.readFileSync(path.join(REPO, 'skills', 'global_config', 'gogate', 'SKILL.md'), 'utf8');
         assert.match(skill, /^name: gogate$/m);
         assert.match(skill, /^category: bdb-core$/m);
         assert.doesNotMatch(skill, /disable-model-invocation/);
-        assert.ok(fs.readFileSync(path.join(REPO, '.claude-plugin', 'plugin.json'), 'utf8').includes('./skills/global_config/gogate"'));
+        // Slim plugins: .claude-plugin/plugin.json no longer lists skills; the
+        // installer's registry (skills.sh.json) is where every shipped skill is listed.
+        const skillsSh = JSON.parse(fs.readFileSync(path.join(REPO, 'skills.sh.json'), 'utf8'));
+        assert.ok(skillsSh.groupings.some((grp) => Array.isArray(grp.skills) && grp.skills.includes('gogate')),
+            'skills.sh.json registers gogate');
         assert.deepEqual(g.parseGogate('/bdb-aos:gogate status'), { cmd: 'status', form: 'slash' });
     });
     test('a typed plain `gogate grant` works end to end', () => {

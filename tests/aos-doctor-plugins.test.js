@@ -47,7 +47,7 @@ test('plugin check: Claude settings registered + cache present passes, missing w
         write(path.join(h, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'bdb-aos@bdb-marketplace': true }, extraKnownMarketplaces: { 'bdb-marketplace': { source: { source: 'github', repo: 'hybridlabor-api/aos' } } } }));
         const root = path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '1.0.0');
         write(path.join(root, 'plugin.json'), JSON.stringify({ skills: ['./skills'] }));
-        write(path.join(root, 'skills', 'startcycle', 'SKILL.md'), '#');
+        write(path.join(root, 'skills', 'fabric', 'SKILL.md'), '#');
     })('Claude Code bdb-aos plugin');
     assert.ok(good.ok, good.detail);
 });
@@ -56,9 +56,9 @@ test('Claude duplicate skills: a manifest-recorded loose copy of a plugin skill 
     const setup = (recordLoose) => (h) => {
         const root = path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '1.0.0');
         write(path.join(root, 'plugin.json'), JSON.stringify({ skills: ['./skills'] }));
-        write(path.join(root, 'skills', 'startcycle', 'SKILL.md'), '#');
-        write(path.join(h, '.claude', 'skills', 'startcycle', 'SKILL.md'), '#');
-        write(path.join(h, '.agents', '.bdb-install-manifest.json'), JSON.stringify(recordLoose ? { [path.join(h, '.claude', 'skills', 'startcycle', 'SKILL.md')]: { sha256: 'x' } } : {}));
+        write(path.join(root, 'skills', 'fabric', 'SKILL.md'), '#');
+        write(path.join(h, '.claude', 'skills', 'fabric', 'SKILL.md'), '#');
+        write(path.join(h, '.agents', '.bdb-install-manifest.json'), JSON.stringify(recordLoose ? { [path.join(h, '.claude', 'skills', 'fabric', 'SKILL.md')]: { sha256: 'x' } } : {}));
     };
     const d = run(setup(true))('Claude duplicate skills');
     assert.ok(d && !d.ok && d.warningOnly, JSON.stringify(d));
@@ -82,12 +82,12 @@ function modsRow(settings, withClaude = true) {
 test('Claude Code mods row: warns with the fix when claude is installed and a mod is not enabled', () => {
     const d = modsRow({ enabledPlugins: { 'bdb-aos-fleet@bdb-marketplace': true } });
     assert.ok(!d.ok && d.warningOnly, JSON.stringify(d));
-    assert.match(d.detail, /enabled: fleet; not enabled: sessions, alert; Claude Code in PATH is 2\.1\.162/);
-    assert.match(d.fix, /claude update.*aos package install sessions\|alert/);
+    assert.match(d.detail, /enabled: fleet; not enabled: sessions, alert, control; Claude Code in PATH is 2\.1\.162/);
+    assert.match(d.fix, /claude update.*aos package install sessions\|alert\|control/);
 });
 
-test('Claude Code mods row: passes when all three are enabled, absent without claude', () => {
-    const all = Object.fromEntries(['fleet', 'sessions', 'alert'].map((m) => [`bdb-aos-${m}@bdb-marketplace`, true]));
+test('Claude Code mods row: passes when all four are enabled, absent without claude', () => {
+    const all = Object.fromEntries(['fleet', 'sessions', 'alert', 'control'].map((m) => [`bdb-aos-${m}@bdb-marketplace`, true]));
     assert.ok(modsRow({ enabledPlugins: all }).ok);
     assert.equal(modsRow({}, false), undefined);
 });
@@ -101,4 +101,25 @@ test('plugin check: opt-out is not a failure; Codex and agy are checked by their
     assert.ok(by('Claude Code bdb-aos plugin').ok);
     assert.ok(by('Codex bdb-aos plugin').ok);
     assert.ok(!by('Antigravity bdb-aos plugin').ok);
+});
+
+function duplicateSkillsRow(pluginVersion, kernelVersion) {
+    return run((h) => {
+        write(path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', pluginVersion, 'plugin.json'), JSON.stringify({ version: pluginVersion, skills: ['./skills'] }));
+        write(path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', pluginVersion, 'skills', 'dup-skill', 'SKILL.md'), '---\nname: dup-skill\n---\n');
+        const loose = path.join(h, '.claude', 'skills', 'dup-skill', 'SKILL.md');
+        write(loose, '---\nname: dup-skill\n---\n');
+        write(path.join(h, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [loose]: { path: loose } }));
+        write(path.join(h, '.agents', '.bdb-manifest.json'), JSON.stringify({ version: kernelVersion }));
+    })('Claude duplicate skills');
+}
+
+test('duplicate skills: expected (ok) while the plugin is older than the kernel', () => {
+    const d = duplicateSkillsRow('5.3.0', '5.4.0');
+    assert.ok(d && d.ok && /expected until the marketplace serves v5\.4\.0/.test(d.detail), d && d.detail);
+});
+
+test('duplicate skills: still a warning when the plugin is current', () => {
+    const d = duplicateSkillsRow('5.4.0', '5.4.0');
+    assert.ok(d && !d.ok && d.warningOnly, d && d.detail);
 });

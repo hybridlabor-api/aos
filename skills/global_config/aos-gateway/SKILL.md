@@ -1,6 +1,7 @@
 ---
 name: aos-gateway
-description: "Use the local MCP gateway and the per-app MCP picks. Use when the human asks to check, start, enable or disable the gateway, adopt other MCP servers behind it, wonder why an MCP server is direct or shared, or hit an After Effects MCP that will not start (Node >= 24)."
+description: >-
+  Local MCP gateway and per-app MCP picks. Use when checking, starting, enabling the gateway, or debugging why an MCP server is direct or shared.
 category: bdb-core
 risk: safe
 tools:
@@ -21,7 +22,7 @@ aos-gateway serve | start | stop | restart | status [--json] | enable | direct |
 - **Check:** `aos-gateway status` (exit 0 only when running). Upstream health is the state of 1mcp as a whole, not per server.
 - **Enable:** `aos-gateway enable` points the harness MCP files at the gateway. **Direct:** `aos-gateway direct` reverses it and restores removed entries.
 - **Start/stop/restart:** launchd on macOS. Windows (`schtasks`) is UNVERIFIED in the code. Elsewhere run `aos-gateway serve`.
-- Config lives in `~/.agents/gateway/`. `token` must be mode 600. Never print or copy its content.
+- Config lives in `~/.agents/gateway/` (`token`, `upstream_template.json`). `token` must be mode 600. Never print or copy its content.
 
 ## Adopt
 

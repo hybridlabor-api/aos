@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // aos-gogate: read-only go-gate helper for every harness. It prints the status by running
 // go-grant.mjs --status and prints preset texts; it never records a grant, mode or GO.
+import '../lib/cli-help-guard.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import os from 'node:os';

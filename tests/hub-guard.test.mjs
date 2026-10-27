@@ -31,8 +31,10 @@ test('sec-fetch-site: exemptions only for static reads and top navigation', () =
   // top-level navigation exemption
   assert.ok(allow({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'document' }));
   assert.ok(allow({ method: 'GET', path: '/', site: 'cross-site', mode: 'navigate', dest: 'document' }));
-  // framed load from another site: refused
-  assert.equal(allow({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }), false);
+  // framed load from another site: allowed when allowlist active, refused when empty
+  assert.equal(allow({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }), false, 'embedding is opt-in');
+  assert.equal(fetchSiteOk({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }, { AOS_EMBED_ANCESTORS: 'tauri://localhost' }), true);
+  assert.equal(fetchSiteOk({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }, { AOS_EMBED_ANCESTORS: '' }), false);
   assert.equal(allow({ method: 'POST', path: '/', site: 'same-site', mode: 'navigate', dest: 'document' }), false);
   // static reads exemption
   assert.ok(allow({ method: 'GET', path: '/ui/app.js', site: 'same-site', mode: 'no-cors', dest: 'script' }));
@@ -75,9 +77,12 @@ test('FlightLock: single-flight returns false for a second lock', async () => {
   assert.equal(await locks.run('services', async () => 42), 42);
 });
 
-test('security headers: CSP frame-ancestors none, no unsafe-inline', () => {
-  const h = securityHeaders();
-  assert.match(h['content-security-policy'], /frame-ancestors 'none'/);
+test('security headers: CSP frame-ancestors allowlist / none, no unsafe-inline', () => {
+  const h = securityHeaders({ AOS_EMBED_ANCESTORS: 'tauri://localhost' });
+  assert.match(h['content-security-policy'], /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
+  assert.match(securityHeaders({ AOS_EMBED_ANCESTORS: '' })['content-security-policy'], /frame-ancestors 'none'/);
+  const hNone = securityHeaders({ AOS_EMBED_ANCESTORS: '' });
+  assert.match(hNone['content-security-policy'], /frame-ancestors 'none'/);
   assert.match(h['content-security-policy'], /default-src 'self'/);
   assert.match(h['content-security-policy'], /base-uri 'none'/);
   assert.match(h['content-security-policy'], /form-action 'none'/);
@@ -140,4 +145,20 @@ test('redact: mid-line assignments, argv pairs, userinfo, JWTs, Authorization he
   assert.equal(auth.includes('3eafa9ff11'), false);
   // harmless text survives
   assert.equal(redact('visited token status page'), 'visited token status page');
+});
+
+test('guard loads from an installed (flat skills) layout', async () => {
+  const { mkdtempSync, mkdirSync, cpSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+  const root = mkdtempSync(join(tmpdir(), 'hub-flat-'));
+  mkdirSync(join(root, 'lib', 'hub'), { recursive: true });
+  mkdirSync(join(root, 'skills', 'plan-canvas', 'scripts', 'lib'), { recursive: true });
+  cpSync(new URL('../lib/hub/guard.mjs', import.meta.url), join(root, 'lib', 'hub', 'guard.mjs'));
+  cpSync(new URL('../skills/global_config/plan-canvas/scripts/lib/loopback-guard.js', import.meta.url), join(root, 'skills', 'plan-canvas', 'scripts', 'lib', 'loopback-guard.js'));
+  try {
+    const g = await import(pathToFileURL(join(root, 'lib', 'hub', 'guard.mjs')).href);
+    assert.equal(typeof g.embedAncestors, 'function');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -1,10 +1,9 @@
 ---
 name: pb-release-aos
 description: >-
-  Release a new AOS version to npm through the release-please PR: check the
-  commit subjects, review and gate the release PR, merge it only after GO,
-  watch the release workflow and check version drift. Use for "release AOS",
-  "cut an AOS release", "merge the release PR", "publish a new AOS version".
+  Release a new AOS version to npm via the release-please PR: check
+  commits, review and gate the PR, merge after GO, watch the workflow
+  and drift.
 category: bdb-core
 kind: playbook
 trigger: ["release AOS", "cut an AOS release", "merge the release PR"]
@@ -23,6 +22,18 @@ est_time: 30-60 min
 
 # Release AOS to npm
 What you get: a new AOS version on npm through the release-please PR, never a hand bump, with the PR reviewed and gated before your GO.
+
+## Plan first
+
+Scaffold the release with the `release` template — scope, go/no-go gate, rollback:
+
+```bash
+aos-plan-canvas new release <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Inputs
 - repo (optional) — the AOS checkout, default the current directory; `<owner/repo>` comes from `git -C <repo> remote get-url origin`

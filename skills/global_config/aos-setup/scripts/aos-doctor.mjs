@@ -7,9 +7,21 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { connect } from 'node:net';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const HELP_ARGS = process.argv.slice(2);
+if (HELP_ARGS[0] === 'help' || HELP_ARGS.includes('--help') || HELP_ARGS.includes('-h')) {
+  process.stdout.write(`aos-setup-doctor - what a full AOS install needs and what this machine has (read-only)
+Usage: node aos-doctor.mjs [--json] [--net]
+  --json  machine-readable results
+  --net   ask npm whether a newer AOS is published
+Exit: 0 all checks ok, 1 at least one check not ok. For an installed system use: aos doctor
+`, () => process.exit(0));
+  await new Promise(() => {});
+}
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -55,6 +67,15 @@ const which = (bin) => {
   const probe = process.platform === 'win32' ? 'where.exe' : 'which';
   try { return tilde(execFileSync(probe, [bin], { encoding: 'utf8' }).trim().split(/\r?\n/)[0]); } catch { return null; }
 };
+// lib/cli-spawn.js resolves npm's .cmd shims without a shell string (`where` lists the extensionless sh stub first).
+// Repo checkout: <repo>/skills/global_config/aos-setup/scripts -> ../../../../lib; installed: ~/.agents/lib.
+const cliSpawn = (() => {
+  const req = createRequire(import.meta.url);
+  for (const c of [path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'lib', 'cli-spawn.js'), path.join(HOME, '.agents', 'lib', 'cli-spawn.js')]) {
+    try { return req(c); } catch { /* next location */ }
+  }
+  return null;
+})();
 const dirCount = (p) => { try { return readdirSync(p, { withFileTypes: true }).filter(d => d.isDirectory()).length; } catch { return 0; } };
 
 // npm's Windows shim is deja.cmd, and Node refuses to spawn .cmd/.bat without
@@ -121,7 +142,7 @@ function checkAos() {
   ];  // OpenCode gets an MCP config but no skill sync from installer.js — no row for it.
   // A non-empty skills directory proves nothing — it can hold one unrelated
   // skill, or a stale partial sync. Require a sentinel that only AOS ships.
-  const SENTINEL = 'startcycle';
+  const SENTINEL = 'fabric';
   const synced = harnesses.filter(([, p]) => dirCount(p) > 0);
   const withSentinel = synced.filter(([, p]) => existsSync(path.join(p, SENTINEL, 'SKILL.md')));
   add('aos', 'skills synced to harnesses', withSentinel.length > 0,
@@ -264,7 +285,8 @@ async function checkMemb() {
   add('memB', 'vector store', existsSync(db), existsSync(db) ? '~/.MemBDB/memb.db' : 'no database yet (empty memory)',
     'Created on first write; run an ingest from /aos-project-init to seed it.');
 
-  add('memB', 'WebUI :8088', await portOpen(8088), 'something is listening (a bare TCP probe — it does not prove it is memB)',
+  const membUp = await portOpen(8088);
+  add('memB', 'WebUI :8088', membUp, membUp ? 'something is listening on :8088 (a bare TCP probe — it does not prove it is memB)' : 'nothing is listening on :8088',
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.memb.webui.plist (installer writes it).' : 'Start src/backend/server.py from the memB module.');
 
   if (IS_MAC) {
@@ -354,7 +376,9 @@ async function checkDeja() {
   }
   const idx = doc?.index || {};
   const readAt = idx.sources_read_at;
-  const ok = idx.state === 'ok' && (idx.stale_stores ?? 0) === 0;
+  // Every session write marks its harness's store stale, so a few stale stores right after `deja index` are normal.
+  const DEJA_STALE_GRACE = 8;
+  const ok = idx.state === 'ok' && (idx.stale_stores ?? 0) <= DEJA_STALE_GRACE;
   add('deja', 'index status', ok,
     `${idx.state ?? 'unknown'}${idx.stale_stores ? `, ${idx.stale_stores} stale store(s)` : ''}${readAt != null ? `, sources read at ${typeof readAt === 'string' ? readAt : JSON.stringify(readAt)}` : ''}`,
     ok ? '' : 'deja index');
@@ -400,6 +424,25 @@ function checkAgyMcsc() {
   }
 }
 
+// Antigravity loads <workspace>/.agents/mcp_config.json; in $HOME that picked up the shipped server template.
+function checkAgyWorkspaceMcp() {
+  const f = h('.agents', 'mcp_config.json');
+  if (!existsSync(f)) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} absent (clean)`, '');
+    return;
+  }
+  const data = readJson(f);
+  const servers = Object.keys(data?.mcpServers || {});
+  const foreign = servers.filter((s) => s !== 'aos' && s !== 'mcsc');
+  if (!foreign.length) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} lists only ${servers.join(', ') || 'no'} servers`, '');
+    return;
+  }
+  add('agy', 'agy workspace MCP', false,
+    `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
+    'aos repair');
+}
+
 // ---------------------------------------------------------------- OpenWiki
 function checkOpenWiki() {
   const bin = which('openwiki');
@@ -411,7 +454,12 @@ function checkOpenWiki() {
 
   if (bin) {
     try {
-      const out = execFileSync(bin, ['integrations', 'list'], { encoding: 'utf8', timeout: 15000 });
+      let out;
+      if (cliSpawn) {
+        const r = cliSpawn.run('openwiki', ['integrations', 'list'], { timeout: 15000 });
+        if (r.status !== 0) throw new Error((r.stderr || `exit ${r.status}`).trim().split('\n')[0]);
+        out = r.stdout;
+      } else out = execFileSync(bin, ['integrations', 'list'], { encoding: 'utf8', timeout: 15000, shell: IS_WIN });
       // The status enum includes "not-installed", whose substring would match a
       // naive includes('installed') — compare the exact tab-separated field.
       const installed = out.split('\n')
@@ -420,8 +468,8 @@ function checkOpenWiki() {
         .map(f => f[0].trim());
       add('openwiki', 'host integrations', installed.length > 0, installed.length ? installed.join(', ') : 'no harness integration installed',
         'openwiki integrations install claude   (repeat for codex/cursor/opencode as needed).');
-    } catch {
-      add('openwiki', 'host integrations', false, 'integrations list failed', 'Check `openwiki integrations list` manually.');
+    } catch (e) {
+      add('openwiki', 'host integrations', false, `integrations list failed: ${String(e.message || e).split('\n')[0]}`, 'Check `openwiki integrations list` manually.');
     }
   }
 
@@ -446,8 +494,43 @@ async function checkSynapse() {
   add('synapse', 'binary available', !!bin, bin || 'no binary on PATH or in the module',
     IS_WIN ? 'Re-run the installer; on Windows the binary stays in the module rather than being symlinked.'
            : 'Re-run the installer (it symlinks ~/.local/bin/synapse), and add ~/.local/bin to PATH.');
-  add('synapse', 'daemon :7781', await portOpen(7781), 'something is listening (a bare TCP probe — it does not prove it is Synapse)',
+  const synUp = await portOpen(7781);
+  add('synapse', 'daemon :7781', synUp, synUp ? 'something is listening on :7781 (a bare TCP probe — it does not prove it is Synapse)' : 'nothing is listening on :7781',
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781');
+}
+
+// ---------------------------------------------------------------- REA MCP
+// Opt-in dual-use reverse-engineering tool. Kept direct (stateful stdio,
+// large tool catalog); never a default selection.
+function checkReaMcp() {
+  const reaEnabled = process.env.AOS_REA_MCP === 'on';
+  if (!reaEnabled) {
+    add('tools', 'REA MCP', true,
+      'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+      'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.');
+    return;
+  }
+  let reaPath = which('rea');
+  let reaVer = null;
+  if (reaPath) {
+    try {
+      reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    } catch {}
+  }
+  if (!reaPath) {
+    try {
+      reaVer = execFileSync(IS_WIN ? 'npx.cmd' : 'npx', ['-y', 'rea-agents@6.5.0', '--version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      reaPath = 'npx -y rea-agents@6.5.0';
+    } catch {}
+  }
+  if (reaPath) {
+    add('tools', 'REA MCP', true,
+      `present: ${reaPath} · stdio MCP (${reaVer || 'v6.5.0'}, direct)`);
+  } else {
+    add('tools', 'REA MCP', false,
+      'AOS_REA_MCP=on but the REA CLI is not reachable',
+      'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+  }
 }
 
 // ---------------------------------------------------------------- worktrees
@@ -499,11 +582,13 @@ checkPrereqs();
 checkAos();
 checkHooks();
 checkAgyMcsc();
+checkAgyWorkspaceMcp();
 await checkMemb();
 await checkMemory();
 await checkDeja();
 checkOpenWiki();
 await checkSynapse();
 checkWorktrees();
+checkReaMcp();
 report();
 process.exit(results.some(r => !r.ok) ? 1 : 0);

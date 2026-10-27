@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { COMMANDS, checkOpencode, checkAcpAndGoCheck } = require('../lib/opencode-verify.js');
+const { COMMANDS, checkOpencode, checkAcpAndGoCheck, opencodeVersionWarning } = require('../lib/opencode-verify.js');
 
 const REPO = path.resolve(__dirname, '..');
 let home;
@@ -34,6 +34,17 @@ const byName = (rs) => Object.fromEntries(rs.map((r) => [r.name, r]));
 const check = (out) => byName(checkOpencode({ home, platform: 'darwin', env: { PATH: binDir }, run: run(out) }));
 
 describe('opencode-verify', () => {
+    test('OpenCode 2.x gets one clear version warning, 1.x none (#175)', () => {
+        assert.match(opencodeVersionWarning('2.0.3\n'), /needs OpenCode 1\.x/);
+        assert.equal(opencodeVersionWarning('1.18.30'), null);
+        assert.equal(opencodeVersionWarning(null), null);
+        installFiles();
+        const r = byName(checkOpencode({ home, platform: 'darwin', env: { PATH: binDir }, run: (c, a) => (a[0] === '--version' ? '2.1.0' : cli()) }));
+        assert.equal(r['OpenCode version'].ok, false);
+        const old = byName(checkOpencode({ home, platform: 'darwin', env: { PATH: binDir }, run: (c, a) => (a[0] === '--version' ? '1.18.30' : cli()) }));
+        assert.equal(old['OpenCode version'], undefined);
+    });
+
     test('COMMANDS equals the shipped /bdb-aos-* files', () => {
         const shipped = fs.readdirSync(path.join(REPO, '.opencode', 'commands')).filter((f) => f.startsWith('bdb-aos-')).sort();
         assert.deepEqual([...COMMANDS].sort(), shipped);
@@ -46,7 +57,7 @@ describe('opencode-verify', () => {
 
     test('full install passes every check', () => {
         installFiles();
-        put('.config/opencode/opencode.jsonc', `{ // c\n "plugin": ["${home}/.config/opencode/plugins/bdb-aos.js"] }`);
+        put('.config/opencode/opencode.jsonc', '{ // c\n "plugin": ["@dietrichgebert/ponytail@5.3.2"] }');
         const r = check(cli());
         for (const [n, v] of Object.entries(r)) assert.ok(v.ok, `${n}: ${v.detail}`);
         assert.equal(Object.keys(r).length, 6);
@@ -62,11 +73,21 @@ describe('opencode-verify', () => {
         assert.match(r['OpenCode commands'].detail, /missing \/bdb-aos-brainstorm/);
     });
 
-    test('same file by file URL, ~ path and dotdot is one registration; another file is a double load', () => {
+    test('any plugin[] entry for bdb-aos.js is a double load: the installed file (any spelling) or another file', () => {
         installFiles();
-        const same = [`file://${home}/.config/opencode/plugins/bdb-aos.js`, `${home}/.config/opencode/plugins/../plugins/bdb-aos.js`, '~/.config/opencode/plugins/bdb-aos.js'];
-        put('.config/opencode/opencode.json', JSON.stringify({ plugin: same }));
+        for (const spelling of [`file://${home}/.config/opencode/plugins/bdb-aos.js`, `${home}/.config/opencode/plugins/../plugins/bdb-aos.js`, '~/.config/opencode/plugins/bdb-aos.js']) {
+            put('.config/opencode/opencode.json', JSON.stringify({ plugin: [spelling] }));
+            const own = check(cli())['OpenCode plugin registration'];
+            assert.equal(own.ok, false, spelling);
+            assert.match(own.detail, /auto-loaded plugins\/bdb-aos\.js: OpenCode on Windows loads it twice/);
+        }
+        put('.config/opencode/opencode.json', '{}');
         assert.equal(check(cli())['OpenCode plugin registration'].ok, true);
+        put('.opencode/opencode.jsonc', JSON.stringify({ plugin: [`${home}/.opencode/plugins/bdb-aos.js`] }));
+        const legacy = check(cli())['OpenCode plugin registration'];
+        assert.equal(legacy.ok, false, 'a stale entry in the legacy ~/.opencode config is a second origin');
+        assert.match(legacy.detail, /listed in ~\/\.opencode\/opencode\.jsonc/);
+        put('.opencode/opencode.jsonc', '{}');
         put('.config/opencode/opencode.jsonc', JSON.stringify({ plugin: ['/elsewhere/repo/.opencode/plugins/bdb-aos.js'] }));
         const r = check(cli())['OpenCode plugin registration'];
         assert.equal(r.ok, false);
@@ -145,7 +166,7 @@ describe('installed layout', () => {
         const env = { ...nodeEnv, HOME: home, USERPROFILE: home };
         const help = launch('aos-acp', ['--help'], { env, encoding: 'utf8' });
         assert.equal(help.status, 0, help.stderr);
-        assert.match(help.stdout, /usage: aos-acp/);
+        assert.match(help.stdout, /Usage:\s+aos-acp </);
         const fake = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(__dirname, 'fixtures', 'fake-acp-agent.mjs'))}`;
         const dry = launch('aos-acp', ['codex', '--cmd', fake, '--name', 'w1', '--prompt', 'hi', '--cwd', proj], { env, encoding: 'utf8', timeout: 30000 });
         assert.equal(dry.status, 0, dry.stderr);

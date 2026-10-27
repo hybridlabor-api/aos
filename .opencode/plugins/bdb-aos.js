@@ -26,7 +26,7 @@ const a2aLib = async (f) => {
   try { return await import((existsSync(local) ? local : pathToFileURL(path.join(homedir(), '.agents', 'lib', f))).href); } catch { return {}; }
 };
 const { deliverA2a = async () => {} } = await a2aLib('a2a-oc.mjs');
-const { ensureSidecar = () => ({ skipped: 'lib' }), sessionName = () => null } = await a2aLib('a2a-session.mjs');
+const { ensureSidecar = () => ({ skipped: 'lib' }), sessionName = () => null, ensureAutoLabel = () => null } = await a2aLib('a2a-session.mjs');
 // Decision logic lives in the shared hooks: installed copy next to this file
 // (plugins/aos-hooks), else the repo's .claude/hooks. existsSync, not try/catch,
 // so a broken installed hook fails loudly instead of silently falling back.
@@ -39,16 +39,17 @@ const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
 // memory: false = unified memory not installed (no memB engine), so memB injection is off as well.
 let contextHooks = true;
 let memory = true;
-try { const flag = JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8')); if (flag?.contextHooks === false) contextHooks = false; if (flag?.memory === false) memory = false; } catch {}
-const noContext = { buildMemoryBlock: async () => '', rulesText: () => '' };
-const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => ((!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs')) || (!memory && f === 'memb-inject.mjs') ? noContext : hook(f))));
-const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
+let gateOn = true; // flag gate:false (Settings: go-gate off) skips the go-gate checks below; commit/env checks stay
+try { const flag = JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8')); if (flag?.contextHooks === false) contextHooks = false; if (flag?.memory === false) memory = false; if (flag?.gate === false) gateOn = false; } catch {}
+const noContext = { buildMemoryBlock: async () => '', rulesText: () => '', buildHint: async () => '' };
+const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }, { buildHint }] =
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs', 'aos-session-hint.mjs'].map((f) => ((!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs' || f === 'aos-session-hint.mjs')) || (!memory && f === 'memb-inject.mjs') ? noContext : hook(f))));
+const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, setOpencodeServer, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
 // Graph gate (W-5, W-6)
 //
-// The loop-keeper for /startcycle-graph on a harness with no Stop hook. Claude
+// The loop-keeper for /fabric-graph on a harness with no Stop hook. Claude
 // Code blocks the exit in .claude/hooks/graph-gate.mjs; OpenCode has no Stop
 // event, so the same contract is kept by nudging the session awake on
 // session.idle while production_artifacts/state.json still has open work.
@@ -67,9 +68,9 @@ const GATE_FIELDS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
 const MAX_NUDGES = 3;
 
 const PIPELINE_COMMANDS = [
-    { name: 'startcycle-graph', skill: 'startcycle-graph', goal: '' },
-    { name: 'startcycle-graph-user', skill: 'startcycle-graph-user', goal: '' },
-    { name: 'startcycle', skill: 'startcycle', goal: '' },
+    { name: 'fabric-graph', skill: 'fabric-graph', goal: '' },
+    { name: 'fabric-multigraph', skill: 'fabric-multigraph', goal: '' },
+    { name: 'fabric', skill: 'fabric', goal: '' },
 ];
 
 // sessionID -> { signature, nudges }
@@ -121,7 +122,7 @@ function openGraphGate(state) {
 
 function buildGraphNudge(gate) {
     return [
-        '[AOS Graph Gate] The /startcycle-graph run is not finished: ' + gate.text + '.',
+        '[AOS Graph Gate] The /fabric-graph run is not finished: ' + gate.text + '.',
         'Read production_artifacts/state.json and .agents/graph.md, then dispatch the',
         'next node the edge table requires. If state.iteration >= state.max_iterations,',
         'or a repair round reports the same blocking finding id again, set phase to',
@@ -129,24 +130,27 @@ function buildGraphNudge(gate) {
     ].join(' ');
 }
 
-// The pipeline group. /startcycle-graph also resolves natively from
-// ~/.config/opencode/commands/startcycle-graph.md; this is the fallback for the
+// The pipeline group. /fabric-graph also resolves natively from
+// ~/.config/opencode/commands/fabric-graph.md; this is the fallback for the
 // names that have no command file, and it also covers a project that predates
 // the payload.
 function matchPipelineCommand(text) {
-    const m = text.match(/^\/(startcycle(?:-graph-user|-graph)?)(?:\s+(.*))?$/is);
+    const m = text.match(/^\/(fabric(?:-multigraph|-graph)?)(?:\s+(.*))?$/is);
     if (!m) return null;
     return PIPELINE_COMMANDS.find(c => c.name === m[1].toLowerCase()) || null;
 }
 
-// This session's name for the token: env (set by aos-acp / the user), else the
-// OpenCode session title.
-async function ownSessionName(client, sessionID) {
-  if (process.env.AOS_SESSION_NAME) return process.env.AOS_SESSION_NAME;
+// The OpenCode session title (audit phonebook: the source the phonebook labels peers from),
+// and this session's own name for the token: env (set by aos-acp / the user), else that title.
+async function sessionTitle(client, sessionID) {
   try {
     const res = await client?.session?.get?.({ path: { id: sessionID } });
-    return res?.data?.title || '';
+    return (res?.data?.title || '').trim();
   } catch { return ''; }
+}
+async function ownSessionName(client, sessionID) {
+  if (process.env.AOS_SESSION_NAME) return process.env.AOS_SESSION_NAME;
+  return sessionTitle(client, sessionID);
 }
 
 // Only plain text parts are human turns: synthetic = model-only, ignored = display-only,
@@ -248,6 +252,9 @@ async function trailAutostart(toolInput, directory, client) {
 
 export default async function bdbAosPlugin(input) {
   const directory = input.directory || process.cwd();
+  setOpencodeServer(input.serverUrl);
+  const argvPort = process.argv.findIndex((a) => a === '--port'); // opencode serve/web/tui --port N
+  if (argvPort > 0) setOpencodeServer(`http://127.0.0.1:${process.argv[argvPort + 1]}`);
 
   // ponytail: entries live for the process lifetime (a few bytes per session); add cleanup if sessions ever pile up.
   const sessions = new Map();
@@ -280,7 +287,11 @@ export default async function bdbAosPlugin(input) {
       // not the aos-bus name — otherwise messages written for the sidecar name never reach OpenCode.
       try {
         s.a2aName = sessionName({ harness: 'opencode', sessionId: id, env: process.env });
-        ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid, env: process.env });
+        // Phonebook: the session title labels the peer (only fills an unlabeled or auto-labeled
+        // entry — a hand-set label always wins) and follows a rename at the next human message.
+        const title = await sessionTitle(input.client, id);
+        const r = ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid, env: process.env, title: title || undefined });
+        if (title) ensureAutoLabel(s.a2aName, title);
       } catch {}
       busNames.set(name, id);
     } catch (e) {
@@ -352,8 +363,20 @@ export default async function bdbAosPlugin(input) {
     } catch {} finally { polling = false; }
   // ponytail: 1 s poll; fs.watch if latency matters. A wake turn is awaited, so it delays later messages until it ends.
   });
-  const trail = (hook_event_name, session_id, extra = {}) =>
-    contextHooks && void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
+  // Node attribution for the live map: AOS_TRAIL_NODE env (dispatcher intent when
+  // launching `opencode run`) wins; a [trail-node:<id>] marker in the worker's first
+  // user message (captured in chat.message as s.trailNode) is the fallback.
+  const NODE_MARKER = /\[trail-node:([A-Za-z0-9_.:-]+)\]/;
+  const trailNodeOf = (sessionID) => process.env.AOS_TRAIL_NODE || sess(sessionID).trailNode || null;
+  const trail = (hook_event_name, session_id, extra = {}) => {
+    if (!contextHooks) return;
+    const node = trailNodeOf(session_id);
+    if (node && !extra.task) {
+      extra.task = { id: node, status: 'doing' };
+      if (process.env.AOS_TRAIL_PLAN) extra.task.plan = process.env.AOS_TRAIL_PLAN;
+    }
+    void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
+  };
 
   return {
     // W-6 loop-keeper. Fires whenever a session goes idle. Reads the graph
@@ -366,6 +389,8 @@ export default async function bdbAosPlugin(input) {
           sess(props.info.id).parentID = props.info.parentID ?? null;
           trail('SessionStart', props.info.id);
           void ensureBus(props.info.id, props.info.parentID ?? null);
+        } else if (event?.type === 'session.compacted' && props.sessionID) {
+          sess(props.sessionID).rulesSent = false; // event name unverified against the OpenCode SDK; without it the rules are sent once per session
         } else if (event?.type === 'session.deleted' && props.info?.id) {
           dropBus(props.info.id);
         } else if (event?.type === 'permission.updated') {
@@ -409,6 +434,14 @@ export default async function bdbAosPlugin(input) {
       const s = sess(msgInput.sessionID);
       void ensureBus(msgInput.sessionID);
       s.prompt = fullText;
+      // First marked brief wins: [trail-node:<id>] ties this session to a plan node.
+      try { const nm = fullText.match(NODE_MARKER); if (nm && !s.trailNode) s.trailNode = nm[1]; } catch {}
+      // Phonebook: a session rename (OpenCode titles are editable) lands on the next human message.
+      if (s.a2aName) {
+        void sessionTitle(input.client, msgInput.sessionID)
+          .then((t) => { if (t) ensureAutoLabel(s.a2aName, t); })
+          .catch(() => {});
+      }
       // No human text (aos-bus pair, nudges): never a human GO, skip memB/pipeline/token.
       const parts = msgOutput.parts || [];
       const texts = parts.filter((p) => p && p.type === 'text');
@@ -424,19 +457,25 @@ export default async function bdbAosPlugin(input) {
         if (reply) injectText(msgInput, msgOutput, reply);
       } catch {}
 
+      const firstTurn = !(s.identitySent || s.parentID);
       try {
         if (!contextHooks || !memory) throw 0; // no context hooks or no unified memory: no memB injection
-        const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
-        s.identitySent = true;
-        const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
-        if (membContext) injectText(msgInput, msgOutput, membContext);
+        const event = firstTurn ? 'SessionStart' : 'UserPromptSubmit';
+        const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory, onStatus: (message) => input.client?.tui?.showToast?.({ body: { title: 'AOS memory', message, variant: 'info' } })?.catch?.(() => {}) });
+        if (membContext) injectText(msgInput, msgOutput, (await hook('session-cap.mjs').catch(() => ({ capText: (t) => t }))).capText(membContext)); // per-context-profile cap
       } catch {}
-
-      // Destructive-actions rules on every human message, so compaction cannot drop them.
       try {
-        if (!contextHooks) throw 0; // profile without context hooks: no rules injection
+        if (!contextHooks || !firstTurn) throw 0; // tool hint: once per root session, like Claude's SessionStart
+        const hint = await buildHint();
+        if (hint) injectText(msgInput, msgOutput, hint);
+      } catch {}
+      s.identitySent = true;
+
+      // Destructive-actions rules on the first human message of a session and again after compaction (s.rulesSent reset in the compaction hook).
+      try {
+        if (!contextHooks || s.rulesSent) throw 0; // profile without context hooks, or already sent
         const rules = rulesText();
-        if (rules) injectText(msgInput, msgOutput, rules);
+        if (rules) { injectText(msgInput, msgOutput, rules); s.rulesSent = true; }
       } catch {}
 
       // Recognize and wire the AOS pipeline group
@@ -475,17 +514,17 @@ export default async function bdbAosPlugin(input) {
         const bkey = ocKey(toolInput.sessionID);
         setGateContext({ cwd: directory, blockTs: readBlockTs(bkey) });
         const deny = (msg) => { markBlock(bkey); throw new Error(msg); };
-        if (typeof cmd !== 'string') deny('Blocked by BDB go-gate: the command is not a string; the gate cannot read it (ask for GO).');
+        if (gateOn && typeof cmd !== 'string') deny('Blocked by BDB go-gate: the command is not a string; the gate cannot read it (ask for GO).');
         // Over the length cap nothing is parsed: guarded, lifted only by a GO, not a hard block.
         const tooLong = commandTooLong(cmd);
-        if (!tooLong) {
+        if (gateOn && !tooLong) {
           // Unconditional, before any GO, grant, mode or token.
           const hardReason = hardBlockReason(cmd);
           if (hardReason) deny(hardReason);
           const storeReason = gateStoreReason(cmd);
           if (storeReason) deny(storeReason);
         }
-        if (isGuardedCommand(cmd)) {
+        if (gateOn && isGuardedCommand(cmd)) {
           const cooling = analyzeDeletes(cmd).cooldown;
           const s = sess(toolInput.sessionID);
           // An unanswered lookup is not proof of a root session: token-only for this call, not cached.
@@ -526,7 +565,10 @@ export default async function bdbAosPlugin(input) {
               const key = ocKey(root);
               const eff = effectiveGate(key, { source: `opencode:${root}`, cmds: opencodeGogateCommands(root), opencode: true });
               for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
-              if (eff.mode === 'soft' && grantsCover(cmd, eff.grants)) { // `off` is never honoured on OpenCode
+              if (eff.mode === 'off' && !gate.opencodeRoute(cmd)) {
+                gateLog(key, `off: allowed ${JSON.stringify(cmd.slice(0, 200))}`);
+                authorized = true;
+              } else if (eff.mode === 'soft' && grantsCover(cmd, eff.grants)) {
                 gateLog(key, `grant: allowed ${JSON.stringify(cmd.slice(0, 200))}`);
                 authorized = true;
               }

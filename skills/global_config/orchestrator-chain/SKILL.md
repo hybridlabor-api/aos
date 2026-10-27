@@ -1,6 +1,6 @@
 ---
 name: orchestrator-chain
-description: "Hand work down the chain master session, project orchestrator, package orchestrator. Use when the human asks how to split work across levels, which channel connects them, or what each level may do. A convention mapped onto existing mechanisms, not a new tool. GO is never inherited."
+description: "Hand work across orchestration levels. Master session → project → package. Channel routing, level boundaries."
 category: bdb-core
 risk: safe
 tools:
@@ -17,7 +17,7 @@ tools:
 | Level | Job | Mechanism |
 |---|---|---|
 | Master session | Overview of sessions, status requests, relays the human's GO | `master-session` skill |
-| Project orchestrator | Coordinates one repo or several | `ao-orchestrator` skill (AO daemon, optional) or a pipeline dispatcher (`startcycle-graph`, `.agents/graph.md`) |
+| Project orchestrator | Coordinates one repo or several | `ao-orchestrator` skill (AO daemon, optional) or a pipeline dispatcher (`fabric-graph`, `.agents/graph.md`) |
 | Package orchestrator | Runs one slice of that repo | an `aos-acp` worker, an `aos-a2a` peer, or a pipeline build node |
 
 ## Channels between levels

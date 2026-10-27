@@ -67,6 +67,29 @@ test('OpenCode uninstall removes only the plugin[] entry textually; comments sur
     } finally { rm(home); }
 });
 
+test('OpenCode uninstall removes an opencode.jsonc that held only the AOS plugin[] entry', () => {
+    const home = mk();
+    try {
+        const dir = path.join(home, '.config', 'opencode');
+        const f = path.join(dir, 'opencode.jsonc');
+        write(f, `{\n  "$schema": "https://opencode.ai/config.json",\n  "plugin": ["${require('node:url').pathToFileURL(path.join(dir, 'plugins', 'bdb-aos.js')).href}"]\n}\n`);
+        ur.reverseRegistrations({ home, env: { APPDATA: path.join(home, 'AppData', 'Roaming') } });
+        assert.ok(!fs.existsSync(f));
+        assert.ok(fs.readdirSync(dir).some((n) => n.endsWith('.bak')), 'backup kept');
+    } finally { rm(home); }
+});
+
+test('OpenCode uninstall keeps an opencode.jsonc that still has comments', () => {
+    const home = mk();
+    try {
+        const dir = path.join(home, '.config', 'opencode');
+        const f = path.join(dir, 'opencode.jsonc');
+        write(f, `{\n  // my note\n  "plugin": ["${require('node:url').pathToFileURL(path.join(dir, 'plugins', 'bdb-aos.js')).href}"]\n}\n`);
+        ur.reverseRegistrations({ home, env: { APPDATA: path.join(home, 'AppData', 'Roaming') } });
+        assert.ok(fs.readFileSync(f, 'utf8').includes('// my note'));
+    } finally { rm(home); }
+});
+
 test('removeJsoncArrayEntries: last element, only element, nested arrays, strings with // and unrelated keys', () => {
     const isX = (v) => (Array.isArray(v) ? v[0] : v) === 'x';
     assert.deepStrictEqual(parseJsonc(removeJsoncArrayEntries('{"a":"http://x","plugin":["a","x"]}', 'plugin', isX)).plugin, ['a']);

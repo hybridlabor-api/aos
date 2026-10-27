@@ -1,9 +1,7 @@
 ---
 name: factory-collect
 description: >-
-  Experimental workflow for collecting and triaging product feedback,
-  product telemetry, runtime errors, and issue reports. Use when scanning
-  configured signal sources and applying separate fix, reply, or close rules.
+  Collect and triage product feedback, telemetry, runtime errors and issue reports. Use when scanning signal sources for fix/reply/close rules.
 category: engineering-method
 source: BuilderIO/skills
 ---

@@ -20,12 +20,12 @@ test('missing file (null) prints the supervisor-not-running line', () => {
 
 test('up service shows up with no extras', () => {
   const lines = formatServicesBlock({ at: NOW - 10_000, services: { memb: { up: true, misses: 0, restarts: [], failed: false, lastError: null } } }, NOW);
-  assert.deepStrictEqual(lines, ['Services:', '  up     memb']);
+  assert.deepStrictEqual(lines, ['Services:', '  up     memb webui (optional)']);
 });
 
 test('down service shows its lastError', () => {
   const lines = formatServicesBlock({ at: NOW - 10_000, services: { memb: { up: false, misses: 1, restarts: [], failed: false, lastError: 'launchctl bootstrap failed: no plist' } } }, NOW);
-  assert.deepStrictEqual(lines, ['Services:', '  down   memb · launchctl bootstrap failed: no plist']);
+  assert.deepStrictEqual(lines, ['Services:', '  down   memb webui (optional) · launchctl bootstrap failed: no plist']);
 });
 
 test('failed service shows failed and counts only restarts inside the 10 min window', () => {
@@ -33,7 +33,7 @@ test('failed service shows failed and counts only restarts inside the 10 min win
     { at: NOW - 10_000, services: { memb: { up: false, misses: 0, restarts: [NOW - 5 * MIN, NOW - 30 * MIN], failed: true, lastError: null } } },
     NOW,
   );
-  assert.deepStrictEqual(lines, ['Services:', '  failed memb · 1 restart (10 min)']);
+  assert.deepStrictEqual(lines, ['Services:', '  failed memb webui (optional) · 1 restart (10 min)']);
 });
 
 test('stale at (older than 2 minutes) adds the stale line', () => {

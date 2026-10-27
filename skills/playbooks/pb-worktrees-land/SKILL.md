@@ -1,10 +1,9 @@
 ---
 name: pb-worktrees-land
 description: >-
-  Clean up git worktrees across your repos: list every worktree, classify it
-  as merged, remote-only, local-only or dirty, recap what each holds, and
-  remove only the merged clean ones after GO. Use for "clean up worktrees",
-  "what is in my aos-wt folders", "land my worktrees", "prune worktrees".
+  Clean up git worktrees across your repos: list worktrees, classify
+  merged, remote-only, local-only or dirty, recap contents, remove
+  merged clean ones after GO.
 category: bdb-core
 kind: playbook
 trigger: ["clean up worktrees", "land my worktrees", "prune worktrees"]
@@ -23,6 +22,18 @@ est_time: 10-30 min
 
 # Land and clean up worktrees
 What you get: an inventory of your worktrees with a class for each, and the merged clean ones removed after your GO.
+
+## Plan first
+
+Recap a worktree's contents as a `recap-review` page before removing anything:
+
+```bash
+aos-plan-canvas new recap-review <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Inputs
 - repos (optional) — repo paths to scan; default is the current repo's main worktree (`git rev-parse --path-format=absolute --git-common-dir`, parent dir)

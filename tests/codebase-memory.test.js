@@ -66,7 +66,6 @@ describe('installer module registration', () => {
     test('the optional module picker lists the codebase-memory id', () => {
         const src = fs.readFileSync(path.join(ROOT, 'installer.js'), 'utf8');
         assert.ok(src.includes("{ id: 'codebase-memory', name: 'Codebase Memory MCP"), 'module picker entry missing');
-        assert.ok(src.includes("subId === 'codebase-memory'"), 'quick-update loop entry missing');
         assert.ok(src.includes("codebaseMemory.cmbAppStatus().found && !installedModules.includes('codebase-memory')"), 'installed-state detection missing');
     });
     test('the picker stays optional: --modules=all-external selection excludes nothing here, binary gate applies', () => {

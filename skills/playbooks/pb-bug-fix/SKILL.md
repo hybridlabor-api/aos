@@ -1,11 +1,8 @@
 ---
 name: pb-bug-fix
 description: >-
-  Turn a GitHub issue into a tested fix on a branch with an open PR: read the
-  issue as the contract, find the root cause, write the failing test first,
-  fix, prove it, review the diff against the issue, push and open the PR only
-  after GO. Merging stays with pb-ship. Use for "fix issue 42", "bug fix from
-  this issue", "turn this issue into a PR".
+  Turn a GitHub issue into a tested fix on a branch with an open PR:
+  contract, root cause, failing test first, proof. Push and PR after GO.
 category: engineering-method
 kind: playbook
 trigger: ["fix issue", "bug fix from issue", "issue to PR"]
@@ -24,6 +21,18 @@ est_time: 30-90 min
 
 # GitHub issue to tested fix and PR
 What you get: a branch with a failing-then-passing test and the fix, reviewed against the issue, and an open PR that closes it. Merging is a separate run (pb-ship).
+
+## Plan first
+
+The fix starts from the `bugfix` template — contract, root cause, failing test before the patch:
+
+```bash
+aos-plan-canvas new bugfix <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Inputs
 - repo — the current directory, or the one the user names; `<owner/repo>` comes from `git -C <repo> remote get-url origin`

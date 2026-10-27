@@ -3,12 +3,15 @@
 /**
  * Derive an agenttrail plan file (skills/global_config/agenttrail "Plan
  * convention") from a plan folder: `## Name {#id}` components with optional
- * `needs:` / `files:` / `url:` lines and `- [ ] task {#id}` items.
+ * `needs:` / `files:` / `by:` / `url:` lines and `- [ ] task {#id}` items.
  *
  * Sources, in document order: plan.mdx, canvas.mdx, prototype.mdx.
  * Components: headings tagged `{#id}` and `<Section id title>`.
  * needs: `<Section needs=[...]>`, or frontmatter `needs-<id>: a, b` for headings.
- * files: `<ImplementationMap files=...>`. Tasks: `<Checklist>` items.
+ * files: `<ImplementationMap files=...>`, `<Checklist files="a, b">`, or a plain
+ *   `files: a, b` line in the section. by: `<Checklist by="opencode">` or a
+ *   plain `by: opencode` line in the section.
+ * Tasks: `<Checklist>` items.
  */
 
 const fs = require('fs');
@@ -19,6 +22,8 @@ const { checklistItems } = require('./render');
 
 const ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 const HEADING_ID_RE = /\s*\{#([A-Za-z0-9-]+)\}\s*$/;
+const FILES_LINE_RE = /^files:\s*(.+?)\s*$/i;
+const BY_LINE_RE = /^by:\s*(.+?)\s*$/i;
 const DEFAULT_OUT = path.join('production_artifacts', '00_execution_plan.md');
 const SOURCES = ['plan.mdx', 'canvas.mdx', 'prototype.mdx'];
 
@@ -53,6 +58,24 @@ function implementationFiles(block) {
   return entries.map(entryPath).filter(Boolean);
 }
 
+// `files` values from a Checklist prop or a plain `files: a, b` line: an array,
+// a comma string, optional `[...]` wrapper — file paths are case-sensitive, so
+// nothing is lowercased here (unlike `needs` ids).
+function declaredFiles(value) {
+  if (Array.isArray(value)) return value.map(entryPath).filter(Boolean);
+  if (typeof value !== 'string') return [];
+  let text = value.trim();
+  if (text.startsWith('[') && text.endsWith(']')) text = text.slice(1, -1);
+  return text.split(',').map((v) => v.trim()).filter(Boolean);
+}
+
+function addFiles(component, entries, warnings) {
+  for (const file of entries) {
+    if (/[,\[\]\n]/.test(file)) warnings.push(`skipped file with unsupported characters: ${file}`);
+    else if (!component.files.includes(file)) component.files.push(file);
+  }
+}
+
 function collect(dir) {
   const blocks = [];
   let frontmatter = null;
@@ -66,7 +89,7 @@ function collect(dir) {
   return { blocks, frontmatter: frontmatter || {} };
 }
 
-function derive(dir, { workspaceRoot = process.cwd() } = {}) {
+function derive(dir, { workspaceRoot = process.cwd(), preserve = new Map() } = {}) {
   const { blocks, frontmatter } = collect(dir);
   const components = [];
   const used = new Set();
@@ -82,7 +105,7 @@ function derive(dir, { workspaceRoot = process.cwd() } = {}) {
   };
 
   const open = (title, wantedId, needs) => {
-    const component = { id: uniqueId(wantedId, title), title: oneLine(title) || wantedId, needs: toIdList(needs), files: [], url: '', tasks: [] };
+    const component = { id: uniqueId(wantedId, title), title: oneLine(title) || wantedId, needs: toIdList(needs), files: [], by: '', url: '', tasks: [] };
     components.push(component);
     return component;
   };
@@ -99,6 +122,16 @@ function derive(dir, { workspaceRoot = process.cwd() } = {}) {
         }
         continue;
       }
+      if (block.type === 'prose' && cur) {
+        // Section-level declarations, the plain markdown form: `files: a, b` and `by: opencode`.
+        for (const line of block.text.split('\n')) {
+          const trimmed = line.trim();
+          let m;
+          if ((m = FILES_LINE_RE.exec(trimmed))) addFiles(cur, declaredFiles(m[1]), warnings);
+          else if ((m = BY_LINE_RE.exec(trimmed))) cur.by = oneLine(m[1]);
+        }
+        continue;
+      }
       if (block.type !== 'tag') continue;
       if (block.name === 'Section' && block.props.id) {
         walk(block.children || [], open(block.props.title || block.props.id, block.props.id, block.props.needs));
@@ -109,10 +142,7 @@ function derive(dir, { workspaceRoot = process.cwd() } = {}) {
         continue;
       }
       if (block.name === 'ImplementationMap' && cur) {
-        for (const file of implementationFiles(block)) {
-          if (/[,\[\]\n]/.test(file)) warnings.push(`skipped file with unsupported characters: ${file}`);
-          else if (!cur.files.includes(file)) cur.files.push(file);
-        }
+        addFiles(cur, implementationFiles(block), warnings);
       } else if (block.name === 'Checklist' && cur) {
         for (const item of checklistItems(block)) {
           const m = HEADING_ID_RE.exec(item.label);
@@ -120,6 +150,8 @@ function derive(dir, { workspaceRoot = process.cwd() } = {}) {
           if (!label) continue;
           cur.tasks.push({ id: uniqueId(m ? m[1] : '', `${cur.id}-${label.slice(0, 24)}`), label, checked: item.checked });
         }
+        if (block.props.files) addFiles(cur, declaredFiles(block.props.files), warnings);
+        if (block.props.by) cur.by = oneLine(block.props.by);
       } else if (block.name === 'Archify' && cur && !cur.url) {
         const rel = path.relative(workspaceRoot, path.resolve(dir, String(block.props.src || ''))).split(path.sep).join('/');
         if (/^production_artifacts\/\S+$/.test(rel)) cur.url = rel;
@@ -143,8 +175,15 @@ function derive(dir, { workspaceRoot = process.cwd() } = {}) {
     lines.push(`## ${c.title} {#${c.id}}`);
     if (c.needs.length) lines.push(`needs: [${c.needs.join(', ')}]`);
     if (c.files.length) lines.push(`files: [${c.files.join(', ')}]`);
+    if (c.by) lines.push(`by: ${c.by}`);
     if (c.url) lines.push(`url: ${c.url}`);
-    for (const t of c.tasks) lines.push(`- [${t.checked ? 'x' : ' '}] ${t.label} {#${t.id}}`);
+    for (const t of c.tasks) {
+      // Live state survives regeneration: a mark already in the output file
+      // ([~] in progress, [x] done, [!] stuck) wins over the source's checkbox.
+      const kept = preserve.get(t.id);
+      const state = kept || (t.checked ? 'x' : ' ');
+      lines.push(`- [${state}] ${t.label} {#${t.id}}`);
+    }
     lines.push('');
   }
   return {
@@ -176,6 +215,19 @@ function insideRoot(root, target) {
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
+// Task marks worth carrying over a regeneration: anything but a fresh box.
+// Checked case-insensitively; ids keep the plan convention's lowercase shape.
+const EXISTING_MARK_RE = /^\s*[-*]\s+\[([^\]])\]\s+.*\{#([a-z0-9][a-z0-9-]*)\}\s*$/gim;
+
+function preservedMarks(existing) {
+  const marks = new Map();
+  for (const m of existing.matchAll(EXISTING_MARK_RE)) {
+    const mark = m[1].toLowerCase();
+    if (mark === 'x' || mark === '~' || mark === '!') marks.set(m[2], mark);
+  }
+  return marks;
+}
+
 /**
  * @returns {{out: string, components: number, tasks: number, next_step: string, warnings?: string[]}}
  * @throws {TrailError} with a message fit for the user; callers map it to exit 2.
@@ -198,7 +250,10 @@ function writeTrail(input, { out, force = false, workspaceRoot = process.cwd() }
   if (fs.existsSync(outPath) && !force) throw new TrailError(`${path.relative(workspaceRoot, outPath)} already exists; pass --force to overwrite`);
   if (fs.existsSync(outPath) && fs.statSync(outPath).isDirectory()) throw new TrailError(`output is a directory: ${out}`);
 
-  const result = derive(dir, { workspaceRoot });
+  // Regenerating never resets live state: marks ([~]/[x]/[!]) already ticked in
+  // the output file ride over, matched by task id.
+  const preserve = fs.existsSync(outPath) ? preservedMarks(fs.readFileSync(outPath, 'utf8')) : new Map();
+  const result = derive(dir, { workspaceRoot, preserve });
   if (!result.components) throw new TrailError('no components found: tag headings with {#id} or use <Section id="..."> in the plan');
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });

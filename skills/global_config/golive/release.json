@@ -14,7 +14,7 @@
   },
   "files": {
     "LICENSE": "b1546216882fd37b1602f3a004e8548b5f6c38ada73117308d4c3ac6968235e9",
-    "SKILL.md": "e235aeca9506f01d3be4529d379ee4d17fba441ad31d9a8ad9d8e0827a5f93f8",
+    "SKILL.md": "f91346927af0565744d402bb62c3b945c52f7d00456d5cd624773ab50fc8516d",
     "THIRD_PARTY_NOTICES.md": "ad33f954a31c411cc667c07460859c77a014d6720e581a5ce5edd48c9c962781",
     "references/cloudflare-dns.md": "1e2c3143d714590486d181befa0237f18e077328ab7fcd2151adaa0f68b898ff",
     "references/godaddy.md": "bceb5500c02c22eb9c0fc66431e4f0ee1bec287116042a61215e416935d6e1ee",
@@ -35,5 +35,5 @@
     "scripts/install-cli.mjs": "ac9ee3f57b5fcbc54ef16b1ee0b22c967b846cc32512750046b13d5c1a7075bd",
     "scripts/install-lib.mjs": "43086f4d12380b6ce425d6188136b523f0cdda7bf168acc7c420f80bc3cff8f9"
   },
-  "bundleDigest": "2fef9a887c4c578b1edd84df76ed3d2c09addef688feb4fc991120e5333ae3d0"
+  "bundleDigest": "dde38f9e2871ca2dc38883c1fa26192b70dedcdf7a6b5fa13ab92bf3b3c6f54c"
 }

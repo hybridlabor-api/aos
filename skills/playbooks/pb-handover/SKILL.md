@@ -1,10 +1,8 @@
 ---
 name: pb-handover
 description: >-
-  Write a handover note for a colleague from the state of a project folder:
-  what is done, what is open, what is risky, the next 3 steps and where
-  things live. Sent only after your GO. Use for "handover note", "hand this
-  project over", "I'm going on leave, brief my colleague".
+  Write a handover note for a colleague from a project folder's state:
+  done, open, risky, next 3 steps, where things live. Sent only after GO.
 category: bdb-core
 kind: playbook
 trigger: ["handover note", "hand this project over", "brief my colleague"]
@@ -23,6 +21,18 @@ est_time: 10-20 min
 
 # Handover note
 What you get: a handover note for a colleague from the state of a project folder.
+
+## Plan first
+
+The handover note is a `recap` page — scaffold it and let the colleague point at what to clarify:
+
+```bash
+aos-plan-canvas new recap <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Inputs
 - A project folder

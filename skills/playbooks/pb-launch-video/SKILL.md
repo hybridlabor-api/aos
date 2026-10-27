@@ -2,9 +2,8 @@
 name: pb-launch-video
 description: >-
   Turn a live app or landing page into a short launch video: composition
-  brief, render in Hyperframes or Remotion, an ffprobe check per format,
-  publish hand-off only after GO. Use for "launch video", "make a video of
-  the shipped app", "promo clip for the landing page".
+  brief, render in Hyperframes or Remotion, ffprobe check, hand-off
+  after GO.
 category: media-eventtech
 kind: playbook
 trigger: ["launch video", "video of the shipped app", "promo clip for the landing page"]

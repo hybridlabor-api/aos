@@ -167,8 +167,10 @@ test('token saver verify: on win32 finds Store Python when APPDATA is redirected
     const orig = cliSpawn.run;
     try {
         const calls = [];
-        cliSpawn.run = (cmd, args) => {
+        let pyEnv;
+        cliSpawn.run = (cmd, args, opts) => {
             calls.push({ cmd, args });
+            if (cmd === 'python') pyEnv = opts.env;
             return cmd === 'token-saver' ? { error: Object.assign(new Error('x'), { code: 'ENOENT' }) } : { status: 0 };
         };
 
@@ -192,6 +194,9 @@ test('token saver verify: on win32 finds Store Python when APPDATA is redirected
         assert.ok(r.detail.includes(storeCli), r.detail);
         assert.ok(!r.detail.includes('CLI missing'), 'must not report CLI missing');
         assert.deepStrictEqual(calls[1], { cmd: 'python', args: [storeCli, 'stats'] });
+        // cli.py imports `src`: the folder above src/ must be on PYTHONPATH (Lenovo: ModuleNotFoundError: No module named 'src').
+        assert.strictEqual(pyEnv.PYTHONPATH, path.dirname(path.dirname(storeCli)));
+        assert.strictEqual(pyEnv.PYTHONIOENCODING, 'utf-8'); // Lenovo: UnicodeEncodeError on '\u2550' under cp1252
     } finally { cliSpawn.run = orig; }
 });
 

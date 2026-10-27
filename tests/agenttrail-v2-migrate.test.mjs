@@ -129,45 +129,29 @@ after(async () => {
   stopTrailHubs([hubPort, ...portRange(lo, hi)])
 })
 
-describe('--ensure goes hub-first', () => {
-  test('it starts the hub, registers the repo and exits 0', async () => {
+describe('--ensure starts the repo map, not the hub', () => {
+  test('it starts the map for the repo and never listens on the hub port', async () => {
     const r = await runEnsure()
     assert.equal(r.status, 0, r.stderr)
     const out = JSON.parse(r.stdout.trim())
     assert.ok(out.url, `no url: ${r.stdout}`)
-    assert.match(out.url, new RegExp(`:${hubPort}$`))
     assert.equal(out.started, true)
-    assert.equal(out.hint, null)
+    assert.doesNotMatch(out.url, new RegExp(`:${hubPort}$`))
+    assert.equal(await canBind(hubPort), true, 'no hub may be started')
+    const w = await fetch(`${out.url}/whoami`).then((x) => x.json())
+    assert.equal(w.repoPath, fs.realpathSync(repo))
   })
 
-  test('the registered repo shows up in the hub model', async () => {
-    const res = await new Promise((resolve, reject) => {
-      const req = http.get({ host: '127.0.0.1', port: hubPort, path: '/v1/model', headers: { host: `localhost:${hubPort}` } }, (r) => {
-        let b = ''
-        r.on('data', (c) => { b += c })
-        r.on('end', () => resolve({ status: r.statusCode, body: b }))
-      })
-      req.on('error', reject)
-    })
-    assert.equal(res.status, 200)
-    const m = JSON.parse(res.body)
-    assert.ok(m.repos.some((x) => x.root === fs.realpathSync(repo)), `repos: ${m.repos.map((x) => x.root).join(',')}`)
-  })
-
-  test('a second --ensure reuses the running hub and starts nothing', async () => {
+  test('a second --ensure reuses the running map and starts nothing', async () => {
     const r = await runEnsure()
-    assert.equal(r.status, 0)
     const out = JSON.parse(r.stdout.trim())
-    assert.match(out.url, new RegExp(`:${hubPort}$`))
-    assert.equal(out.started, false, 'the hub was already running')
+    assert.equal(out.started, false)
   })
 
-  test('two parallel --ensure runs do not start two hubs', async () => {
+  test('two parallel --ensure runs do not start two maps', async () => {
     const [a, b] = await Promise.all([runEnsure(), runEnsure()])
-    assert.equal(a.status, 0)
-    assert.equal(b.status, 0)
     const starts = [a, b].map((r) => JSON.parse(r.stdout.trim()).started).filter(Boolean).length
-    assert.ok(starts <= 1, `started ${starts} hubs`)
+    assert.ok(starts <= 1, `started ${starts} maps`)
   })
 
   test('without a plan the caller still exits 0 and says why', async () => {
@@ -178,7 +162,7 @@ describe('--ensure goes hub-first', () => {
     git(bare, 'commit', '-qm', 'x')
     const r = spawnSync(process.execPath, [ensureBin, '--ensure', '--cwd', bare, '--json'], {
       encoding: 'utf8', timeout: 40000,
-      env: { ...process.env, HOME: home, AOS_TRAIL_STATE_DIR: path.join(home, '.aos', 'trail'), AGENTTRAIL_PORT: String(hubPort), AOS_TRAIL_PORTS: `${lo}-${hi}`, CI: '1' },
+      env: { ...process.env, HOME: home, AOS_TRAIL_STATE_DIR: path.join(home, '.aos', 'trail'), AOS_TRAIL_PORTS: `${lo}-${hi}`, CI: '1' },
     })
     assert.equal(r.status, 0, r.stderr)
     const out = JSON.parse(r.stdout.trim())
@@ -187,61 +171,38 @@ describe('--ensure goes hub-first', () => {
   })
 });
 
-describe('retiring the legacy daemons', () => {
-  test('a protocol-2 daemon serving this repo is asked to shut down', async () => {
-    const stub = stubDaemon({ repo, port: lo, obeyShutdown: true })
-    stubs.push(stub)
-    await new Promise((r) => setTimeout(r, 100))
-    const r = await runEnsure()
-    assert.equal(r.status, 0, r.stderr)
-    const out = JSON.parse(r.stdout.trim())
-    assert.equal(out.started, false)
-    assert.ok(stub.state.shutdowns >= 1, 'the old daemon was not asked to quit')
-    assert.equal(await waitGone(lo), true, 'the old daemon is still answering')
-    assert.equal(out.hint, null)
-  })
+describe('other daemons are never retired', () => {
+  // Earlier tests leave maps running inside the shared range, so the stubs get a range of their own that is free right now.
+  let shared;
+  before(async () => {
+    shared = [lo, hi];
+    for (let i = 0; ; i += 1) {
+      lo = 21600 + Math.floor(Math.random() * 3000);
+      if ((await canBind(lo)) && (await canBind(lo + 1)) && (await canBind(lo + 2))) break;
+      assert.ok(i < 50, 'no free 3-port range found');
+    }
+    hi = lo + 2;
+  });
+  after(async () => {
+    // The stubs listen inside this process: close them first, or the lsof sweep would find (and SIGTERM) the test runner itself.
+    for (const s of stubs.splice(0)) await s.stop().catch(() => {});
+    stopTrailHubs(portRange(lo, hi));
+    [lo, hi] = shared;
+  });
 
-  test('a daemon that refuses to quit yields a hint and still exits 0', async () => {
-    const stubborn = stubDaemon({ repo, port: lo + 1, obeyShutdown: false })
-    stubs.push(stubborn)
-    await new Promise((r) => setTimeout(r, 100))
-    const r = await runEnsure()
-    assert.equal(r.status, 0, r.stderr)
-    const out = JSON.parse(r.stdout.trim())
-    assert.ok(out.hint, 'a refusing daemon must be reported')
-    assert.match(out.hint, /still running/)
-    assert.ok(out.url, 'the hub is still the answer')
-  })
-
-  test('a daemon serving another repo is left alone', async () => {
+  test('daemons serving this or another repo are left running', async () => {
     const other = makeRepo()
-    const stub = stubDaemon({ repo: other, port: lo + 2, obeyShutdown: true })
-    stubs.push(stub)
+    const mine = stubDaemon({ repo, port: lo, obeyShutdown: true })
+    const theirs = stubDaemon({ repo: other, port: lo + 1, obeyShutdown: true })
+    stubs.push(mine, theirs)
     await new Promise((r) => setTimeout(r, 100))
-    const before = stub.state.shutdowns
     await runEnsure()
     await new Promise((r) => setTimeout(r, 300))
-    assert.equal(stub.state.shutdowns, before, 'a daemon for another repo must not be touched')
-    const alive = await new Promise((resolve) => {
-      const req = http.get({ host: '127.0.0.1', port: lo + 2, path: '/whoami', timeout: 300 }, (r) => { r.resume(); r.on('end', () => resolve(true)) })
-      req.on('error', () => resolve(false))
-    })
-    assert.equal(alive, true)
-  })
-
-  test('AOS_TRAIL_PORTS still overrides the legacy range', async () => {
-    // The configured range excludes the stub, so the stub must not be scanned.
-    const narrowLo = 23000 + Math.floor(Math.random() * 200)
-    const stub = stubDaemon({ repo, port: narrowLo, obeyShutdown: true })
-    stubs.push(stub)
-    await new Promise((r) => setTimeout(r, 100))
-    runEnsure({ AOS_TRAIL_PORTS: `${narrowLo - 1}-${narrowLo - 1}` }).catch(() => {})
-    await new Promise((r) => setTimeout(r, 300))
-    assert.equal(stub.state.shutdowns, 0, 'a port outside the configured range must not be scanned')
+    assert.equal(mine.state.shutdowns + theirs.state.shutdowns, 0, 'ensure must not shut anything down')
   })
 });
 
-describe('the relay posts to the hub', () => {
+describe('the relay posts to the maps', () => {
   const received = [];
   let server;
   let port;
@@ -271,7 +232,7 @@ describe('the relay posts to the hub', () => {
     timeout: 20000,
   });
 
-  test('the hook payload reaches the hub port and exits 0', async () => {
+  test('the hook payload reaches the explicit port and exits 0', async () => {
     received.length = 0;
     const r = await relay();
     assert.equal(r.status, 0, r.stderr);
@@ -281,12 +242,20 @@ describe('the relay posts to the hub', () => {
     assert.equal(hits[0].url, '/hook');
   });
 
-  test('a legacy-range daemon is not swept by default', async () => {
+  test('with an explicit port the map range is not swept', async () => {
     received.length = 0;
     const r = await relay();
     assert.equal(r.status, 0, r.stderr);
     await new Promise((x) => setTimeout(x, 400));
     assert.equal(received.some((x) => x.legacy), false, `legacy port was contacted: ${JSON.stringify(received)}`);
+  });
+
+  test('without AGENTTRAIL_PORT the per-repo map range receives the event', async () => {
+    received.length = 0;
+    const r = await relay({ AGENTTRAIL_PORT: '' });
+    assert.equal(r.status, 0, r.stderr);
+    await new Promise((x) => setTimeout(x, 500));
+    assert.equal(received.some((x) => x.legacy), true, JSON.stringify(received));
   });
 
   test('AGENTTRAIL_LEGACY=1 brings the legacy range back for one release', async () => {

@@ -16,7 +16,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
-const { buildAllowedHostnames, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin } = require('../loopback-guard');
+const { buildAllowedHostnames, embedAncestors, frameAncestors, injectEmbed, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin, isEmbedNavigation } = require('../loopback-guard');
 const { createAnnotateHandler } = require('./annotate-server');
 const { renderMarkdown } = require('./markdown');
 const { artifactSdkJs } = require('./sdk');
@@ -105,14 +105,16 @@ const CONTENT_TYPES = {
 
 function resolvePort(env = process.env) {
   const value = Number.parseInt(env.AOS_PLAN_CANVAS_PORT || '', 10);
-  return Number.isInteger(value) && value >= 0 && value <= 65535 ? value : DEFAULT_PORT;
+  // a test sandbox never binds the owner's documented port
+  return Number.isInteger(value) && value >= 0 && value <= 65535 ? value : env.AOS_TEST_SANDBOX === '1' ? 0 : DEFAULT_PORT;
 }
 
 function resolveIdleTimeoutMs(env = process.env) {
   const raw = String(env.AOS_PLAN_CANVAS_IDLE_MS || '').trim().toLowerCase();
-  if (raw === '0' || raw === 'off') return 0;
+  if (raw === '0' || raw === 'off' || (!raw && env.AOS_SUPERVISED === '1')) return 0;
   const value = Number.parseInt(raw, 10);
-  return Number.isInteger(value) && value > 0 ? value : DEFAULT_IDLE_TIMEOUT_MS;
+  // a test sandbox never leaves a 30 min orphan behind
+  return Number.isInteger(value) && value > 0 ? value : env.AOS_TEST_SANDBOX ? 60 * 1000 : DEFAULT_IDLE_TIMEOUT_MS;
 }
 
 function readJsonBody(req) {
@@ -163,17 +165,50 @@ function sendJson(res, statusCode, payload) {
   res.end(body);
 }
 
-function sendHtml(res, statusCode, html, { csp = true } = {}) {
-  const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' };
-  if (csp) {
-    headers['content-security-policy'] =
-      "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'";
-  }
-  res.writeHead(statusCode, headers);
-  res.end(html);
+// Behind the AOS Hub's /canvas prefix the hub sends X-Forwarded-Prefix. The pages and client script
+// emit root-absolute URLs, so HTML and JS bodies and redirect targets get the prefix on the way out.
+const FORWARDED_PREFIX = /^\/[a-z0-9-]+$/;
+function prefixResponse(res, prefix) {
+  const writeHead = res.writeHead.bind(res);
+  const end = res.end.bind(res);
+  let type = '';
+  res.writeHead = (status, headers) => {
+    if (headers) {
+      type = String(headers['content-type'] || '');
+      if (typeof headers.location === 'string' && headers.location.startsWith('/')) headers = { ...headers, location: prefix + headers.location };
+    }
+    return writeHead(status, headers);
+  };
+  res.end = (body, ...rest) => {
+    if (typeof body === 'string' && /html|javascript/.test(type)) {
+      body = body
+        .replace(/\b(src|href|action)="\/(?!\/)/g, `$1="${prefix}/`)
+        .replace(/\b(fetch|EventSource)\((['"])\/(?!\/)/g, `$1($2${prefix}/`);
+    }
+    return end(body, ...rest);
+  };
 }
 
-const STATIC_READ_PATH = /^\/(sdk\.js|artifact\/[a-f0-9]{12}\/.*)$/;
+// Absolute path, symlinks resolved when the path exists (it may not yet).
+function realRoot(p) {
+  const abs = path.resolve(p);
+  try { return fs.realpathSync(abs); } catch { return abs; }
+}
+
+function sendHtml(res, statusCode, html, { csp = true } = {}) {
+  const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' };
+  let body = html;
+  if (csp) {
+    const ancestors = embedAncestors();
+    headers['content-security-policy'] =
+      `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; ${frameAncestors(ancestors)}`;
+    body = injectEmbed(body, ancestors);
+  }
+  res.writeHead(statusCode, headers);
+  res.end(body);
+}
+
+const STATIC_READ_PATH = /^\/(sdk\.js|ao-embed-bridge\.js|artifact\/[a-f0-9]{12}\/.*)$/;
 const PAGE_PATH = /^\/canvas\/[a-f0-9]{12}$/;
 
 function skillDescription(file) {
@@ -212,6 +247,11 @@ function createPlanCanvasServer({
   log = () => {}
 } = {}) {
   if (!store) throw new Error('createPlanCanvasServer requires a session store');
+
+  // The workspace root this server serves, realpathed once: /health reports it so the CLI can tell
+  // a server of another project/root apart (audit port-collision). It is this machine's own,
+  // loopback-reachable workspace path — clients are the local CLI and the same-origin canvas page.
+  const serverRoot = realRoot(workspaceRoot);
 
   const allowedHostnames = buildAllowedHostnames(host);
   const annotate = createAnnotateHandler({
@@ -665,6 +705,8 @@ function createPlanCanvasServer({
       return sendJson(res, 400, { error: 'bad request target' });
     }
     const { pathname } = url;
+    const forwarded = String(req.headers['x-forwarded-prefix'] || '');
+    if (FORWARDED_PREFIX.test(forwarded)) prefixResponse(res, forwarded);
     // Annotate routes are called from a dev app on another loopback origin, so
     // they do their own Origin/token checks instead of the same-origin gate.
     if (annotate.handles(pathname)) return annotate.handle(req, res, url);
@@ -682,14 +724,18 @@ function createPlanCanvasServer({
       && (pathname === '/' || PAGE_PATH.test(pathname))
       && req.headers['sec-fetch-mode'] === 'navigate'
       && req.headers['sec-fetch-dest'] === 'document';
-    if (!isStaticRead && !isPageNavigation && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
+    const isEmbedPageNavigation = req.method === 'GET'
+      && (pathname === '/' || PAGE_PATH.test(pathname))
+      && embedAncestors().length > 0
+      && isEmbedNavigation(req.headers);
+    if (!isStaticRead && !isPageNavigation && !isEmbedPageNavigation && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
       return sendJson(res, 403, { error: 'forbidden fetch site' });
     }
 
     Promise.resolve()
       .then(() => {
         if (req.method === 'GET' && pathname === '/health') {
-          return sendJson(res, 200, { ok: true, app: 'aos-plan-canvas', version });
+          return sendJson(res, 200, { ok: true, app: 'aos-plan-canvas', version, root: serverRoot });
         }
         if (req.method === 'POST' && pathname === '/shutdown') {
           sendJson(res, 200, { status: 'stopping' });
@@ -697,6 +743,17 @@ function createPlanCanvasServer({
             if (onIdleShutdown) onIdleShutdown();
           });
           return undefined;
+        }
+        if (req.method === 'GET' && pathname === '/ao-embed-bridge.js') {
+          const bridgeFile = path.join(__dirname, 'ao-embed-bridge.js');
+          let data;
+          try {
+            data = fs.readFileSync(bridgeFile);
+          } catch {
+            return sendJson(res, 404, { error: 'bridge script not found' });
+          }
+          res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' });
+          return res.end(data);
         }
         if (req.method === 'GET' && pathname === '/') {
           return sendHtml(res, 200, renderHomeHtml(homeData(store)));
@@ -774,6 +831,7 @@ function createPlanCanvasServer({
 
 module.exports = {
   DEFAULT_HOST,
+  realRoot,
   DEFAULT_PORT,
   DEFAULT_THINKING_STALE_MS,
   DEFAULT_TYPING_EXPIRY_MS,

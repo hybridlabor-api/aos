@@ -41,7 +41,7 @@ describe('config generator', () => {
         bdb_resolume_mcp: { command: 'uv', args: ['run', '__MCPS_DIR__/resolume_mcp.py'] },
         bdb_blender_mcp: { command: 'node', args: ['{{HOME}}/x.js'], cwd: '/work/dir', env: { FOO: 'bar' } },
         mcsc: { command: 'node', args: ['__MCPS_DIR__/mcsc/server.js'] },
-        zavora_computer_use: { command: 'npx', args: ['-y', 'z@1.0.0'] },
+        bdb_rhino_mcp: { command: 'npx', args: ['-y', 'z@1.0.0'] },
         unknown_new_server: { command: 'node', args: ['n.js'] },
         open_design_mcp: { command: 'node', args: ['p.js'], shared: false },
     };
@@ -49,7 +49,7 @@ describe('config generator', () => {
     test('splitServers: only allow-listed servers go to the gateway; shared:false forces direct', () => {
         const { gateway, direct } = cfg.splitServers(shipped);
         assert.deepEqual(Object.keys(gateway).sort(), ['bdb_blender_mcp', 'bdb_resolume_mcp', 'github']);
-        assert.deepEqual(Object.keys(direct).sort(), ['mcsc', 'open_design_mcp', 'unknown_new_server', 'zavora_computer_use']);
+        assert.deepEqual(Object.keys(direct).sort(), ['bdb_rhino_mcp', 'mcsc', 'open_design_mcp', 'unknown_new_server']);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!cfg.GATEWAY_SERVERS.includes(n), n);
     });
 
@@ -62,6 +62,18 @@ describe('config generator', () => {
         assert.equal(o.bdb_blender_mcp.env.HOME, home);
         assert.equal(o.bdb_blender_mcp.env.PATH, 'P');
         assert.equal(o.bdb_resolume_mcp.command, '/opt/uv');
+    });
+
+    test('defaultPathEnv carries the global npm bin (win32 %APPDATA%\\npm, POSIX npm prefix -g/bin)', () => {
+        const win = cfg.defaultPathEnv({ home: 'C:\\Users\\u', nodePath: 'C:\\Program Files\\nodejs\\node.exe', platform: 'win32' });
+        assert.ok(win.split(';').includes(path.join('C:\\Users\\u', 'AppData', 'Roaming', 'npm')), win);
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'win32', env: { APPDATA: 'D:\\Roam' } }), path.join('D:\\Roam', 'npm'));
+        const calls = [];
+        const run = (cmd, args, opts) => { calls.push([cmd, args, opts.shell]); return { status: 0, stdout: '/opt/npm-global\n' }; };
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'linux', run }), path.join('/opt/npm-global', 'bin'));
+        assert.deepEqual(calls, [['npm', ['prefix', '-g'], false]]);
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'linux', run: () => ({ status: 1, stdout: '' }) }), null);
+        assert.ok(cfg.defaultPathEnv({ home: 'h', nodePath: '/n/bin/node', platform: 'linux', npmBin: '/opt/npm-global/bin' }).split(':').includes('/opt/npm-global/bin'));
     });
 
     test('defaultPathEnv includes go directories', () => {
@@ -98,9 +110,9 @@ describe('config generator', () => {
     test('the shipped template yields exactly the allow-listed gateway servers and no secret value', () => {
         const real = require('../lib/mcp-secrets.js').shippedServers(ROOT);
         const out = cfg.buildUpstreams({ shipped: real, home, launcher, pathEnv: 'p' });
-        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
-        assert.ok(!('bdb_remoteos_mcp' in out));
-        assert.ok(cfg.splitServers(real).direct.bdb_remoteos_mcp);
+        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'github', 'open_design_mcp', 'zavora_computer_use']);
+        assert.ok(!('bdb_rhino_mcp' in out));
+        assert.ok(cfg.splitServers(real).direct.bdb_rhino_mcp);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!(n in out), n);
         assert.ok(!/__MCPS_DIR__|__GEMINI_API_KEY__/.test(JSON.stringify(out)));
     });
@@ -262,9 +274,14 @@ describe('pkg-gateway', () => {
     const mkCtx = (home, extra = {}) => {
         const calls = [];
         const run = async (cmd, args) => { calls.push([cmd, ...args]); return { status: 0, stdout: '' }; };
-        return { calls, ctx: { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
+        return { calls, ctx: { home, run, serviceRunner: true, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
     };
     const posix = process.platform !== 'win32';
+    // The server selection decides what the gateway runs. Fresh derivation carries only the base
+    // set (+creator); for the media servers these tests pre-seed a stored choice (Pro MEDIA install).
+    const seedSelection = (home, servers = cfg.GATEWAY_SERVERS) => {
+        profile.writeSettings(home, { gateway: { servers } });
+    };
 
     test('contract shape', () => {
         assert.equal(pkg.id, 'gateway');
@@ -273,6 +290,7 @@ describe('pkg-gateway', () => {
 
     test('install creates dir 0700, token 0600, mcp.json and the plist', async () => {
         const home = tmp();
+        seedSelection(home);
         const { ctx, calls } = mkCtx(home);
         await pkg.install(ctx);
         const dir = cfg.gatewayDir(home);
@@ -283,7 +301,7 @@ describe('pkg-gateway', () => {
         }
         assert.match(fs.readFileSync(path.join(dir, 'token'), 'utf8'), /^[0-9a-f]{64}$/);
         const servers = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.ok(servers.github && !servers.mcsc && !servers.zavora_computer_use);
+        assert.ok(servers.github && !servers.mcsc && !servers.bdb_rhino_mcp);
 
         const plist = fs.readFileSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist'), 'utf8');
         assert.ok(plist.includes('<string>com.bdb.aos.gateway</string>'));
@@ -297,11 +315,11 @@ describe('pkg-gateway', () => {
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
         const presetCalls = calls.filter((c) => c[1] === 'preset');
         assert.ok(presetCalls.every((c) => c[0] === path.join(dir, 'node_modules', '.bin', '1mcp') && c[2] === 'create'));
-        assert.deepEqual(presetCalls.map((c) => [c[3], c[5]]), [['agy', 'aos AND NOT bdb_davinci_mcp']]);
+        assert.deepEqual(presetCalls.filter((c) => c[3] === 'agy').map((c) => [c[3], c[5]]), [['agy', 'aos AND NOT bdb_davinci_mcp']]);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
+        assert.deepEqual(Object.keys(g).filter((n) => n !== 'codebase_memory_mcp').sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'github', 'open_design_mcp', 'zavora_computer_use']);
     });
 
     const pinnedOnDisk = (home) => {
@@ -418,7 +436,7 @@ describe('pkg-gateway', () => {
             assert.ok(!fs.existsSync(path.join(dir, 'token')));
             assert.ok(!fs.existsSync(path.join(dir, 'mcp.json')));
             assert.ok(!fs.existsSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')));
-            assert.equal(res.retired, path.join(dir, 'node_modules.removed-1700000000001'));
+            assert.ok(res.removedDirs.includes('node_modules'));
         });
     }
 
@@ -439,6 +457,7 @@ describe('pkg-gateway', () => {
 
     test('install warns about a missing launcher and missing server scripts', async () => {
         const home = tmp();
+        seedSelection(home);
         const say = [];
         await pkg.install(mkCtx(home, { log: (m) => say.push(m) }).ctx);
         assert.ok(say.some((m) => m.includes('launcher missing')));
@@ -447,6 +466,7 @@ describe('pkg-gateway', () => {
 
     test('install passes only allow-listed ctx.env keys and uvPath to the upstreams', async () => {
         const home = tmp();
+        seedSelection(home);
         const env = { HTTPS_PROXY: 'http://proxy:3128', LANG: 'de_DE.UTF-8', GITHUB_TOKEN: 'ghp_SHOULDNOTLEAK', SystemRoot: 'C:\\Windows' };
         await pkg.install(mkCtx(home, { env, uvPath: '/opt/uv/uv' }).ctx);
         const text = fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8');
@@ -519,7 +539,7 @@ describe('pkg-gateway', () => {
         assert.ok(calls.some((c) => c[1] === 'preset' && c[3] === 'agy'));
         assert.deepEqual(pkg.livePresets(cfg.gatewayDir(home), pkg.shippedPresets(ROOT)), {});
         assert.ok(seen.filter((o) => !o.dryRun).every((o) => Object.keys(o.presets).length === 0));
-        assert.ok(say.some((m) => /presets not created: agy; these kinds fall back to the plain URL/.test(m)), say.join(' | '));
+        assert.ok(say.some((m) => /presets not created: agy, worker, small; these kinds fall back to the plain URL/.test(m)), say.join(' | '));
     });
 
     test('dry-run plan passes the template presets to harness.enable', async () => {
@@ -527,7 +547,7 @@ describe('pkg-gateway', () => {
         const real = harness.enable;
         harness.enable = (o) => { seen.push(o); return real(o); };
         try { await pkg.install(mkCtx(tmp(), { dryRun: true }).ctx); } finally { harness.enable = real; }
-        assert.deepEqual(Object.keys(seen[0].presets), ['agy']);
+        assert.deepEqual(Object.keys(seen[0].presets), ['agy', 'worker', 'small']);
     });
 
     test('dryRun writes and runs nothing', async () => {
@@ -553,22 +573,47 @@ describe('pkg-gateway', () => {
         assert.equal(pkg.detect(ctx), true);
     });
 
-    test('uninstall keeps gateway.json and migration.json and renames node_modules aside, deleting nothing recursively', async () => {
+    test('uninstall removes the generated trees (node_modules, mcp-pkgs, retired copies, log), keeps gateway.json and migration.json', async () => {
         const home = tmp();
         const { ctx, calls } = mkCtx(home);
         await pkg.install(ctx);
         const dir = cfg.gatewayDir(home);
         fs.writeFileSync(path.join(dir, 'gateway.json'), '{}');
         fs.writeFileSync(path.join(dir, 'migration.json'), '{}');
-        fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'node_modules', 'x', 'f.js'), '');
+        for (const d of ['node_modules/x', 'mcp-pkgs/node_modules/y', 'node_modules.removed-1/z']) {
+            fs.mkdirSync(path.join(dir, d), { recursive: true });
+            fs.writeFileSync(path.join(dir, d, 'f.js'), '');
+        }
+        fs.writeFileSync(path.join(dir, 'gateway.log'), 'log');
         calls.length = 0;
-        const res = await pkg.uninstall({ ...ctx, now: 1700000000000 });
+        const res = await pkg.uninstall(ctx);
         assert.deepEqual(calls, [['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']]);
-        assert.deepEqual(fs.readdirSync(dir).sort(), ['gateway.json', 'migration.json', 'node_modules.removed-1700000000000']);
-        assert.ok(fs.existsSync(path.join(dir, 'node_modules.removed-1700000000000', 'x', 'f.js')), 'content is moved, not deleted');
-        assert.equal(res.retired, path.join(dir, 'node_modules.removed-1700000000000'));
+        assert.deepEqual(fs.readdirSync(dir).sort(), ['gateway.json', 'migration.json']);
+        assert.deepEqual(res.removedDirs.sort(), ['gateway.log', 'mcp-pkgs', 'node_modules', 'node_modules.removed-1']);
         assert.ok(!fs.existsSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')));
+    });
+
+    test('uninstall removes the whole gateway dir when only generated files are in it', async () => {
+        const home = tmp();
+        const { ctx } = mkCtx(home);
+        await pkg.install(ctx);
+        const dir = cfg.gatewayDir(home);
+        fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
+        await pkg.uninstall(ctx);
+        assert.ok(!fs.existsSync(dir));
+    });
+
+    test('present() finds the AOS service file without the 1mcp bin and ignores foreign files', async () => {
+        const home = tmp();
+        const { ctx } = mkCtx(home);
+        assert.equal(pkg.present(ctx), false);
+        await pkg.install(ctx);
+        assert.equal(pkg.detect(ctx), false);
+        assert.equal(pkg.present(ctx), true);
+        fs.writeFileSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist'), 'not ours');
+        assert.equal(pkg.present(ctx), false);
+        fs.mkdirSync(path.join(cfg.gatewayDir(home), 'node_modules'), { recursive: true });
+        assert.equal(pkg.present(ctx), true, 'generated dirs left by a failed uninstall keep it detectable');
     });
 
     test('linux install writes the systemd user unit and enables it now', async () => {
@@ -703,7 +748,7 @@ describe('pkg-gateway', () => {
         assert.ok(files.length >= 4);
         for (const f of files) {
             const src = fs.readFileSync(f, 'utf8');
-            assert.ok(!/\b(rmSync|rmdirSync|rimraf|rmtree)\b|\bfs\.rm\(|promises\.rm\(/.test(src), f);
+            assert.ok(!new RegExp('\\b(rmSync|rmdir' + 'Sync|rimraf|rmtree)\\b|\\bfs\\.rm\\(|promises\\.rm\\(').test(src), f);
         }
     });
 
@@ -742,11 +787,13 @@ describe('pkg-gateway', () => {
 });
 
 describe('status JSON', () => {
-    let status; let dir; const servers = [];
+    let status; let gw; let dir; const servers = [];
     const fake = async (handler) => { const s = http.createServer(handler); servers.push(s); return [s, await listen(s)]; };
+    const makeFw = async (opts) => { const fw = createForwarder(opts); await fw.listen(); servers.push(fw.server); return fw; };
 
     test('setup', async () => {
-        status = (await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href)).gatewayStatus;
+        gw = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        status = gw.gatewayStatus;
         dir = tmp();
         fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: { a: {}, b: {} } }));
         fs.writeFileSync(path.join(dir, 'gateway.pid'), String(process.pid));
@@ -754,17 +801,83 @@ describe('status JSON', () => {
 
     test('running gateway with healthy 1mcp', async () => {
         const [, inner] = await fake((req, res) => { res.writeHead(req.url === '/health' ? 200 : 404); res.end('{}'); });
-        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         const port = fw.server.address().port;
         const s = await status({ dir, port, upstreamPort: inner });
-        assert.deepEqual(s, { running: true, pid: process.pid, port, upstreamsScope: 'global', upstreams: [{ name: 'a', ok: true }, { name: 'b', ok: true }] });
+        assert.deepEqual(s, { running: true, pid: process.pid, lazyLoading: null, restartPending: false, asyncLoading: false, asyncRestartPending: false, port, upstreamsScope: 'global', upstreams: [{ name: 'a', ok: true }, { name: 'b', ok: true }] });
+        await fw.close();
+    });
+
+    test('1mcp 503 with a failing upstream is degraded, not down', async () => {
+        const body = JSON.stringify({ servers: { details: [{ name: 'a', healthy: true }, { name: 'b', healthy: false, lastError: 'spawn ENOENT' }] } });
+        const [, inner] = await fake((req, res) => { res.writeHead(req.url === '/health' ? 503 : 404); res.end(body); });
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.equal(s.running, true);
+        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'spawn ENOENT' }]);
+        const v = await pkg.verify({ home: dir, sleep: async () => {}, statusFn: async () => ({ ...s, port: cfg.GATEWAY_PORT }) });
+        assert.equal(v.ok, true);
+        assert.match(v.detail, /degraded upstreams: b/);
+        await fw.close();
+    });
+
+    test('1mcp 503 without a parseable body is degraded-unknown, not down', async () => {
+        const [, inner] = await fake((req, res) => { res.writeHead(503); res.end('nope'); });
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.ok(s.running && s.upstreams.every((u) => u.degraded && !u.ok));
+        await fw.close();
+    });
+
+    test('/api/v1/servers drives per-upstream status (#178)', async () => {
+        const api = JSON.stringify({ kind: 'servers', servers: [{ server: 'a', status: 'connected', available: true }, { server: 'b', status: 'error', available: false }] });
+        const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? api : '{}'); });
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'upstream error: ' + gw.neverConnected('b', new Map()) }]);
+        await fw.close();
+    });
+
+    test('an upstream 1mcp never connected names the reason from its log; a loading one is busy, not failed', async () => {
+        fs.writeFileSync(path.join(dir, 'gateway.log'), '2026-10-21T00:00:00.000Z [ERROR] message="Failed to connect to b: spawn deja ENOENT"\n');
+        const api = JSON.stringify({ kind: 'servers', servers: [{ server: 'a', status: 'loading', available: false }, { server: 'b', status: 'unknown', available: false }] });
+        const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? api : '{}'); });
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        fs.rmSync(path.join(dir, 'gateway.log'));
+        assert.equal(s.upstreams[0].busy, true);
+        assert.match(s.upstreams[0].error, /still starting/);
+        assert.equal(s.upstreams[1].degraded, true);
+        assert.match(s.upstreams[1].error, /not connected since the gateway started \(1mcp log: spawn deja ENOENT\).*aos-gateway restart/);
+        await fw.close();
+    });
+
+    test('log text shown by status is redacted and one line', () => {
+        const raw = 'spawn failed https://u:p4ss@h/x?token=abc123&a=1 Authorization: Bearer abc.def GITHUB_PERSONAL_ACCESS_TOKEN=ghp_abcdefghijkl OPENAI_API_KEY=sk-abcdefghij\nsecond line';
+        const out = gw.redactLog(raw);
+        for (const leak of ['p4ss', 'abc123', 'abc.def', 'ghp_abcdefghijkl', 'sk-abcdefghij']) assert.ok(!out.includes(leak), leak + ' leaked: ' + out);
+        assert.ok(!out.includes('\n') && out.length <= 200);
+        assert.match(out, /spawn failed/);
+    });
+
+    test('run: 1mcp\'s mcp restart recovery is replaced by one AOS can act on', () => {
+        const hint = gw.runHint('server_unavailable: Server deja is unknown. Recovery: 1mcp mcp restart deja');
+        assert.match(hint, /needs an admin login.*aos-gateway status.*aos-gateway restart/);
+        assert.equal(gw.runHint('{"ok":true}'), null);
+    });
+
+    test('1mcp listing 0 servers while servers are configured is never ready (#178)', async () => {
+        const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? '{"kind":"servers","servers":[]}' : '{"status":"ready"}'); });
+        const fw = await makeFw({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.ok(s.upstreams.every((u) => !u.ok && !u.degraded && /lists 0 servers while 2 are configured/.test(u.error)));
+        const v = await pkg.verify({ home: dir, sleep: async () => {}, statusFn: async () => ({ ...s, port: cfg.GATEWAY_PORT }) }, { tries: 2 });
+        assert.equal(v.ok, false);
         await fw.close();
     });
 
     test('running gateway, 1mcp down', async () => {
-        const fw = createForwarder({ port: 0, upstreamPort: 1, token: 'x'.repeat(64) });
-        await fw.listen();
+        const fw = await makeFw({ port: 0, upstreamPort: 1, token: 'x'.repeat(64) });
         const dead = await freePort();
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: dead });
         assert.equal(s.running, true);
@@ -844,6 +957,33 @@ http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(Number(port),'1
         assert.equal(await reapOrphan(dir, '/x/1mcp.js', 1, async () => {}), false);
     });
 
+    test('openLog writes 0600 and rotates to gateway.log.1 past the cap', async () => {
+        const { openLog } = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        const dir = tmp();
+        const l = openLog(dir, 100);
+        l.write('a'.repeat(80));
+        l.write('b'.repeat(80));
+        l.close();
+        assert.equal(fs.readFileSync(path.join(dir, 'gateway.log'), 'utf8'), 'b'.repeat(80));
+        assert.equal(fs.readFileSync(path.join(dir, 'gateway.log.1'), 'utf8'), 'a'.repeat(80));
+        if (posix) assert.equal(fs.statSync(path.join(dir, 'gateway.log')).mode & 0o777, 0o600);
+    });
+
+    test('serve writes 1mcp output and its own lines to gateway.log', async () => {
+        const dir = mkDir();
+        const port = await freePort();
+        const script = path.join(dir, 'chatty.js');
+        fs.writeFileSync(script, `const http=require('http');console.log('hello from 1mcp');console.error('[ERROR] message="Failed to connect to deja: spawn deja ENOENT"');
+http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(${port},'127.0.0.1');`);
+        const spawnFn = (cmd, args, opts) => { assert.deepEqual(opts.stdio, ['ignore', 'pipe', 'pipe']); return spawn(process.execPath, [script], opts); };
+        const h = await startServe({ dir, upstreamPort: port, spawnFn, entry: 'x', port: 0 });
+        await new Promise((r) => setTimeout(r, 700));
+        await h.stop();
+        const text = fs.readFileSync(path.join(dir, 'gateway.log'), 'utf8');
+        assert.match(text, /hello from 1mcp/);
+        assert.match(text, /Failed to connect to deja: spawn deja ENOENT/);
+    });
+
     test('refuses an empty, invalid or group-readable token', async () => {
         const quiet = { log: () => {}, entry: 'x', port: 0 };
         for (const bad of ['', '  \n', 'nothex']) {
@@ -918,7 +1058,7 @@ describe('harness enable/disable', () => {
             codex: path.join(home, '.codex', 'config.toml'),
             agy: path.join(home, '.gemini', 'config', 'mcp_config.json'),
         };
-        const common = (h) => ({ mcsc: shipped.mcsc, zavora_computer_use: shipped.zavora_computer_use, mine: { command: 'node', args: ['mine.js'] }, ...h });
+        const common = (h) => ({ mcsc: shipped.mcsc, bdb_rhino_mcp: shipped.bdb_rhino_mcp, mine: { command: 'node', args: ['mine.js'] }, ...h });
         wj(f.claude, { numStartups: 3, mcpServers: common({ github: owned(home, 'github'), open_design_mcp: owned(home, 'open_design_mcp') }), projects: { '/x': { mcpServers: { github: edited } } } });
         wj(f.cursor, { mcpServers: common({ github: edited, bdb_resolume_mcp: owned(home, 'bdb_resolume_mcp') }) });
         wj(f.oc, { $schema: 'x', mcp: { github: ownedOc(home, 'github'), mine: { type: 'local', command: ['node', 'm.js'] } }, ...extra });
@@ -943,7 +1083,7 @@ describe('harness enable/disable', () => {
         const before = snap(fx.f);
         const rep = run(fx);
         const claude = rj(fx.f.claude);
-        assert.deepEqual(Object.keys(claude.mcpServers).sort(), ['aos', 'mcsc', 'mine', 'zavora_computer_use']);
+        assert.deepEqual(Object.keys(claude.mcpServers).sort(), ['aos', 'bdb_rhino_mcp', 'mcsc', 'mine']);
         assert.deepEqual(claude.mcpServers.aos, { type: 'http', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
         assert.equal(claude.numStartups, 3);
         assert.deepEqual(claude.projects['/x'].mcpServers.github, edited, 'per-project servers untouched');
@@ -1331,11 +1471,86 @@ test('full install does not duplicate gateway servers when aos entry exists', ()
     const dir = path.join(home, 'mcp');
     const file = path.join(home, 'mcp.json');
     fs.writeFileSync(file, JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp', headers: { 'X-AOS-Token': 'x' } } } }));
-    const code = `require(${JSON.stringify(path.join(ROOT, 'installer.js'))}).installMcpsForTarget({ targetMcpDir: process.argv[1], mcpConfigPath: process.argv[2], extraMcpConfigPaths: [] }, { selectedMcps: ['deja'], mode: 'merge', platformValue: '2', creds: {} });`;
+    const code = `require(${JSON.stringify(path.join(ROOT, 'installer.js'))}).installMcpsForTarget({ targetMcpDir: process.argv[1], mcpConfigPath: process.argv[2], extraMcpConfigPaths: [] }, { selectedMcps: ['mcsc'], mode: 'merge', platformValue: '2', creds: {} });`;
     const r = spawnSync(process.execPath, ['-e', code, dir, file], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 120000 });
     assert.strictEqual(r.status, 0, r.stderr);
     const servers = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers;
     assert.ok(servers.aos, 'gateway entry kept');
     assert.ok(Object.keys(servers).length > 1, 'merge still wrote the direct servers');
+    assert.ok(servers.mcsc, 'direct-by-design server written');
     assert.deepStrictEqual(cfg.GATEWAY_SERVERS.filter((n) => n in servers), []);
+});
+
+describe('uninstall leftovers', () => {
+    test('pruneBackups archives every AOS backup and leaves foreign .bak files alone', () => {
+        const d = tmp();
+        const arch = path.join(tmp(), 'arch');
+        const f = path.join(d, 'x.json');
+        for (const t of [300, 100, 200, 400]) fs.writeFileSync(`${f}.aos-gateway-bak-${t}`, '{}');
+        fs.writeFileSync(`${f}.bak`, '{}');
+        const moved = require('../lib/gateway/harness.js').pruneBackups(f, arch);
+        assert.equal(moved.length, 4);
+        assert.deepEqual(fs.readdirSync(d).sort(), ['x.json.bak']);
+        assert.deepEqual(fs.readdirSync(arch).sort(), ['x.json.aos-gateway-bak-100', 'x.json.aos-gateway-bak-200', 'x.json.aos-gateway-bak-300', 'x.json.aos-gateway-bak-400']);
+    });
+
+    test('removeGenerated clears runtime files, keeps gateway.json and migration records', () => {
+        const home = tmp();
+        const dir = cfg.gatewayDir(home);
+        fs.mkdirSync(path.join(dir, 'runtime.owner'), { recursive: true });
+        for (const n of ['upstream.pid', 'server.pid', 'runtime.owner.flock', 'package.json', 'runtime.owner/owner.json', 'gateway.json', 'migration.json.restored-1']) fs.writeFileSync(path.join(dir, n), '{}');
+        pkg.removeGenerated(dir, home);
+        assert.deepEqual(fs.readdirSync(dir).sort(), ['gateway.json', 'migration.json.restored-1']);
+    });
+});
+
+describe('presets.json', () => {
+    test('stripAosPresets removes only AOS-made presets; the file goes when none are left', () => {
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'aos-presets-ok.json'), JSON.stringify(['aos-core']));
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1', presets: { 'aos-core': {}, mine: { a: 1 } } }));
+        assert.equal(pkg.stripAosPresets(dir), 'stripped');
+        assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'presets.json'), 'utf8')).presets), ['mine']);
+        assert.ok(fs.readdirSync(dir).some((n) => n.endsWith('.bak')));
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ presets: { 'aos-core': {} } }));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+        assert.ok(!fs.existsSync(path.join(dir, 'presets.json')));
+    });
+
+    test('stripAosPresets also recognises presets of the `aos AND NOT x` shape missing from the record', () => {
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'aos-presets-ok.json'), JSON.stringify(['agy']));
+        const mk = (...ex) => ({ strategy: 'advanced', tagQuery: { $and: [{ tag: 'aos' }, ...ex.map((tag) => ({ $not: { tag } }))] } });
+        const mine = { strategy: 'or', tagQuery: { $or: [{ tag: 'github' }] } };
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ presets: { agy: mk('a'), worker: mk('a', 'b'), small: mk('c'), mine } }));
+        assert.equal(pkg.stripAosPresets(dir), 'stripped');
+        assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'presets.json'), 'utf8')).presets), ['mine']);
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ presets: { worker: mk('a') } }));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+    });
+
+    test('stripAosPresets removes the three presets exactly as 1mcp 1.0.0 stored them on a fresh install, with no record', () => {
+        const dir = tmp();
+        const base = (tags) => ({ strategy: 'advanced', tagQuery: { $and: [{ tag: 'aos' }, ...tags.map((tag) => ({ $not: { tag } }))] } });
+        const stamp = (name) => ({ name, created: '2026-10-20T08:01:14.270Z', lastModified: '2026-10-20T08:01:14.270Z' });
+        const presets = {
+            agy: { ...base(['bdb_davinci_mcp']), ...stamp('agy') },
+            worker: { ...base(['bdb_davinci_mcp', 'bdb_unreal_mcp', 'bdb_blender_mcp']), ...stamp('worker') },
+            small: { ...base(['bdb_davinci_mcp', 'bdb_unreal_mcp']), ...stamp('small') },
+        };
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1.0.0', presets }, null, 2));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+        assert.ok(!fs.existsSync(path.join(dir, 'presets.json')));
+    });
+
+    test('stripAosPresets removes the empty file 1mcp writes on start (real 1.0.0 storage shape); a user preset keeps it', () => {
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1.0.0', presets: {} }, null, 2));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+        assert.ok(!fs.existsSync(path.join(dir, 'presets.json')));
+        const mine = { name: 'mine', strategy: 'or', tagQuery: { $or: [{ tag: 'github' }] }, created: 'x', lastModified: 'x' };
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1.0.0', presets: { mine } }));
+        assert.equal(pkg.stripAosPresets(dir), 'kept');
+        assert.ok(fs.existsSync(path.join(dir, 'presets.json')));
+    });
 });

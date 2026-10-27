@@ -6,17 +6,21 @@
 // (cwd = home) and records hub.json (mode 600, dir 700). `stop` prefers the
 // token-authed POST /api/shutdown and only falls back to ps+SIGTERM, failing
 // closed when ps is unavailable.
+import '../lib/cli-help-guard.mjs';
 import { spawn } from 'node:child_process';
 import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir as osHome } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 
+const require = createRequire(import.meta.url);
 const SELF = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(SELF), '..');
 const DEFAULT_PORT = 7900;
+const { excludedIds, readSettings } = require('../lib/v5/profile.js');
 
 // All paths come from the injectable home (tests use a temp dir).
 export const homeDir = () => process.env.AOS_HUB_HOME || osHome();
@@ -212,7 +216,9 @@ async function cmdStop() {
         timeoutMs: 1500,
       });
       if (res.status === 200) {
-        try { unlinkSync(file); } catch { /* server removes it too */ }
+        // The server removes hub.json after its teardown; only a leftover is removed here, once it had time to.
+        for (let i = 0; i < 30 && readHubJson(home); i++) await new Promise((r) => setTimeout(r, 100));
+        try { unlinkSync(file); } catch { /* server removed it */ }
         console.log('AOS Hub stopped.');
         return 0;
       }
@@ -285,12 +291,22 @@ const serviceMode = mainPath === SELF && process.argv.includes('--serve') && pro
 // that dies later (Lenovo: a killed hub stayed down). So the task process stays a small watchdog
 // and respawns the server; launchd and systemd restart the process themselves.
 if (serviceMode && process.platform === 'win32' && !process.env.AOS_HUB_WATCHDOG_CHILD) {
+  // A .vbs/Task Scheduler start has no console: inherited handles are invalid, so the server logs to a file like the plist/unit do.
+  const logFd = (() => {
+    try {
+      const d = hubPaths().dir; mkdirSync(d, { recursive: true });
+      const f = join(d, 'stderr.log');
+      try { if (statSync(f).size > 1024 * 1024) renameSync(f, `${f}.old`); } catch { /* no log yet */ }
+      return openSync(f, 'a');
+    } catch { return null; }
+  })();
   const runChild = () => {
     const child = spawn(process.execPath, process.argv.slice(1), {
-      stdio: 'inherit', env: { ...process.env, AOS_HUB_WATCHDOG_CHILD: '1' }, shell: false, windowsHide: true,
+      stdio: logFd === null ? 'ignore' : ['ignore', logFd, logFd], env: { ...process.env, AOS_HUB_WATCHDOG_CHILD: '1' }, shell: false, windowsHide: true,
     });
     // Exit 0 = deliberate stop (/api/shutdown or SIGTERM): do not revive it. Exit 3 = the hub's code
     // changed on disk: start the new code at once; a crash waits 5 s.
+    child.on('error', () => setTimeout(runChild, 5000));
     child.on('exit', (code) => { if (code !== 0) setTimeout(runChild, code === 3 ? 0 : 5000); });
   };
   runChild();
@@ -309,6 +325,8 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   const { routes: serviceRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-services.mjs')).href);
   const { routes: catalogRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-catalog.mjs')).href);
   const { routes: storeRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-store.mjs')).href);
+  const { routes: routerRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-router.mjs')).href);
+  const { createProxy } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'proxy.mjs')).href);
   const watchMod = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-watch.mjs')).href);
   const home = homeDir();
   const serveArgv = parseArgv(process.argv.slice(2));
@@ -320,8 +338,8 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   const hub = createHub({
     port: serveArgv.port,
     home,
-    routes: [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes, ...watchMod.routes],
-    ctx: { root: ROOT, hubJsonPath: hubPaths(home).file, tokenEnv: hubToken },
+    routes: [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes, ...routerRoutes, ...watchMod.routes],
+    ctx: { root: ROOT, hubJsonPath: hubPaths(home).file, tokenEnv: hubToken, proxy: createProxy() },
   });
   await hub.listen();
   // Only the process that actually bound the port writes hub.json. A failed
@@ -339,6 +357,13 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
     const watcher = createWatcher({
       ctx: hub.ctx,
       statusFile,
+      onRows: async (rows) => {
+        const ep = await import(pathToFileURL(join(ROOT, 'lib', 'endpoints.mjs')).href);
+        const trailRepos = ep.readRaw(home).agenttrail;
+        ep.updateEndpoints(home, ep.patchFromRows(rows, { hubPort: hub.server.address().port, hubVersion: ownVersion, trailRepos: Array.isArray(trailRepos) ? trailRepos : [] }));
+      },
+      // Never touch a service the user switched off in settings (or the profile excludes).
+      isDisabled: (id) => { try { return excludedIds(readSettings(home)).has(id); } catch { return false; } },
       beforeTick: async () => {
         const diskStamp = codeStamp();
         if (diskStamp > ownStamp) {
@@ -359,6 +384,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   }
 
   const stopped = async () => {
+    try { (await import(pathToFileURL(join(ROOT, 'lib', 'endpoints.mjs')).href)).markDown(home, 'hub'); } catch { /* best effort */ }
     try { unlinkSync(hubPaths(home).file); } catch { /* already gone */ }
     try {
       // OpenWiki graph viewers are child processes of this server: kill them

@@ -1,6 +1,6 @@
 ---
 name: godmode-media-creation
-description: "Use when assembling video timelines, rendering code-driven motion graphics, or executing media creation via Remotion, OpenMontage, or TouchDesigner audio/visuals."
+description: "Video timelines, motion graphics, media creation. Remotion, OpenMontage, TouchDesigner, audio/visuals."
 category: media-eventtech
 ---
 
@@ -13,6 +13,20 @@ You are the Master Orchestrator for all media creation workflows within the BDB 
 **Routing:** video, motion, social and script work goes to the Creator Extension `content-studio` skill first (interview, `video-doctor` preflight, `route(brief)` in `engines/video/render-route.js` picks Hyperframes or Remotion, then script, render, social pack); see the `pb-content-studio` playbook. The engines below are the optional back ends it may call.
 
 ---
+
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- A produced piece with screens and a build order → `feature`; choosing between engines or pipelines → `research`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve` of a `feature` plan, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build; a `research` plan is the artifact itself (no components, no map). The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## 1. Engine & Local Backend Architecture
 
@@ -199,3 +213,23 @@ Godmode Media Creation orchestrates video rendering, code-driven motion graphics
 - [ ] No phantom MCP references exist in tool calls or descriptions.
 - [ ] Output format (resolution, fps, codec) is explicitly defined.
 - [ ] Rendered media file exists on disk and has non-zero size.
+
+
+---
+
+## Creator Pack Skills
+
+<!-- aos:pack-index:start -->
+- **remotion** — Generate walkthrough videos from Stitch projects using Remotion with smooth transitions, zooming, and text overlays
+- **threejs-skills** — Create 3D scenes, interactive experiences and visual effects with Three.js. Use for 3D graphics, WebGL, animations or interactive 3D elements.
+- **spline-3d-integration** — Use when adding interactive 3D scenes from Spline.design to web projects, including React embedding and runtime control API.
+- **bdb-after-effects-mcp** — Utilizes the After Effects MCP servers (after-effects-mcp and ae-mcp) to create compositions, layers, masks, keyframe animations, and run ExtendScript.
+- **bdb-adobe-suite-mcp** — >-
+- **bdb-davinci-mcp** — Utilizes the DaVinci Resolve MCP servers to control timeline editing, media analysis, color grading, and Fusion/Fairlight scripting.
+- **bdb-blender-mcp** — Utilizes the Blender MCP server and addon to build 3D assets, apply materials, inspect scenes, and script bpy.
+- **brag** — >-
+- **design-spells** — Use when adding curated micro-interactions, delightful animations, and subtle design details that add magic and personality to web and mobile apps.
+- **live-preview-canvas** — A prototyping skill that generates a local HTML mock with a built-in feedback layer, allowing users to drop visual comments (red dots) for UI fixes.
+
+**Install:** `aos store install --pack creator`
+<!-- aos:pack-index:end -->

@@ -1,6 +1,6 @@
 ---
 name: godmode-ui-ux
-description: "Use when acting as the authoritative design lead for all frontend work, enforcing brand discovery, Anti-Slop rules, DTCG design tokens, fluid motion, and data-driven design generation."
+description: "Design lead for frontend: brand discovery, Anti-Slop, DTCG tokens, fluid motion, data-driven design."
 category: design-ui-ux
 ---
 
@@ -9,6 +9,20 @@ category: design-ui-ux
 This skill is the single source of truth for all design decisions. It replaces: design-taste-frontend, frontend-design.
 
 **Routing:** Component lookup order: the project's own design system and sources file first (its components, tokens, `DESIGN.md`); the BDB library (`@bdb` registry; version-pinned unpkg entry `https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json` in `components.json`) only when the project opts in; then the verified registries listed in the UI library's `docs/sources.md` (link-only entries are documentation links, never code sources).
+
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- A user-facing feature with screens and a build order → `feature`; a finished visual change shown before/after → `recap-board`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve` of a `feature` plan, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build; a `recap-board` plan is the artifact itself (no components, no map). The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## -1. Design Source Discovery (MANDATORY FIRST STEP)
 
@@ -162,3 +176,33 @@ Master orchestration skill for UI/UX design, enforcing high-agency design taste 
 - [ ] All spacing and colors use DTCG design tokens.
 - [ ] Loading and error states are explicitly handled.
 - [ ] Motion transitions follow the fluid motion physics guidelines.
+
+
+---
+
+## Web design Pack Skills
+
+<!-- aos:pack-index:start -->
+- **bdbdesignpro** — >-
+- **bdb-ui-library** — >-
+- **editable-design** — >-
+- **bdb-visual-edit** — >-
+- **senior-frontend** — Use when building React components, optimizing Next.js performance, implementing accessibility, or reviewing frontend code quality for modern web applications.
+- **shadcn** — Use when adding, customizing, or troubleshooting shadcn/ui components to build modern, accessible design systems.
+- **tailwind-patterns** — Use when styling components with Tailwind CSS v4, managing CSS-first configurations, writing container queries, or implementing design token architecture.
+- **react-best-practices** — Vercel's React performance guide. Use when writing or optimizing React components, Next.js pages, data fetching, or reviewing code for performance issues.
+- **nextjs-best-practices** — Next.js App Router principles. Server Components, data fetching, routing patterns.
+- **landing-page-generator** — Next.js/React landing pages with Tailwind CSS. PAS/AIDA/BAB frameworks, Core Web Vitals, SEO optimization.
+- **web-artifacts-builder** — To build powerful frontend claude.ai artifacts, follow these steps:
+- **web-performance-optimization** — Optimize website and web application performance including loading speed, Core Web Vitals, bundle size, caching strategies, and runtime performance
+- **wcag-audit-patterns** — Comprehensive guide to auditing web content against WCAG 2.2 guidelines with actionable remediation strategies.
+- **ux-persuasion-engineer** — Behavioral UX choice architecture, friction audits and commitment design to guide users without coercion. Use for conversion flows, onboarding or checkout.
+- **seo** — Broad SEO audit across technical SEO, on-page, schema, sitemaps, content quality, AI readiness and GEO. Use as umbrella for a full SEO analysis or strategy.
+- **seo-audit** — Diagnose and audit SEO issues affecting crawlability, indexation, rankings, and organic performance.
+- **schema-markup** — Design, validate, and optimize schema.org structured data for eligibility, correctness, and measurable SEO impact.
+- **geo-fundamentals** — Generative Engine Optimization for AI search engines (ChatGPT, Claude, Perplexity).
+- **programmatic-seo** — Design and evaluate programmatic SEO strategies for creating SEO-driven pages at scale using templates and structured data.
+- **copywriting** — Write rigorous, conversion-focused marketing copy for landing pages and emails. Enforces brief confirmation and strict no-fabrication rules.
+
+**Install:** `aos store install --pack web-design`
+<!-- aos:pack-index:end -->

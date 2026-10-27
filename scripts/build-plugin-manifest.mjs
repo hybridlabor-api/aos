@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // Generates .claude-plugin/plugin.json, the plugin-root agents/ directory and the
-// subfolder plugin plugins/bdb-aos/ (same manifest data + skills/agents symlinks
-// into the repo root, so the marketplace install cache stays small).
+// subfolder plugin plugins/bdb-aos/ (same manifest data + real copies of agents/,
+// commands/ and agy-commands/; git symlinks become text files with core.symlinks=false).
 //
 // Claude Code resolves plugin components two different ways, and only one of
 // them is obvious:
@@ -36,7 +36,7 @@
 //
 // Usage: node scripts/build-plugin-manifest.mjs [--check]
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -151,14 +151,13 @@ const manifest = {
   name: 'bdb-aos',
   version: pkg.version,
   description:
-    'Full BDB Agent OS suite: 200+ curated skills, 45 subagents and the startcycle pipelines for Claude Code. ' +
-    'Gate hooks and MCP servers are installed by the AOS installer.',
+    'Full BDB Agent OS suite: commands, 45 subagents and the fabric pipelines for Claude Code. ' +
+    'Skills are installed separately by the AOS installer; gate hooks and MCP servers stay in the installer.',
   author: { name: 'Tim Rennings / Hybridlabor Global LLC' },
   homepage: repoUrl,
   repository: repoUrl,
   license: 'Apache-2.0',
-  keywords: ['skills', 'agent-os', 'cicd', 'multiagent', 'startcycle', 'bdb'],
-  skills,
+  keywords: ['agent-os', 'cicd', 'multiagent', 'fabric', 'bdb'],
   commands,
 };
 
@@ -167,17 +166,16 @@ const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const codexManifest = {
   name: manifest.name,
   version: pkg.version,
-  description: 'Full BDB Agent OS suite for Codex: command entry points ($bdb-aos:setup, $bdb-aos:init, ...) generated from plugin-commands.json.',
+  description: 'Full BDB Agent OS suite for Codex: command entry points ($bdb-aos:setup, $bdb-aos:init, ...) generated from plugin-commands.json. Skills are installed separately by the AOS installer.',
   author: manifest.author,
   homepage: repoUrl,
   repository: repoUrl,
   license: manifest.license,
   keywords: manifest.keywords,
-  skills: './skills/',
   interface: {
     displayName: 'BDB Agent OS',
     shortDescription: 'AOS commands for setup, planning and pipelines',
-    longDescription: 'Entry-point skills for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the startcycle pipelines.',
+    longDescription: 'Entry-point commands for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the fabric pipelines. Skills are installed separately by the AOS installer.',
     developerName: 'Hybridlabor Global LLC',
     category: 'Developer Tools',
     capabilities: ['Interactive', 'Read', 'Write'],
@@ -250,23 +248,28 @@ function validateGenerated() {
   return problems;
 }
 const SUBDIR = join(ROOT, 'plugins', 'bdb-aos');
-// Both manifests come from the same data; the subfolder one resolves the same
-// ./skills/... paths through its symlinks.
+// Both manifests come from the same data.
 const targets = [
   join(ROOT, '.claude-plugin', 'plugin.json'),
   join(SUBDIR, '.claude-plugin', 'plugin.json'),
 ];
 const stale = targets.filter((t) => !existsSync(t) || readFileSync(t, 'utf8') !== serialized);
-const links = {
-  skills: '../../skills',
-  agents: '../../agents',
-  commands: '../../commands',
-  ...(agyOverrides.length > 0 ? { 'agy-commands': '../../agy-commands' } : {}),
+const bytesOf = (dir) => Object.fromEntries(readdirSync(dir).map((n) => [n, readFileSync(join(dir, n))]));
+const subCopies = {
+  agents: Object.fromEntries(agentNames.map((n) => [n, readFileSync(join(agentSrc, n))])),
+  commands: Object.fromEntries(Object.entries(commandFiles).map(([n, c]) => [n, Buffer.from(c)])),
+  // null = the copy must not exist (no agy overrides), so a stale directory fails --check
+  'agy-commands': agyOverrides.length > 0 ? Object.fromEntries(Object.entries(agyFiles).map(([n, c]) => [n, Buffer.from(c)])) : null,
 };
-const badLinks = Object.entries(links).filter(([name, to]) => {
-  const path = join(SUBDIR, name);
-  return !existsSync(path) || !lstatSync(path).isSymbolicLink() || readlinkSync(path).replaceAll('\\', '/') !== to;
-});
+const copyOk = (name, want) => {
+  const dir = join(SUBDIR, name);
+  if (want === null) return !lstatSync(dir, { throwIfNoEntry: false });
+  if (!existsSync(dir) || lstatSync(dir).isSymbolicLink()) return false;
+  const have = bytesOf(dir);
+  return Object.keys(have).length === Object.keys(want).length && Object.entries(want).every(([n, b]) => have[n]?.equals(b));
+};
+const badLinks = Object.entries(subCopies).filter(([name, want]) => !copyOk(name, want));
+const legacySubSkills = join(SUBDIR, 'skills');
 
 // `claude plugin tag` refuses to cut a release unless plugin.json and the
 // enclosing marketplace entry agree on the version, so the marketplace copy of
@@ -297,10 +300,6 @@ if (CHECK) {
     console.error(`plugin.json is out of date (${stale.map((t) => relative(ROOT, t)).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
-  if (badLinks.length > 0) {
-    console.error(`plugins/bdb-aos symlinks missing or wrong (${badLinks.map(([n]) => n).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
-    process.exit(1);
-  }
   if (marketCurrent !== marketSerialized) {
     console.error('marketplace.json version is out of date — run: node scripts/build-plugin-manifest.mjs');
     process.exit(1);
@@ -326,7 +325,16 @@ if (CHECK) {
     console.error(`agents/ is out of date (${drift.join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
-  console.log(`plugin manifests up to date: ${skills.length} skills, ${agentNames.length} agents, ${commandNames.length} commands (+ ${commandNames.length} OpenCode)`);
+  if (badLinks.length > 0) {
+    console.error(`plugins/bdb-aos copies missing, symlinked or stale (${badLinks.map(([n]) => n).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
+    process.exit(1);
+  }
+  if (existsSync(legacySubSkills) || lstatSync(legacySubSkills, { throwIfNoEntry: false })) {
+    console.error('plugins/bdb-aos/skills must not exist (the plugin does not bundle skills) — run: node scripts/build-plugin-manifest.mjs');
+    process.exit(1);
+  }
+  console.log(`plugin manifests up to date: ${agentNames.length} agents, ${commandNames.length} commands (+ ${commandNames.length} OpenCode)`);
+  console.log(`note: skills are no longer bundled by the plugin; they are installed separately by the AOS installer from loose copies.`);
 } else {
   mkdirSync(commandsDst, { recursive: true });
   for (const [file, content] of Object.entries(commandFiles)) writeFileSync(join(commandsDst, file), content);
@@ -344,10 +352,13 @@ if (CHECK) {
   }
   for (const path of genStale) rmSync(join(ROOT, path), { recursive: true });
   rmSync(legacyCodexMarket, { force: true });
-  for (const [name, to] of badLinks) {
-    rmSync(join(SUBDIR, name), { force: true });
-    symlinkSync(to, join(SUBDIR, name));
+  rmSync(legacySubSkills, { recursive: true, force: true });
+  for (const [name, want] of badLinks) {
+    rmSync(join(SUBDIR, name), { recursive: true, force: true });
+    if (want === null) continue;
+    mkdirSync(join(SUBDIR, name), { recursive: true });
+    for (const [n, b] of Object.entries(want)) writeFileSync(join(SUBDIR, name, n), b);
   }
   writeFileSync(marketPath, marketSerialized);
-  console.log(`Wrote 2 plugin.json files with ${skills.length} skills, ${agentNames.length} agents and ${commandNames.length} commands`);
+  console.log(`Wrote 2 plugin.json files with ${agentNames.length} agents and ${commandNames.length} commands (skills now installed separately by AOS installer)`);
 }

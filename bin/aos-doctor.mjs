@@ -3,8 +3,9 @@
 // cross-platform harness synchronization, daemons and hooks across macOS and Windows.
 // Usage:
 //   aos doctor
-//   node bin/aos-doctor.mjs [--json] [--net]
+//   node bin/aos-doctor.mjs [--json] [--net] [--resources [--sample <seconds>]]
 
+import '../lib/cli-help-guard.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { connect } from 'node:net';
@@ -14,11 +15,34 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const req = createRequire(import.meta.url);
-const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
+const pkg = (() => {
+  try { return req('../package.json'); } catch {
+    try {
+      const rootPath = path.join(os.homedir(), '.agents', 'lib', '.aos-package-root.json');
+      const root = JSON.parse(readFileSync(rootPath, 'utf8'))?.packageRoot;
+      if (root) {
+        const p = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+        if (p && p.version) return p;
+      }
+    } catch {}
+    try {
+      const manifestPath = path.join(os.homedir(), '.agents', '.bdb-manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      if (manifest && manifest.version) return { version: manifest.version };
+    } catch {}
+    return { version: 'unknown' };
+  }
+})();
+const updateCheck = req('../lib/update-check.js');
+const { pluginSkills, pluginAgents, claudeConfigDir } = req('../lib/plugin-evidence.js');
+const { doctorPluginRow: pmDoctorRow } = req('../lib/plugin-migration.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
-const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } =req('../lib/uninstall-records.js');
+const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } = req('../lib/uninstall-records.js');
+const { btmNotLoadedAgents, agentLoadStatus, btmFixHint } = req('../lib/launchagent-btm.mjs');
+const npmGlobalAos = req('../lib/npm-global-aos.js');
+const { findExecutable, getGitInstallInstruction, isElevated } = req('../lib/executable-probe.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
@@ -26,6 +50,16 @@ const NET = process.argv.includes('--net');
 const IS_MAC = process.platform === 'darwin';
 const IS_WIN = process.platform === 'win32';
 const IS_ARM64 = process.arch === 'arm64';
+
+// `aos doctor --resources [--sample <s>] [--json]`: read-only process census, nothing else runs.
+if (process.argv.includes('--resources')) {
+  const { runResources, format } = await import('../lib/resources.mjs');
+  const at = process.argv.indexOf('--sample');
+  const sampleSec = at >= 0 && Number.isFinite(Number(process.argv[at + 1])) ? Number(process.argv[at + 1]) : 10;
+  const result = await runResources({ sampleSec, home: HOME });
+  console.log(JSON_OUT ? JSON.stringify(result, null, 2) : format(result));
+  process.exit(0);
+}
 
 const h = (...p) => path.join(HOME, ...p);
 const hc = (...p) => path.join(claudeConfigDir(HOME), ...p);
@@ -58,14 +92,7 @@ const add = (area, name, ok, detail, fix, warningOnly = false) => {
   results.push({ area, name, ok, detail, fix, warningOnly });
 };
 
-const which = (bin) => {
-  const probe = IS_WIN ? 'where.exe' : 'which';
-  try {
-    return execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
-  } catch {
-    return null;
-  }
-};
+const which = (bin) => findExecutable(bin);
 
 const dirCount = (p) => {
   try {
@@ -97,8 +124,8 @@ function checkPrereqs() {
     IS_WIN ? 'Install Python from python.org or winget install Python.Python.3.12' : 'brew install python3');
 
   const gitProbe = which('git');
-  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees',
-    IS_WIN ? 'Install Git via git-scm.com or winget install Git.Git' : 'brew install git / xcode-select --install');
+  const gitFix = getGitInstallInstruction({ platform: process.platform, elevated: isElevated({ platform: process.platform }) });
+  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees', gitFix);
 
   const uvProbe = which('uv');
   add('prereq', 'uv package manager', !!uvProbe, uvProbe ? `${tilde(uvProbe)} (fast venv seeding)` : 'optional — pip fallback will be used',
@@ -120,13 +147,9 @@ function checkAosCore() {
   // Network version check gated by --net
   if (NET) {
     try {
-      const npmBin = IS_WIN ? 'npm.cmd' : 'npm';
-      const latest = execFileSync(npmBin, ['view', '@hybridlabor-api/aos', 'version'], {
-        encoding: 'utf8',
-        timeout: 8000,
-        stdio: ['ignore', 'pipe', 'ignore'],
-        shell: IS_WIN
-      }).trim();
+      const o = req('../lib/cli-spawn.js').run('npm', ['view', '@hybridlabor-api/aos', 'version'], { timeout: 8000 });
+      if (o.status !== 0) throw new Error(o.stderr);
+      const latest = o.stdout.trim();
       const currentVer = manifest?.version || '4.7.1';
       add('aos-core', 'Version vs npm', currentVer === latest, `local v${currentVer} · npm v${latest}`,
         'Run: npx @hybridlabor-api/aos@latest');
@@ -135,6 +158,20 @@ function checkAosCore() {
     }
   } else {
     add('aos-core', 'Version vs npm', true, 'Skipped (offline mode — pass --net to check npm)', '', true);
+  }
+
+  // A leftover `npm i -g @hybridlabor-api/aos` can shadow the ~/.local/bin launcher on PATH (audit P0-1):
+  // read-only probe (`npm root -g`); the removal command is printed, AOS never removes the package itself.
+  {
+    const g = npmGlobalAos.detectGlobalAos();
+    if (!g.checked) {
+      add('aos-core', 'Global npm install', true, 'could not check (npm missing or offline)', '', true);
+    } else if (g.found) {
+      add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version})`,
+        `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
+    } else {
+      add('aos-core', 'Global npm install', true, 'none — only the ~/.local/bin launcher');
+    }
   }
 
   // Check store index
@@ -232,7 +269,7 @@ function checkHarnesses() {
     { name: 'Roo Code', path: h('.roo', 'skills') },
   ];
 
-  const SENTINEL = 'startcycle';
+  const SENTINEL = 'fabric';
   for (const hr of harnesses) {
     const exists = existsSync(hr.path);
     const count = dirCount(hr.path);
@@ -240,9 +277,11 @@ function checkHarnesses() {
     const plug = hr.name === 'Claude Code' && !hasSentinel ? pluginSkills(HOME, [SENTINEL]) : null;
     const viaPlugin = !!plug;
     const ok = viaPlugin || (exists && count > 0 && hasSentinel);
+    // Roo Code has "skills": null in lib/harnesses.json: AOS never writes ~/.roo/skills, so a folder without the sentinel is not a broken AOS install.
+    const unmanaged = hr.name === 'Roo Code' && exists && !ok;
     add('harnesses', `${hr.name} Skills`, ok,
-      viaPlugin ? `provided by the bdb-aos plugin (${plug.skills.size} skills)` : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
-      `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists && !viaPlugin);
+      viaPlugin ? `provided by the bdb-aos plugin (${plug.skills.size} skills)` : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : unmanaged ? `${tilde(hr.path)} (${count} skills, not managed by AOS (no sentinel))` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
+      `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, (!exists && !viaPlugin) || unmanaged);
   }
 
   // Codex reads ~/.codex/skills AND ~/.agents/skills; AOS writes only the latter, so same-named copies in the former double-list.
@@ -271,8 +310,34 @@ function checkHarnesses() {
   const recorded = new Set(Object.keys(installManifest).filter((k) => k.startsWith(looseRoot + path.sep)).map((k) => k.slice(looseRoot.length + 1).split(path.sep)[0]));
   const twice = claudePlugin ? [...claudePlugin.skills].filter((n) => recorded.has(n) && existsSync(path.join(looseRoot, n, 'SKILL.md'))) : [];
   if (twice.length) {
-    add('harnesses', 'Claude duplicate skills', false, `${twice.length} AOS skill(s) exist both as loose copies in ${tilde(looseRoot)} and in the bdb-aos plugin, so Claude lists them twice`,
+    // The marketplace serves the published plugin, so right after a tarball/pre-release kernel update the plugin is older: expected, not a defect.
+    const pluginVer = (() => {
+      for (const f of ['plugin.json', path.join('.claude-plugin', 'plugin.json')]) {
+        try { const v = JSON.parse(readFileSync(path.join(claudePlugin.installPath, f), 'utf8')).version; if (v) return v; } catch { /* next */ }
+      }
+      return /^\d+\.\d+\.\d+/.test(path.basename(claudePlugin.installPath)) ? path.basename(claudePlugin.installPath) : null;
+    })();
+    const kernelVer = readJson(h('.agents', '.bdb-manifest.json'))?.version;
+    const transition = !!(pluginVer && kernelVer && updateCheck.isNewerVersion(pluginVer, kernelVer));
+    add('harnesses', 'Claude duplicate skills', transition, `${twice.length} AOS skill(s) exist both as loose copies in ${tilde(looseRoot)} and in the bdb-aos plugin, so Claude lists them twice${transition ? ` (expected until the marketplace serves v${kernelVer}; plugin is v${pluginVer})` : ''}`,
       'Run the AOS installer again; it backs up and retires the loose copies (aos-uninstall --restore-plugin-backup restores them).', true);
+  }
+
+  // Duplicate agents: when ~/.claude/agents mirrors the plugin agents
+  const agentsRoot = hc('agents');
+  const claudePluginAgents = pluginAgents(HOME);
+  if (claudePluginAgents && existsSync(agentsRoot)) {
+    try {
+      const looseAgents = readdirSync(agentsRoot).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+      const hasOverride = (a) => { try { return /^model:/m.test((readFileSync(path.join(agentsRoot, `${a}.md`), 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || ''); } catch { return false; } };
+      const duplicates = looseAgents.filter((a) => claudePluginAgents.agents.has(a) && !hasOverride(a));
+      if (duplicates.length) {
+        add('harnesses', 'Claude duplicate agents', false,
+          `${duplicates.length} agent(s) exist both in ${tilde(agentsRoot)} and in the bdb-aos plugin, which duplicates system prompt token cost (~${Math.round(duplicates.length * 97)} tokens)`,
+          `Run aos update / aos repair: the installer backs up and retires unedited copies (aos-uninstall --restore-plugin-backup restores them). Copies you edited, or that carry a pipeline.json model override, stay.`,
+          true);
+      }
+    } catch {}
   }
 
   const ov = req('../lib/opencode-verify.js');
@@ -283,6 +348,8 @@ function checkHarnesses() {
 // ---------------------------------------------------------------- 4. Hooks & Security Gates
 function checkHooks() {
   const claudeHooksDir = hc('hooks');
+  const gateOff = req('../lib/v5/profile.js').readSettings(HOME, () => {}).gate === 'off';
+  if (gateOff) add('hooks', 'go-gate: off (by setting)', true, 'go-gate, go-token, go-grant and graph-gate are not registered; turn on: aos, Settings, Go-gate', '');
   const EXPECTED_VERSION = { 'memb-inject.mjs': 8 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
@@ -310,7 +377,7 @@ function checkHooks() {
   // Claude settings.json wiring
   const claudeSettings = readJson(hc('settings.json'));
   const wired = JSON.stringify(claudeSettings?.hooks || {});
-  const claudeWiredOk = wired.includes('go-gate.mjs') && wired.includes('memb-inject.mjs');
+  const claudeWiredOk = (gateOff || wired.includes('go-gate.mjs')) && wired.includes('memb-inject.mjs');
   add('hooks', 'Claude settings.json wired', claudeWiredOk,
     claudeWiredOk ? 'PreToolUse & UserPromptSubmit registered' : 'Hooks not fully registered in ~/.claude/settings.json',
     'Run the AOS installer to wire hooks in settings.json.');
@@ -339,7 +406,8 @@ function checkHooks() {
   ]);
   const agHooks = agHooksFile ? readJson(agHooksFile) : null;
   // New format: one named hook per concern at the top level; legacy: all handlers under "hooks".
-  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
+  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox']
+    .filter((n) => !(gateOff && (n === 'aos-go-gate' || n === 'aos-graph-gate')));
   const namedWired = AG_NAMED.filter((n) => agHooks && agHooks[n]);
   const legacyWired = JSON.stringify(agHooks?.hooks || {}).includes('memb-inject.mjs');
   const missingNamed = AG_NAMED.filter((n) => !(agHooks && agHooks[n]));
@@ -359,11 +427,24 @@ function checkHooks() {
     existsSync(codexConf) ? `${tilde(codexConf)} (${codexWired ? 'AOS hook commands wired' : 'no AOS hook commands'})` : `${tilde(codexConf)} missing`,
     'Run the AOS installer to wire Codex hooks.', true);
 
+  // A hook command that runs a missing AOS script fails on every event (5.4.0 Lenovo: the pre-fabric dispatch script after the rename).
+  const missingScripts = [];
+  for (const m of codexToml.matchAll(/^\s*command\s*=\s*("(?:[^"\\]|\\.)*"|'[^']*')/gm)) {
+    let cmd;
+    try { cmd = m[1].startsWith('"') ? JSON.parse(m[1]) : m[1].slice(1, -1); } catch { continue; }
+    for (const t of cmd.match(/"[^"]+\.m?js"|\S+\.m?js/g) || []) {
+      const p = t.replace(/^"|"$/g, '').replace(/^~(?=[\\/])/, HOME);
+      if (/[\\/]\.codex[\\/](?:workflows|hooks)[\\/]/.test(p) && !existsSync(p)) missingScripts.push(tilde(p));
+    }
+  }
+  if (missingScripts.length) add('hooks', 'Codex hook scripts', false, `${tilde(codexConf)} runs missing AOS scripts: ${missingScripts.join(', ')}`,
+    'Run aos update: it moves entries for the pre-fabric dispatch script to fabric-dispatch.mjs and rewrites the AOS hook block.', true);
+
   if (codexWired) {
     // Codex's hash algorithm is not reproduced here. Evidence of a re-trust is only that Codex's set of
     // trust values changed after the install that last changed the AOS hooks (snapshot in ~/.aos/codex-hooks.json).
     const rec = readJson(h('.aos', 'codex-hooks.json'));
-    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.';
+    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.\nNon-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.';
     const gateWired = /^\s*command\s*=.*go-gate\.mjs/m.test(codexToml);
     // Informational only: our hook hash is more sensitive than Codex's own, so "no new trust entry" is not proof of an
     // untrusted hook (Lenovo P15 saw a false warning while /hooks showed Active 2/2). Codex says "Hooks need review"
@@ -374,7 +455,7 @@ function checkHooks() {
       ? `Codex trust entries changed after the last AOS hook change (${rec.changedAt || 'time unknown'}): re-trusted after the last hook change`
       : 'trust state is not readable from here: if Codex shows "Hooks need review", run /hooks and trust the AOS go-gate hook (Codex enforces AOS rules through aos-gate.rules either way)', fix, true);
   }
-  if (existsSync(h('.codex'))) {
+  if (existsSync(h('.codex')) && !gateOff) {
     const rulesFile = h('.codex', 'rules', 'aos-gate.rules');
     let rulesText = '';
     try { rulesText = readFileSync(rulesFile, 'utf8'); } catch {}
@@ -389,6 +470,42 @@ function checkHooks() {
     add('hooks', 'Codex hooks in two files', false, `hooks in both hooks.json and config.toml (${tilde(h('.codex', 'hooks.json'))} and ${tilde(codexConf)}); Codex merges them and warns at startup`,
       'Run the AOS installer: it moves its hooks out of hooks.json (original kept as hooks.json.aos-bak-<time>).', true);
   }
+}
+
+// ---------------------------------------------------------------- 4b. Unified memory start context per harness
+// One row per harness: is the hook that injects the start context (memb-inject) wired? Unified memory
+// switched off, or a harness that is not installed, is not a failure.
+function checkMemoryContext() {
+  const area = 'memory';
+  let off = [];
+  try { off = req('../lib/v5/profile.js').readSettings(HOME, () => {}).disabled || []; } catch {}
+  const memOff = off.includes('memb');
+  const row = (name, installed, wired, detail, fix) =>
+    add(area, name, memOff || !installed || wired, memOff ? 'unified memory is off (memb excluded)' : !installed ? 'harness not installed' : detail, fix, !installed);
+  const fix = 'Run aos update to wire the memory start-context hook.';
+
+  const cs = readJson(hc('settings.json'));
+  const claudeWired = JSON.stringify(cs?.hooks?.SessionStart || []).includes('memb-inject.mjs') && existsSync(hc('hooks', 'memb-inject.mjs'));
+  row('Memory start context Claude Code', existsSync(claudeConfigDir(HOME)), claudeWired,
+    claudeWired ? 'memb-inject on SessionStart + UserPromptSubmit' : 'memb-inject.mjs not registered for SessionStart in settings.json', fix);
+
+  let codexToml = '';
+  try { codexToml = readFileSync(h('.codex', 'config.toml'), 'utf8'); } catch {}
+  const codexWired = /^\s*command\s*=.*memb-inject\.mjs/m.test(codexToml);
+  row('Memory start context Codex', existsSync(h('.codex')), codexWired,
+    codexWired ? 'memb-inject wired in config.toml' : 'memb-inject.mjs not in ~/.codex/config.toml', fix);
+
+  const agFile = firstExisting([h('.gemini', 'antigravity-cli', 'hooks.json'), h('.gemini', 'config', 'hooks.json'), h('.agents', 'hooks.json')]);
+  const agWired = JSON.stringify(readJson(agFile || '')?.['aos-context'] || {}).includes('memb-inject.mjs');
+  row('Memory start context Antigravity (agy)', Boolean(agFile) || existsSync(h('.gemini')), agWired,
+    agWired ? 'memb-inject in aos-context (PreInvocation, first turn)' : 'aos-context hook without memb-inject.mjs', fix);
+
+  const ocPlugin = h('.config', 'opencode', 'plugins', 'bdb-aos.js');
+  let ocSrc = '';
+  try { ocSrc = readFileSync(ocPlugin, 'utf8'); } catch {}
+  const ocWired = ocSrc.includes('buildMemoryBlock') && existsSync(h('.config', 'opencode', 'plugins', 'aos-hooks', 'memb-inject.mjs'));
+  row('Memory start context OpenCode', existsSync(h('.config', 'opencode')), ocWired,
+    ocWired ? 'plugin injects memory on the first message' : `${tilde(ocPlugin)} lacks buildMemoryBlock or aos-hooks/memb-inject.mjs`, fix);
 }
 
 // ---------------------------------------------------------------- 5b. A2A capability matrix (WP-INSTALL)
@@ -495,6 +612,25 @@ function checkAgyMcsc() {
   }
 }
 
+// Antigravity loads <workspace>/.agents/mcp_config.json; in $HOME that picked up the shipped server template.
+function checkAgyWorkspaceMcp() {
+  const f = h('.agents', 'mcp_config.json');
+  if (!existsSync(f)) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} absent (clean)`, '');
+    return;
+  }
+  const data = readJson(f);
+  const servers = Object.keys(data?.mcpServers || {});
+  const foreign = servers.filter((s) => s !== 'aos' && s !== 'mcsc');
+  if (!foreign.length) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} lists only ${servers.join(', ') || 'no'} servers`, '');
+    return;
+  }
+  add('agy', 'agy workspace MCP', false,
+    `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
+    'aos update moves an AOS template copy aside; a user-owned file must be edited or removed by hand', true);
+}
+
 // Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
 function checkMcpSecrets() {
   const { findInlineSecrets, secretsPath, readSecretsFile, firecrawlDoctorHint } = req('../lib/mcp-secrets.js');
@@ -546,7 +682,38 @@ async function checkGateway() {
     const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
     let status;
     try { status = await (await import('./aos-gateway.mjs')).gatewayStatus({ dir: gatewayDir(home) }); } catch { /* reported as not running */ }
-    for (const c of gatewayChecks({ home, files: harnessMcpFiles(home, process.env, process.platform, home), status, shipped: shippedServers() })) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
+    let checks;
+    try { checks = gatewayChecks({ home, files: harnessMcpFiles(home, process.env, process.platform, home), status, shipped: shippedServers() }); } catch (e) { add('gateway', 'gateway checks', false, `could not run: ${e.message}`, '', true); checks = []; }
+    for (const c of checks) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
+    if (status) add('gateway', 'gateway lazy loading', true, (await import('./aos-gateway.mjs')).lazyText(status), '', true);
+    if (status) add('gateway', 'gateway async loading', true, (await import('./aos-gateway.mjs')).asyncText(status), '', true);
+    if (status && status.running && status.toolCount !== null && status.toolCount !== undefined) {
+        const { SIZE_TOOL_LIMIT, SIZE_NODE_LIMIT, SIZE_HINT } = req('../lib/gateway/doctor.js');
+        const ok = status.toolCount <= SIZE_TOOL_LIMIT && status.nodeCount <= SIZE_NODE_LIMIT;
+        add('gateway', 'gateway tool size', ok,
+            `${status.toolCount} tool(s), ~${status.nodeCount} JSON node(s)${ok ? '' : ` (exceeds safety limit: ${SIZE_TOOL_LIMIT} tools / ${SIZE_NODE_LIMIT} nodes)`}`,
+            ok ? '' : SIZE_HINT, true);
+    }
+    // Per-harness exposure: live tool counts (estimate) when the gateway answers; server list always.
+    try {
+        let toolCounts = undefined;
+        const profile = req('../lib/v5/profile.js');
+        const st = profile.readSettings(home, () => {});
+        const selection = (st.gateway && st.gateway.servers) || undefined;
+        const aosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+        const presets = req('../lib/v5/pkg-gateway.js').shippedPresets(aosRoot);
+        if (status && status.running) {
+            const { gatewayToolCounts } = req('../lib/gateway/doctor.js');
+            try { toolCounts = await gatewayToolCounts({ token: fs.readFileSync(path.join(gatewayDir(home), 'token'), 'utf8').trim() }); } catch { /* estimate unavailable */ }
+        }
+        const { gatewayExposureRows } = req('../lib/gateway/doctor.js');
+        const rows = gatewayExposureRows({ files: harnessMcpFiles(home, process.env, process.platform, home), toolCounts: toolCounts || {}, selection, presets: {} });
+        for (const r of rows) {
+            const counts = r.tools === null ? 'tool count unavailable (gateway not running or did not answer)' : `~${r.tools} tools (estimate)`;
+            add('gateway', `gateway exposure in ${path.basename(r.file)}`, r.servers.length > 0,
+                `${r.servers.length} gateway server(s): ${r.servers.join(', ')}; ${counts}${r.estimatedTokens !== null ? ` => ~${r.estimatedTokens.toLocaleString()} tokens (estimate: ${r.tools} tools x 85 tokens/tool)` : ''}`, r.servers.length ? '' : 'aos-gateway add <server>', true);
+        }
+    } catch (e) { add('gateway', 'gateway exposure', false, `could not measure: ${e.message}`, '', true); }
   } catch (e) {
     add('gateway', 'gateway checks', false, `could not run: ${e.message}`, '', true);
   }
@@ -568,9 +735,25 @@ async function checkHub() {
   const hubRecord = readJson(hubFile);
   const hubPort = Number(hubRecord?.port) || 7900;
   const hubReachable = await portOpen(hubPort);
+  // The hub is the supervisor: once its service is installed, a dead :7900 means nothing restarts the other services.
+  const serviceFile = IS_MAC ? h('Library', 'LaunchAgents', 'com.bdb.aos.hub.plist') : IS_WIN ? null : h('.config', 'systemd', 'user', 'com.bdb.aos.hub.service');
+  const serviceInstalled = !!serviceFile && existsSync(serviceFile);
   add('hub', 'AOS Hub (:7900)', hubReachable,
-    hubReachable ? 'Running on http://127.0.0.1:7900' : 'Not running — the hub starts on demand (`aos hub`); never failed here',
-    'aos hub', true);
+    hubReachable ? 'Running on http://127.0.0.1:7900 (one port: /canvas /memb /synapse /trail /store)'
+      : serviceInstalled ? 'Service installed but not answering — nothing supervises the other services'
+        : 'Not installed or not running — `aos update` installs the hub service (supervisor)',
+    serviceInstalled ? 'aos repair' : 'aos update', !serviceInstalled);
+  const statusJson = readJson(h('.aos', 'status.json'));
+  if (statusJson && typeof statusJson.at === 'number') {
+    const ageS = Math.round((Date.now() - statusJson.at) / 1000);
+    const svcs = Object.entries(statusJson.services || {});
+    const failed = svcs.filter(([, e]) => e && e.failed).map(([id]) => id);
+    const down = svcs.filter(([, e]) => e && e.up === false).map(([id]) => id);
+    const stale = ageS > 120;
+    add('hub', 'Supervisor (status.json)', !stale && failed.length === 0,
+      `${svcs.length} services tracked, updated ${ageS}s ago${stale ? ' (stale)' : ''}${down.length ? `, down: ${down.join(', ')}` : ''}${failed.length ? `, gave up on: ${failed.join(', ')}` : ''}`,
+      'aos repair', true);
+  }
 
   if (existsSync(hubFile)) {
     let modeLoose = !IS_WIN && (statSync(hubFile).mode & 0o077) !== 0;
@@ -663,18 +846,60 @@ async function checkDaemonsAndModules() {
     }
   }
 
+  // REA MCP: opt-in dual-use reverse-engineering tool. Kept direct (stateful stdio, large tool catalog).
+  {
+    const reaEnabled = process.env.AOS_REA_MCP === 'on';
+    if (!reaEnabled) {
+      add('daemons', 'REA MCP', true,
+        'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+        'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.', true);
+    } else {
+      let reaPath = which('rea');
+      let reaVer = null;
+      if (reaPath) {
+        try {
+          reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        } catch {}
+      }
+      // Fall back to the npm package name when the global `rea` shim is absent.
+      if (!reaPath) {
+        try {
+          const o = req('../lib/cli-spawn.js').run('npx', ['-y', 'rea-agents@6.5.0', '--version'], { timeout: 8000 });
+          if (o.status !== 0) throw new Error(o.stderr);
+          reaVer = o.stdout.trim();
+          reaPath = 'npx -y rea-agents@6.5.0';
+        } catch {}
+      }
+      if (reaPath) {
+        add('daemons', 'REA MCP', true,
+          `present: ${tilde(reaPath)} · stdio MCP (${reaVer || 'v6.5.0'}, direct)`);
+      } else {
+        add('daemons', 'REA MCP', false,
+          'AOS_REA_MCP=on but the REA CLI is not reachable',
+          'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+      }
+    }
+  }
+
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
+  // macOS BTM (audit P0-3): a down service whose plist exists but whose agent is not loaded
+  // after login is macOS background-revocation, not a missing file — say the Login Items fix
+  // instead of `launchctl load -w`, which cannot lift it.
+  const membPlist = IS_MAC ? h('Library', 'LaunchAgents', 'com.bdb.memb.webui.plist') : null;
+  const membNotLoaded = membPlist && existsSync(membPlist) && !membListening && agentLoadStatus('com.bdb.memb.webui') === 'no';
   add('daemons', 'memB WebUI (:8088)', membListening,
     membListening ? 'Active & listening on http://127.0.0.1:8088' : 'Not listening on port 8088',
-    IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.memb.webui.plist' : 'Start src/backend/server.py in memB module.');
+    membNotLoaded ? btmFixHint('com.bdb.memb.webui') : IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.memb.webui.plist' : 'Start src/backend/server.py in memB module.');
 
   // Synapse 3D
   const synapseListening = await portOpen(7781);
+  const synapsePlist = IS_MAC ? h('Library', 'LaunchAgents', 'com.bdb.synapse.plist') : null;
+  const synapseNotLoaded = synapsePlist && existsSync(synapsePlist) && !synapseListening && agentLoadStatus('com.bdb.synapse') === 'no';
   add('daemons', 'Synapse 3D (:7781)', synapseListening,
     synapseListening ? 'Active & listening on http://127.0.0.1:7781' : 'Not listening on port 7781',
-    IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781', true);
+    synapseNotLoaded ? btmFixHint('com.bdb.synapse') : IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781', true);
 
   // BDB OS Remote Gateway
   const remoteListening = await portOpen(9080);
@@ -736,25 +961,17 @@ async function checkDaemonsAndModules() {
       signed ? 'Binary code-signed (AMFI safe)' : 'Unsigned binary — AMFI might terminate on launch',
       `Run: codesign -s - -f "${aoBin}"`);
   }
-}
 
-// ---------------------------------------------------------------- 6. Output & Announcement
-function printAoAnnouncement() {
-  console.log(`
-╭──────────────────────────────────────────────────────────────────────────────╮
-│                                                                              │
-│   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE                      │
-│                                                                              │
-│   The next generation of cross-harness multi-agent orchestration             │
-│   is now open to every user as a final beta.                                 │
-│                                                                              │
-│   • Dashboard & WebUI:  http://localhost:3101                                │
-│   • Service command:    ao service install  (enables the background service) │
-│   • Quick launch:       ao open  or  ao service status                       │
-│   • Features:           session telemetry, live AgentTrail, multi-workspaces │
-│                                                                              │
-╰──────────────────────────────────────────────────────────────────────────────╯
-`);
+  // macOS BTM sweep (audit P0-3): any com.bdb.* LaunchAgent whose plist is installed but
+  // whose label is not loaded after login. Read-only `launchctl print` only (never sfltool);
+  // under a test sandbox without a run override the helper answers nothing, so the row is skipped.
+  if (IS_MAC) {
+    for (const a of btmNotLoadedAgents(HOME)) {
+      add('daemons', `LaunchAgent ${a.label}`, false,
+        'plist installed but the agent is not loaded after login (macOS revoked its background authorization)',
+        a.fix, true);
+    }
+  }
 }
 
 function report() {
@@ -763,8 +980,6 @@ function report() {
     console.log(JSON.stringify({ ok, platform: process.platform, arch: process.arch, results }, null, 2));
     return;
   }
-
-  printAoAnnouncement();
 
   console.log(`\n======================================================`);
   console.log(`   🩺 AOS SYSTEM CHECKUP & DIAGNOSTIC REPORT`);
@@ -797,6 +1012,17 @@ function report() {
     console.log(`⚠️  ${criticalFails.length} critical check(s) need attention! Follow the fix instructions above.`);
   }
   console.log(`------------------------------------------------------\n`);
+  try {
+    const updateInfo = updateCheck.getCachedUpdateInfo({ home: HOME, installed: pkg.version });
+    if (updateInfo.updateAvailable && updateInfo.latest) {
+      updateCheck.notifySurface('doctor', {
+        home: HOME,
+        installed: pkg.version,
+        latest: updateInfo.latest,
+        out: (msg) => console.log(msg),
+      });
+    }
+  } catch {}
 }
 
 // ---------------------------------------------------------------- Run
@@ -816,9 +1042,17 @@ function checkPlugins() {
       flag === false ? 'disabled by the user' : `settings.json ${flag === true ? 'enables' : 'does not enable'} ${PLUGIN_ID}, marketplace ${marketplace ? 'known' : 'missing'}, plugin cache ${installed ? 'present' : 'missing'}`,
       flag === false ? optOut : 'Run the AOS installer (registers settings.json), then: claude plugin marketplace add hybridlabor-api/aos && claude plugin install bdb-aos@bdb-marketplace', true);
   }
-  const claudeBin = which('claude');
+  // Same resolver as the installer's CLI steps: finds claude even when this shell's PATH misses it
+  // (GUI daemons, scheduled tasks). installed+enabled / installed+disabled / missing, from the CLI itself.
+  const { resolveCommand, run: runCli } = req('../lib/cli-spawn.js');
+  const claudeBin = which('claude') || resolveCommand('claude');
+  const pluginRow = (() => {
+    if (!claudeBin) return { ok: false, detail: 'claude CLI not found on PATH or in a known install location; plugin bdb-aos missing', fix: 'Install Claude Code, then: claude plugin marketplace add hybridlabor-api/aos; claude plugin install bdb-aos@bdb-marketplace' };
+    return pmDoctorRow(runCli('claude', ['plugin', 'list'], { timeout: 15000 }), PLUGIN_ID);
+  })();
+  if (pluginRow) add('plugins', 'Claude plugin via CLI', pluginRow.ok, pluginRow.detail, pluginRow.fix, true);
   if (claudeBin) {
-    const MODS = ['fleet', 'sessions', 'alert'];
+    const MODS = ['fleet', 'sessions', 'alert', 'control'];
     const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
     const off = MODS.filter((m) => !enabled.includes(m));
     let ver = null;
@@ -849,7 +1083,7 @@ function checkAgentModels() {
   const slugs = agentsMd ? new Set([...readFileSync(agentsMd, 'utf8').split(/\n## /).slice(1)]
     .filter((b) => /-\s*\*\*Role\*\*:/.test(b))
     .map((b) => b.split('\n')[0].replace(/^[^\w]+/, '').trim().split(/\s+/)[0].toLowerCase().replace(/-/g, '_'))) : null;
-  // Node ids and the /startcycle-graph helper agents are valid role keys too (docs/agent-models.md).
+  // Node ids and the /fabric-graph helper agents are valid role keys too (docs/agent-models.md).
   if (slugs) for (const k of ['ui_ux', 'engineering', 'media_eventtech', 'shipping', 'load_registry', 'merge_state', 'archify_verify', 'validate_skills']) slugs.add(k);
   const files = [
     path.join(process.cwd(), '.aos', 'pipeline.json'),
@@ -894,11 +1128,30 @@ function checkAgentModels() {
 checkHarnesses();
 checkAgentModels();
 checkHooks();
+checkMemoryContext();
 checkPlugins();
 checkAgyMcsc();
+checkAgyWorkspaceMcp();
 checkAgyWorkerHome();
 checkMcpSecrets();
 checkInstallerBaks();
+// Windows: Task Manager -> Autostart can mark a Startup-folder entry "Deaktiviert"; Explorer keeps that in
+// HKCU\\...\\StartupApproved\\StartupFolder as REG_BINARY named after the file. Format (unverified here, from
+// public documentation): first byte 02/06 = enabled, 03 = disabled (bit 0). Read-only: the registry is never written.
+function checkWindowsStartupApproved() {
+  if (!IS_WIN) return;
+  const startupDir = path.join(process.env.APPDATA || h('AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  let reg = '';
+  try {
+    reg = execFileSync('reg.exe', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\StartupFolder'], { encoding: 'utf8', timeout: 5000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch { return; } // key absent: nothing was ever approved or disabled
+  const off = req('../lib/v5/win-startup.js').disabledStartupEntries(reg).filter((f) => existsSync(path.join(startupDir, f)));
+  add('daemons', 'Windows autostart entries', off.length === 0,
+    off.length ? `disabled in Task Manager: ${off.join(', ')}` : 'no AOS Startup entry is disabled',
+    `Task Manager -> Autostart -> enable ${off.join(', ')}; to start one now: ${off.map((f) => `wscript.exe "${path.join(startupDir, f)}"`).join(' ; ')}`, true);
+}
+
+checkWindowsStartupApproved();
 await checkHub();
 await checkA2aMatrix();
 await checkDaemonsAndModules();

@@ -1,6 +1,6 @@
 ---
 name: plan-arbiter
-description: Use when asked to compare, cross-review, merge, judge, choose, or arbitrate competing plans from multiple agents such as Codex and Claude Code; when given two or more proposed plans, session IDs, transcripts, plan documents, PR descriptions, or pasted strategies; or when the user wants one recommended execution plan after agents review each other's proposals.
+description: Compare, cross-review or judge competing agent plans and recommend one execution plan. Use when several agents proposed plans or the user asks to arbitrate.
 category: bdb-core
 source: BuilderIO/skills
 ---
@@ -9,6 +9,18 @@ source: BuilderIO/skills
 
 Turn competing plans into one executable direction. Preserve the best ideas,
 reject weak assumptions, and produce a clear handoff instead of a blended mush.
+
+## Plan first
+
+The decision memo is a `research` page — options, evidence, recommendation, one verdict:
+
+```bash
+aos-plan-canvas new research <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## Workflow
 

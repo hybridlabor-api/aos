@@ -1,6 +1,6 @@
 ---
 name: ao-orchestrator
-description: Use when acting as the multi-project orchestrator and lead coordinator across repositories using the Agent Orchestrator (AO) daemon. Spawns, inspects, coordinates, and reviews parallel coding agents in isolated Git worktrees.
+description: Multi-project orchestrator using AO daemon. Spawn, inspect, coordinate, review parallel agents in Git worktrees.
 category: bdb-core
 risk: safe
 tools:

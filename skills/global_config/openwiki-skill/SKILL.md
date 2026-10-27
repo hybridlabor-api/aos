@@ -1,6 +1,6 @@
 ---
 name: openwiki-skill
-description: "Initialize, update, and visualize codebase or personal knowledge wikis using LangChain OpenWiki. Enforces OKF v0.2, Grounded Claims, interactive visualizer graph, and MCP page-job lifecycle."
+description: "OpenWiki: codebase and knowledge wikis. OKF v0.2, Grounded Claims, visualizer graph, MCP lifecycle."
 category: bdb-core
 risk: safe
 source: "https://github.com/langchain-ai/openwiki"

@@ -1,0 +1,16 @@
+{
+  "id": "default",
+  "label": "Default Team",
+  "roles": [
+    "architect",
+    "techlead",
+    "ui_ux",
+    "engineering",
+    "media_eventtech",
+    "reviewer",
+    "shipping"
+  ],
+  "playbooks": [],
+  "gates": [],
+  "effort": "S"
+}

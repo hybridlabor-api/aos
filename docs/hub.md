@@ -14,7 +14,18 @@ aos hub status       # check if it is running (also --json)
 aos hub stop         # stop it
 aos hub restart      # stop, then start again
 aos hub --no-open    # start without opening a browser
+aos hub open --tab services   # start if needed, then open the browser on a tab
+aos hub --help       # usage, side-effect free
 ```
+
+Options: `--port N` (default 7900), `--tab ID` (the tab to open), `--no-open`
+(also `AOS_NO_OPEN=1`). `--serve [--watch]` is for service managers: it serves
+in the foreground, and with `--watch` also supervises the other services; it
+exits 3 when the hub's code changed on disk so the service manager restarts it
+on the new code. `AOS_HUB_HOME` moves the state directory. Exit codes: 0 ok
+(also `status` when the hub is down), 1 port in use, did not come up within
+5 s, or `stop` could not verify the process, 2 unexpected error. Full spec:
+`docs/cli-reference.md`.
 
 The hub binds to 127.0.0.1 only, default port 7900 (`--port` overrides). It
 writes `~/.aos/hub/hub.json` (mode 600, dir 700) with pid, port, version and
@@ -37,17 +48,6 @@ aos services restart <id> --confirm <id>
 
 Only start/stop/restart need the typed confirm; `status` is always free.
 
-## Plan canvas as a Windows service (text only)
-
-`lib/hub/services-win.mjs` is the Windows mirror of the macOS `com.bdb.plan-canvas` LaunchAgent. Pure functions, no spawn or fs writes:
-
-- `buildPlanCanvasTaskXml({ nodePath, scriptPath, workingDir })` returns Task Scheduler XML: starts `node <script> server` at logon, restarts on failure (1 min, 999x), no time limit.
-- `parsePlanCanvasTaskXml(xml)` reads those fields back.
-- `schtasksArgs(action, { xmlPath })` returns constant `schtasks` argument lists (create, start, stop, delete, query).
-- `parseSchtasksStatus(output)` returns `{ installed, running, status }` from `schtasks /Query /FO LIST /V`.
-
-Paths must be absolute Windows paths without quotes, newlines or control characters; everything is XML-escaped. Registration is not wired into the installer yet.
-
 ## Security model
 
 - Loopback only: the hub listens on 127.0.0.1 and never on 0.0.0.0.
@@ -63,3 +63,12 @@ Paths must be absolute Windows paths without quotes, newlines or control charact
 - agenttrail is linked, not embedded: the Plans tab deep-links to the trail's own port.
 - The hub performs no GO actions and no pushes; gates (gogate) stay CLI-side.
 - Shell-free everywhere: probes and control use spawn with an args array (`shell:false`); args never become commands.
+
+## Troubleshooting
+
+**OpenWiki "down" or "Wikis: none yet".** OpenWiki is a launchd interval job
+(every 2 h): loaded but idle shows as *scheduled*. The Wikis list reads
+`~/.openwiki/projects.json` and scans `~/dev` (four levels) for `.openwiki`
+directories, relative to the home of the user the hub runs as
+(`AOS_HUB_HOME` overrides it). If repos live under another home, run
+`aos hub restart` from the account that owns them.

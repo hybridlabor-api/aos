@@ -1,0 +1,16 @@
+{
+  "remote-ci": {
+    "description": "Run scripts from a local scripts dir and ssh to one CI host with one key.",
+    "params": { "host": "<user@host>", "key": "<path to ssh private key>", "scripts": "<local scripts dir>" },
+    "rules": ["Bash({scripts}/*)", "Bash(ssh -i {key} {host}:*)"]
+  },
+  "aos-tools": {
+    "description": "Read-only aos status and doctor commands.",
+    "params": {},
+    "rules": [
+      "Bash(aos status:*)", "Bash(aos doctor:*)", "Bash(aos version:*)", "Bash(aos context:*)",
+      "Bash(aos-router show:*)", "Bash(aos-router limits:*)", "Bash(aos-router test:*)",
+      "Bash(aos-doctor:*)"
+    ]
+  }
+}

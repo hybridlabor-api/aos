@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
+const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
 
 function run(...cliArgs) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'r8-dispatch-'));

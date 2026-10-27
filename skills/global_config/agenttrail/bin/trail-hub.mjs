@@ -8,11 +8,12 @@ import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 
-import { validateEvent, fromLegacyHook, MAX_BODY_BYTES } from '../lib/events.mjs'
+import { validateEvent, fromLegacyHook } from '../lib/events.mjs'
 import { SessionTable, readA2aRegistry } from '../lib/sessions.mjs'
 import { buildModel, ttlMemo } from '../lib/hub-model.mjs'
 import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
-import { csrfToken, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
+import { csrfToken, embedAncestors, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, securityHeaders, readJson } from '../lib/httpguard.mjs'
+import { injectEmbed } from '../../plan-canvas/scripts/lib/loopback-guard.js'
 import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
 import { STATE_DIR, loadRepos, registerRepo, loadState, setPinned } from '../lib/hub-state.mjs'
@@ -62,15 +63,7 @@ const MIME = {
   '.json': 'application/json',
 }
 
-const hostOk = (host) => host === `localhost:${port}` || host === `127.0.0.1:${port}`
 const clickRoute = (url) => url.startsWith('/v1/gate/')
-
-function securityHeaders(res) {
-  res.setHeader('Cache-Control', 'no-store')
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
-  res.setHeader('X-Frame-Options', 'DENY')
-  res.setHeader('Referrer-Policy', 'no-referrer')
-}
 
 // CSRF token: delivered only in the same-origin HTML, required on every write.
 const CSRF = csrfToken()
@@ -112,7 +105,7 @@ async function handleGate(req, res, urlPath) {
   if (!csrfOk(req.headers, CSRF)) { reply(403, { error: 'csrf' }); return }
   const handler = Object.hasOwn(GATE_ROUTES, urlPath.slice('/v1/gate/'.length)) ? GATE_ROUTES[urlPath.slice('/v1/gate/'.length)] : null
   if (!handler) { res.writeHead(404).end(); return }
-  const body = await readJson(req, res, { maxBytes: GATE_BODY_BYTES })
+  const body = await readJson(req, res)
   if (!body.ok) return
   if (!body.value || typeof body.value !== 'object' || Array.isArray(body.value)) { reply(400, { error: 'bad-body' }); return }
   try {
@@ -125,26 +118,6 @@ async function handleGate(req, res, urlPath) {
     if (e instanceof ClickError) reply(e.status, { error: e.code })
     else reply(500, { error: 'internal' })
   }
-}
-
-function readJson(req, res, { maxBytes = MAX_BODY_BYTES } = {}) {
-  return new Promise((resolve) => {
-    let size = 0
-    const chunks = []
-    let done = false
-    const finish = (v) => { if (!done) { done = true; resolve(v) } }
-    req.on('data', (c) => {
-      if (done) return
-      size += c.length
-      if (size > maxBytes) { res.writeHead(413).end(); finish({ ok: false, status: 413 }); req.destroy(); return }
-      chunks.push(c)
-    })
-    req.on('end', () => {
-      if (done) return
-      try { finish({ ok: true, value: JSON.parse(Buffer.concat(chunks).toString('utf8')) }) } catch { res.writeHead(400).end(); finish({ ok: false, status: 400 }) }
-    })
-    req.on('error', () => finish({ ok: false, status: 400 }))
-  })
 }
 
 let modelCache = null
@@ -181,6 +154,7 @@ async function currentModel({ fresh = false } = {}) {
 // Rebuilds are the hub's only real cost: git is spawned per worktree. So a build runs
 // only while an SSE client listens, and at most once per BROADCAST_MIN_MS, trailing.
 let broadcastTimer = null
+let lastPayload = ''
 let lastBuildAt = 0
 function broadcast() {
   modelCache = null
@@ -190,6 +164,9 @@ function broadcast() {
     broadcastTimer = null
     lastBuildAt = Date.now()
     currentModel({ fresh: true }).then((m) => {
+      const same = JSON.stringify({ ...m, now: 0 })
+      if (same === lastPayload) return
+      lastPayload = same
       const payload = `data: ${JSON.stringify(m)}\n\n`
       for (const res of clients) { try { res.write(payload) } catch { clients.delete(res) } }
     }).catch(() => { /* the next event or tick rebuilds it */ })
@@ -197,7 +174,8 @@ function broadcast() {
   broadcastTimer.unref()
 }
 
-const tick = setInterval(broadcast, 2000)
+// events drive the board; this slow tick is only a safety net (a 2 s tick re-ran git per worktree for every open tab)
+const tick = setInterval(broadcast, 30000)
 tick.unref()
 
 async function serveStatic(req, res, urlPath) {
@@ -209,8 +187,10 @@ async function serveStatic(req, res, urlPath) {
   if (!data) { res.writeHead(404, { 'content-type': 'text/plain' }).end('not found'); return }
   const type = MIME[path.extname(file)] || 'application/octet-stream'
   // The CSRF token reaches the page here and nowhere else.
-  if (rel === 'index.html' || rel === 'enroll.html') res.writeHead(200, { 'content-type': type }).end(data.toString('utf8').replace('__TRAIL_CSRF__', CSRF))
-  else res.writeHead(200, { 'content-type': type }).end(data)
+  if (rel === 'index.html' || rel === 'enroll.html') {
+    const html = injectEmbed(data.toString('utf8').replace('__TRAIL_CSRF__', CSRF), embedAncestors())
+    res.writeHead(200, { 'content-type': type }).end(html)
+  } else res.writeHead(200, { 'content-type': type }).end(data)
 }
 
 const server = http.createServer(async (req, res) => {
@@ -218,7 +198,7 @@ const server = http.createServer(async (req, res) => {
   const urlPath = (req.url || '/').split('?')[0]
 
   if (req.method === 'OPTIONS') { res.writeHead(405).end(); return }
-  if (!hostOk(req.headers.host)) { res.writeHead(421).end(); return }
+  if (!strictHostOk(req.headers.host, port)) { res.writeHead(421).end(); return }
 
   const origin = req.headers.origin
   // Telemetry may come from any local caller, but never from a page on another origin.
@@ -257,7 +237,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/v1/events') {
-      if (req.headers['content-type'] !== 'application/json') { res.writeHead(415).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const incoming = Array.isArray(body.value) ? body.value : [body.value]
@@ -277,7 +256,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/hook') {
-      if (req.headers['content-type'] !== 'application/json') { res.writeHead(415).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const payloads = Array.isArray(body.value) ? body.value : [body.value]
@@ -295,7 +273,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/v1/repos') {
-      if (req.headers['x-trail-csrf'] !== CSRF) { res.writeHead(403).end(); return }
+      if (!csrfOk(req.headers, CSRF)) { res.writeHead(403).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const root = body.value && body.value.root
@@ -305,7 +283,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/v1/pin') {
-      if (req.headers['x-trail-csrf'] !== CSRF) { res.writeHead(403).end(); return }
+      if (!csrfOk(req.headers, CSRF)) { res.writeHead(403).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const key = body.value && body.value.planKey

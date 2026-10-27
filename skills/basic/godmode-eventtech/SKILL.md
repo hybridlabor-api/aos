@@ -1,6 +1,6 @@
 ---
 name: godmode-eventtech
-description: "Use for real-time performance and multimedia operator work: technical show-control execution (signal flows, OSC/DMX, MCP orchestration, hardware limits) for tools like grandMA3, Resolume, Unreal, Rhino, Vectorworks, and Adobe MCP."
+description: "Real-time show-control execution: signal flows, OSC/DMX, MCP orchestration. grandMA3, Resolume, Unreal, Rhino, Vectorworks, Adobe."
 category: media-eventtech
 ---
 
@@ -9,6 +9,20 @@ category: media-eventtech
 This skill is the architectural authority for **Real-Time Performance, Signal Flow, Protocol Routing, and Hardware Limits** in live show and event-tech environments. It defines how agents must execute real-time graphics pipelines, hardware-level show control, and multi-server communication without compromising stability or latency.
 
 ---
+
+## Plan first
+
+Planning starts on the plan canvas with the `show-control` template, and the human approves it there — not in chat.
+
+One live show or event: lighting, video, audio and network in a single reviewable technical document.
+
+```bash
+aos-plan-canvas new show-control <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## 1. Role & Architectural Boundaries
 
@@ -97,3 +111,21 @@ This skill acts as the architectural authority for real-time performance systems
 - [ ] Network bandwidth and VRAM budgets are explicitly calculated in the plan.
 - [ ] Real-time control relies on OSC, MIDI, or DMX/Art-Net, not blocking HTTP calls.
 
+
+
+---
+
+## Live show Pack Skills
+
+<!-- aos:pack-index:start -->
+- **bdb-grandma3-mcp** — Utilizes the grandMA3 MCP server to patch fixtures, execute console commands, and trigger macros via OSC.
+- **bdb-resolume-mcp** — Utilizes the Resolume Arena MCP server to trigger clips, clear layers, adjust speeds, and query composition status via the Resolume REST API.
+- **bdb-touchdesigner-mcp** — Utilizes the TouchDesigner MCP servers (tdmcp and touchdesigner-mcp) to create TOP/CHOP chains, script operators, inspect parameters, and debug node networks.
+- **bdb-unreal-mcp** — Utilizes the Unreal Engine MCP server to control UE5 via a native C++ Automation Bridge plugin.
+- **bdb-vectorworks-mcp** — Utilizes the Vectorworks RAG + MCP server to search and retrieve Python and VectorScript API documentation.
+- **bdb-rhino-mcp** — Utilizes the Rhino MCP servers (RhinoMCP and golem-rhino-mcp) to create and manipulate 3D models and run Grasshopper graphs.
+- **mcp-manage** — Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner.
+- **bdb-computer-use-mcp** — Utilizes native Rust/Node and Python-based computer-use-mcp servers to control macOS, Windows, and Linux desktops.
+
+**Install:** `aos store install --pack live-show`
+<!-- aos:pack-index:end -->

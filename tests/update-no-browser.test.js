@@ -23,56 +23,29 @@ test.after(() => {
 const installer = require('../installer.js');
 const menu = require('../lib/v5/menu');
 
-test('installer shouldOpenLaunchpad and shouldAutostartLaunchpad suppress on update, repair and AOS_NO_OPEN', () => {
-    // 1. AOS_NO_OPEN=1 suppresses
-    assert.strictEqual(installer.shouldOpenLaunchpad([], { env: { AOS_NO_OPEN: '1' } }), false);
-    assert.strictEqual(installer.shouldAutostartLaunchpad({ env: { AOS_NO_OPEN: '1' } }), false);
-
-    // 2. --no-open flag suppresses
-    assert.strictEqual(installer.shouldOpenLaunchpad([], { argv: ['--no-open'] }), false);
-    assert.strictEqual(installer.shouldAutostartLaunchpad({ argv: ['--no-open'] }), false);
-
-    // 3. update and repair in argv suppress
-    assert.strictEqual(installer.shouldOpenLaunchpad([], { argv: ['update'] }), false);
-    assert.strictEqual(installer.shouldOpenLaunchpad([], { argv: ['repair'] }), false);
-    assert.strictEqual(installer.shouldAutostartLaunchpad({ argv: ['update'] }), false);
-    assert.strictEqual(installer.shouldAutostartLaunchpad({ argv: ['repair'] }), false);
-
-    // 4. isUpdate and isRepair overrides suppress
-    assert.strictEqual(installer.shouldOpenLaunchpad([], { isUpdate: true }), false);
-    assert.strictEqual(installer.shouldOpenLaunchpad([], { isRepair: true }), false);
-    assert.strictEqual(installer.shouldAutostartLaunchpad({ isUpdate: true }), false);
-    assert.strictEqual(installer.shouldAutostartLaunchpad({ isRepair: true }), false);
-});
-
-test('generateAndOpenLaunchpad exits early and does not open when AOS_NO_OPEN=1 or --no-open is set', () => {
-    const saved = process.env.AOS_NO_OPEN;
-    try {
-        process.env.AOS_NO_OPEN = '1';
-        assert.strictEqual(installer.generateAndOpenLaunchpad(['synapse']), false);
-    } finally {
-        if (saved !== undefined) process.env.AOS_NO_OPEN = saved;
-        else delete process.env.AOS_NO_OPEN;
-    }
-});
-
-test('menu update() and repair() set AOS_NO_OPEN=1', async () => {
+test('menu update() and repair() set AOS_NO_OPEN=1 and never call real service managers', async () => {
     delete process.env.AOS_NO_OPEN;
     const mockHost = {
         detectInstallState: () => ({ isInstalled: true }),
+    };
+    const safeRunner = (cmd, args = []) => {
+        if (['launchctl', 'systemctl', 'schtasks'].includes(cmd)) {
+            throw new Error(`Real service manager called in test: ${cmd} ${args.join(' ')}`);
+        }
+        return { status: 0, stdout: '' };
     };
 
     // runCommand with update sets AOS_NO_OPEN immediately
     assert.strictEqual(process.env.AOS_NO_OPEN, undefined);
     try {
-        await menu.runCommand('update', mockHost, { home: tempHome, write: () => {} });
+        await menu.runCommand('update', mockHost, { home: tempHome, write: () => {}, run: safeRunner });
     } catch (_) {}
     assert.strictEqual(process.env.AOS_NO_OPEN, '1');
 
     delete process.env.AOS_NO_OPEN;
     assert.strictEqual(process.env.AOS_NO_OPEN, undefined);
     try {
-        await menu.runCommand('repair', mockHost, { home: tempHome, write: () => {} });
+        await menu.runCommand('repair', mockHost, { home: tempHome, write: () => {}, run: safeRunner });
     } catch (_) {}
     assert.strictEqual(process.env.AOS_NO_OPEN, '1');
 });

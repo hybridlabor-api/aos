@@ -13,7 +13,7 @@
 > runtime dependencies and neither is this one.
 >
 > **Not applied, and not currently possible.** Every code-level integration below.
-> `startcycle-dispatch.mjs` contains no `withStateLock` call and cannot contain one:
+> `fabric-dispatch.mjs` contains no `withStateLock` call and cannot contain one:
 > the Workflow runtime gives the dispatcher script **no filesystem access**, which is
 > precisely why AOS solves its own concurrent-write race with single-writer fragments
 > (`production_artifacts/state.d/<node>.json`) plus a merge step instead of a lock.
@@ -30,7 +30,7 @@
 > `src/locking/resource-lock.ts`.
 
 **Deliverable**: Requirement R4 Integration Contracts (proposal)  
-**Target Architecture**: BDB Agent OS (`.agents/nodes.json`, `/startcycle-graph`, `/bdbrainstorm`)  
+**Target Architecture**: BDB Agent OS (`.agents/nodes.json`, `/fabric-graph`, `/bdbrainstorm`)  
 **Specification Reference**: `survey_miner_1/survey_report.md`
 
 ---
@@ -165,9 +165,9 @@ Once equipped with `bdbresilience`, Shipping would execute automated diagnostic 
 
 ---
 
-## 4. Proposed: Integration with `/startcycle-graph`
+## 4. Proposed: Integration with `/fabric-graph`
 
-`~/.claude/workflows/startcycle-dispatch.mjs` and `~/.claude/hooks/graph-gate.mjs` both exist, but neither references this library. The proposal is that `bdbresilience` would power core graph infrastructure:
+`~/.claude/workflows/fabric-dispatch.mjs` and `~/.claude/hooks/graph-gate.mjs` both exist, but neither references this library. The proposal is that `bdbresilience` would power core graph infrastructure:
 
 1. **Parallel Build Fan-Out Isolation**:
    - When `ui_ux`, `engineering`, and `media` execute concurrently, each node would write exclusively to:

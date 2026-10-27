@@ -30,6 +30,14 @@ const NAME_MAX = 64;
 // in validate() -- the two can drift, and then the test proves nothing.
 const isValidSkillName = (v) => v.length <= NAME_MAX && NAME_RE.test(v);
 
+export const DESC_MAX = 250;
+export function cleanDescription(descKey) {
+  if (!descKey) return '';
+  let v = unquote(descKey.value);
+  v = v.replace(/^[|>][-+]?\d*\s*/, '').trim();
+  return v;
+}
+
 // Names that are stand-ins or service accounts rather than a person. The rule
 // is about leaking a human's username; `/home/agent` on the SaaS fleet is a
 // role account and is meant to be written down.
@@ -288,7 +296,7 @@ export function checkPlaybook(byKey, known) {
 // every orchestrator start them. Side effects are guarded by go-gate, not by hiding the
 // skill from the model. Anything not listed here may still set the flag.
 export const MODEL_INVOCABLE = new Set([
-  'startcycle', 'startcycle-graph', 'startcycle-graph-user', 'teamwork-preview',
+  'fabric', 'fabric-graph', 'fabric-multigraph', 'fabric-teamwork', 'fabric-swarm', 'fabric-loop',
   'godmode-engineering', 'godmode-shipping', 'godmode-ui-ux', 'godmode-media-eventtech',
   'master-session', 'ao-orchestrator', 'bdbrainstorm', 'bdbmediastorm',
   'grill-me', 'grill-with-docs', 'ask-tim', 'memb-skill',
@@ -355,6 +363,20 @@ export function checkBrandTokens(text, rel) {
 function validate() {
   const { skills, strays } = collect();
   const known = new Set(skills.map((f) => basename(dirname(f))));
+  const vendorDir = join(REPO, 'vendor');
+  if (existsSync(vendorDir)) {
+    for (const v of readdirSync(vendorDir, { withFileTypes: true })) {
+      if (!v.isDirectory()) continue;
+      const vSkills = join(vendorDir, v.name, 'skills');
+      if (existsSync(vSkills)) {
+        for (const s of readdirSync(vSkills, { withFileTypes: true })) {
+          if (s.isDirectory() && existsSync(join(vSkills, s.name, 'SKILL.md'))) {
+            known.add(s.name);
+          }
+        }
+      }
+    }
+  }
   const findings = [];
 
   for (const file of skills) {
@@ -401,8 +423,16 @@ function validate() {
     }
 
     const desc = byKey.get('description');
-    if (desc && unquote(desc.value) === '') {
-      findings.push({ level: 'error', code: 'E-FM05', file: rel, line: desc.line, msg: 'description is empty' });
+    if (desc) {
+      const cleanDesc = cleanDescription(desc);
+      if (cleanDesc === '') {
+        findings.push({ level: 'error', code: 'E-FM05', file: rel, line: desc.line, msg: 'description is empty' });
+      } else if (cleanDesc.length > DESC_MAX) {
+        findings.push({
+          level: 'warn', code: 'W-DESC01', file: rel, line: desc.line,
+          msg: `description is ${cleanDesc.length} characters (budget: max ${DESC_MAX} chars). Frontmatter budget requires concise descriptions to limit session startup token bloat. Shorten while preserving trigger words.`,
+        });
+      }
     }
 
     const cat = byKey.get('category');
@@ -627,10 +657,10 @@ function selftest() {
   assert.equal(checkPlaybook(pb({ 'disable-model-invocation': 'true' }), known)[0].code, 'E-PB06');
   assert.deepEqual(checkPlaybook(pb({ 'disable-model-invocation': 'false' }), known), [], 'explicit false is fine');
   const dm = (v) => new Map([['disable-model-invocation', { key: 'disable-model-invocation', value: v, line: 3 }]]);
-  assert.equal(checkInvocation('startcycle-graph', dm('true'))[0].code, 'E-DMI01');
-  assert.deepEqual(checkInvocation('startcycle-graph', dm('false')), []);
+  assert.equal(checkInvocation('fabric-graph', dm('true'))[0].code, 'E-DMI01');
+  assert.deepEqual(checkInvocation('fabric-graph', dm('false')), []);
   assert.deepEqual(checkInvocation('bdb-updater', dm('true')), [], 'unlisted skills may keep the flag');
-  assert.deepEqual(checkInvocation('startcycle', new Map()), []);
+  assert.deepEqual(checkInvocation('fabric', new Map()), []);
   assert.deepEqual(checkPlaybook(pb({}, ['kind', 'trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time']), known).length, 0, 'no kind, no playbook rules');
   assert.deepEqual(
     checkPlaybook(pb({ requires: '\n  skills: ["gh (external)", github,]' }), known), [],

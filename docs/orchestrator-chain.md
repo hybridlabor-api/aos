@@ -5,7 +5,7 @@
 | Level | Job | Mechanism (verified) |
 |---|---|---|
 | Master session | Overview of several sessions; asks for status, relays the human's GO | `skills/basic/master-session/SKILL.md`: roster (`ListAgents`), status request, GO board, idle notices |
-| Project orchestrator | Coordinates work in one repo, or across repos | `skills/basic/ao-orchestrator/SKILL.md` (AO daemon, `ao spawn --role ...`, optional) or a pipeline dispatcher (`/startcycle-graph`, `.agents/graph.md`) |
+| Project orchestrator | Coordinates work in one repo, or across repos | `skills/basic/ao-orchestrator/SKILL.md` (AO daemon, `ao spawn --role ...`, optional) or a pipeline dispatcher (`/fabric-graph`, `.agents/graph.md`) |
 | Package orchestrator | Runs one slice of that repo | a worker: `aos-acp` worker, `aos-a2a` peer, or a pipeline build node |
 
 The live sessions on this setup add a fourth role next to these: the **task manager**, who sequences shared resources (one Docker run at a time, worker caps, disk), keeps one blocker list and the human's single to-do file, and never grants GO. It is a convention like the others; the "package orchestrator" row above is what the live rules call a package worker. Role table and working agreements: `docs/master-session-portable.md`.

@@ -6,6 +6,7 @@
 //
 //   aos-dashboard [--port 7900] [--no-open]
 
+import '../lib/cli-help-guard.mjs';
 import { cli } from './aos-hub.mjs';
 
 const raw = process.argv.slice(2);
@@ -18,6 +19,7 @@ for (let i = 0; i < raw.length; i++) {
     console.error(`aos-dashboard: unknown argument ${a} (supported: --port N, --no-open)`);
     process.exit(2);
   }
+}
 if (process.env.AOS_NO_OPEN === '1' && !args.includes('--no-open')) {
   args.push('--no-open');
 }

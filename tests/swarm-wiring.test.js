@@ -7,7 +7,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const nodes = JSON.parse(fs.readFileSync(path.join(ROOT, '.agents', 'nodes.json'), 'utf8'));
 const agentsMd = fs.readFileSync(path.join(ROOT, '.agents', 'AGENTS.md'), 'utf8');
-const dispatch = fs.readFileSync(path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs'), 'utf8');
+const dispatch = fs.readFileSync(path.join(ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs'), 'utf8');
 const { parseAgentsMd, loadCommonSkills } = require('../installer.js');
 
 function skillNames() {
@@ -67,7 +67,16 @@ test('the seven pipeline nodes keep their order and pin no model', () => {
 });
 
 test('every skill a node declares is also listed in .agents/AGENTS.md', () => {
-    const compiled = parseAgentsMd(agentsMd);
+    // Domain personas (godmode-media-eventtech, …) moved to .agents/packs/<pack>/AGENTS.md;
+    // the installer's default selection loads all packs, so the registry is main + packs.
+    const packs = path.join(ROOT, '.agents', 'packs');
+    const packMd = fs.existsSync(packs)
+        ? fs.readdirSync(packs).map((p) => path.join(packs, p, 'AGENTS.md')).filter((f) => fs.existsSync(f))
+        : [];
+    const compiled = [
+        ...parseAgentsMd(agentsMd),
+        ...packMd.flatMap((f) => parseAgentsMd(fs.readFileSync(f, 'utf8'))),
+    ];
     // digits stay in the key: reviewer-1 and reviewer-2 (multi-agent review) must not shadow the Reviewer node agent
     const key = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const byName = Object.fromEntries(compiled.map((a) => [key(a.name), a]));

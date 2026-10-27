@@ -16,6 +16,6 @@ export function stopTrailHubs(ports) {
   }
   for (const p of list) {
     const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
-    for (const pid of (r.stdout || '').split(String.fromCharCode(10)).filter(Boolean)) { try { process.kill(Number(pid)); } catch {} }
+    for (const pid of (r.stdout || '').split(String.fromCharCode(10)).filter(Boolean)) { if (Number(pid) !== process.pid) try { process.kill(Number(pid)); } catch {} }
   }
 }

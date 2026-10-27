@@ -1,10 +1,7 @@
 ---
 name: aos-setup
 description: >-
-  Bring a machine to a complete, verified AOS installation: the skills pack,
-  MCP servers, gate hooks, memB (engine, MCP, ambient hook, WebUI), OpenWiki
-  (CLI, auth, harness integrations, refresh daemon) and Synapse. Run once on a
-  new computer, and again whenever something in the ecosystem stopped working.
+  Bring a machine to a verified AOS install: skills pack, MCP servers, gate hooks, memB, OpenWiki, Synapse. Run on a new computer or after breakage.
 category: bdb-core
 risk: low
 source: bdb
@@ -114,7 +111,10 @@ person this machine belongs to, injected into every prompt. The doctor's
 
 Run it as a conversation, one question at a time: who the user is and their
 role, company and brands, how the workspace is structured, and their ground
-rules. Propose sources instead of asking blind — glob `WORKSPACE.md`,
+rules. Ask in the language the user writes in, never one taken from other
+context (memory, workspace files, the person who shared the setup prompt);
+store the facts in that same language unless the user asks otherwise.
+Propose sources instead of asking blind — glob `WORKSPACE.md`,
 `AGENTS.md` and `agents.md` directly under the configured workspace root (e.g.
 `~/dev/WORKSPACE.md`) and offer each as source material before using it. Never
 read the whole tree.
@@ -350,6 +350,26 @@ Then hand off: **the machine is ready; per-project setup runs through
 `/aos-project-init` in each repository.**
 
 ---
+
+## Router and team
+
+The router is advisory: it suggests which harness/worker fits a role
+(architect, techlead, reviewer, builder, scout) and never blocks. The shipped
+table is `config/router.json`; override it per user in `~/.aos/router.json`
+and per project in `.aos/router.json` (project beats user beats shipped).
+
+- Installer step "Team & Router" is optional; the safe default keeps the shipped table.
+  It asks only for your main harness and which targets you have (claude,
+  opencode-go, agy, codex, claude-glm), detecting installed CLIs, never guessing.
+- Non-interactive: `--router=default|claude-only|budget` and `--context=<profile>`.
+- Inspect and edit afterwards: `aos-router show`, `aos-router test <role>`,
+  `aos-router set <role> <target[,target...]> [--project|--user]`.
+- Peers: `aos-a2a list` shows running A2A peers. Read-only information; setup writes no A2A config.
+
+## 5.3 state
+
+Record what this machine ended up with, read from `~/.aos/v5-settings.json` and the router files, without changing anything:
+context profile, updates policy (notify, auto or off), installed mods, gateway on/off, memory on/off, and whether `~/.aos/router.json` exists.
 
 ## Red flags
 

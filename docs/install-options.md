@@ -28,6 +28,20 @@ A corrupt or oddly shaped `~/.aos/v5-settings.json` never stops status, update, 
 uninstall: unknown profile names, a `disabled` that is not a list of known package ids and a
 `noHooks` that is not true/false are ignored with one warning, and the rest is used.
 
+## Skill set
+
+`--skill-set=all|core`, saved in `~/.aos/v5-settings.json` like `--profile` (a flag on the command line is saved;
+`aos update` keeps it). Default `all`: every shipped skill is installed, as before.
+
+`core` installs only the skills named in `lib/core-skills.json`. The rest stay inside the npm package and install
+offline on demand: `aos store list --source=aos`, `aos store install <name>`. The list is the proposal from
+`docs/skill-audit-5.4.md`; it is not final until the owner approves it.
+
+When an install or update runs with `core`, installed copies of moved skills are removed from the global skill dirs:
+only folders the installer wrote (install manifest), edited or foreign files are copied to
+`~/.agents/backups/skill-set-core-<timestamp>/` first, and skills you installed yourself with `aos store install`
+are left alone. The run prints which skills moved and how to install them. Switch back with `--skill-set=all`.
+
 ## Hooks
 
 - `--no-hooks` skips only the context-injection hooks: `memb-inject`, `rules-inject`,
@@ -36,7 +50,7 @@ uninstall: unknown profile names, a `disabled` that is not a list of known packa
 - **The gate and safety hooks are always installed and never removed by any profile or flag:**
   `go-gate`, `go-token`, `go-grant`, `graph-gate`, `conventional-commits`, `env-file-protection`.
   (Claude Code gets all six. Antigravity wires go-gate, graph-gate, conventional-commits and
-  env-file-protection; Codex wires go-gate and graph-gate.)
+  env-file-protection; Codex wires the same four. `memb-session-save` and `trail-autostart` are Claude-only by design: the first reads the Claude transcript format, the second reacts to the Agent/Task tool.)
 - `gate-profile.mjs` is not a hook entry but `go-gate.mjs` imports it, so it is copied next to
   `go-gate.mjs` in every hook dir (Claude, Antigravity, Codex; `HOOK_IMPORTS` in `lib/v5/profile.js`)
   and into `~/.aos/bin`. It is installed with the gate hooks and is not affected by `--no-hooks`

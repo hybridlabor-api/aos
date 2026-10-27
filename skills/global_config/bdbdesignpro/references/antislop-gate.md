@@ -1,6 +1,6 @@
 # Anti-Slop Gate
 
-The four blocking criteria `Reviewer` checks against any `/bdbdesignpro` output, each with a mechanical check — not a vibe check. This file is the enforceable version of `SKILL.md` Phase 5; `startcycle-hook.md` references these same four criteria for the `Godmode_UI_UX` Reviewer step.
+The four blocking criteria `Reviewer` checks against any `/bdbdesignpro` output, each with a mechanical check — not a vibe check. This file is the enforceable version of `SKILL.md` Phase 5; `fabric-hook.md` references these same four criteria for the `Godmode_UI_UX` Reviewer step.
 
 ---
 

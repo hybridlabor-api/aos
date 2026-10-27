@@ -115,3 +115,19 @@ test('aos-doctor: an unreadable OpenCode config is a warning, not a crash', () =
   assert.equal(r.ok, false);
   assert.equal(r.warningOnly, true);
 });
+
+test('aos-doctor: Codex hook review fix text includes documented --dangerously-bypass-hook-trust opt-in', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-doctor-codex-'));
+  try {
+    const codexDir = path.join(home, '.codex');
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.writeFileSync(path.join(codexDir, 'config.toml'), '[[hooks.PreToolUse]]\ncommand = "node /tmp/go-gate.mjs"\n');
+    let stdout;
+    try {
+      stdout = execFileSync(process.execPath, [doctorScript, '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home } });
+    } catch (err) { stdout = err.stdout; }
+    const review = JSON.parse(stdout).results.find((r) => r.name === 'Codex hook review');
+    assert.ok(review, 'must include Codex hook review check');
+    assert.ok(review.fix.includes('--dangerously-bypass-hook-trust'), 'fix text must surface --dangerously-bypass-hook-trust');
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

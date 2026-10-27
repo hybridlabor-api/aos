@@ -5,7 +5,7 @@
  *
  * Requirements Covered:
  * - R1: Cross-Harness Hook Installation (Antigravity hooks.json, Codex config.toml, Claude settings.json preservation)
- * - R2: Workflow Execution via Hooks (startcycle-dispatch.mjs fast-exit, CLI args, standalone runtime)
+ * - R2: Workflow Execution via Hooks (fabric-dispatch.mjs fast-exit, CLI args, standalone runtime)
  * - R3: Harness-Agnostic memB Injection (multi-harness inputs, project root traversal, multi-key matching, tri-format output)
  * - R4: AOS-Setup Verification & aos-doctor.mjs multi-harness diagnostic checks
  *
@@ -33,7 +33,7 @@ delete process.env.CLAUDE_CONFIG_DIR;
 const REPO_ROOT = path.resolve(__dirname, '..');
 const INSTALLER_PATH = path.join(REPO_ROOT, 'installer.js');
 const MEMB_INJECT_SRC = path.join(REPO_ROOT, '.claude', 'hooks', 'memb-inject.mjs');
-const STARTCYCLE_DISPATCH_SRC = path.join(REPO_ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
+const FABRIC_DISPATCH_SRC = path.join(REPO_ROOT, '.claude', 'workflows', 'fabric-dispatch.mjs');
 const DOCTOR_SRC = path.join(REPO_ROOT, 'skills', 'global_config', 'aos-setup', 'scripts', 'aos-doctor.mjs');
 const SETUP_SKILL_MD = path.join(REPO_ROOT, 'skills', 'global_config', 'aos-setup', 'SKILL.md');
 
@@ -139,7 +139,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
 
             const preInvocCmds = (data['aos-context'].PreInvocation || []).map(e => e.command);
             assert.ok(preInvocCmds.some(c => c && c.includes('memb-inject.mjs')), 'PreInvocation must run memb-inject.mjs');
-            assert.ok(preInvocCmds.some(c => c && c.includes('startcycle-dispatch.mjs')), 'PreInvocation must run startcycle-dispatch.mjs');
+            assert.ok(preInvocCmds.some(c => c && c.includes('fabric-dispatch.mjs')), 'PreInvocation must run fabric-dispatch.mjs');
         });
 
         test('Antigravity hooks merger preserves foreign hooks', () => {
@@ -191,7 +191,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(toml.includes('go-gate.mjs'), 'config.toml must wire go-gate.mjs');
             assert.ok(toml.includes('graph-gate.mjs'), 'config.toml must wire graph-gate.mjs');
             assert.ok(toml.includes('memb-inject.mjs'), 'config.toml must wire memb-inject.mjs');
-            assert.ok(toml.includes('startcycle-dispatch.mjs'), 'config.toml must wire startcycle-dispatch.mjs');
+            assert.ok(toml.includes('fabric-dispatch.mjs'), 'config.toml must wire fabric-dispatch.mjs');
         });
 
         test('Codex TOML merger preserves foreign sections and user MCP servers', () => {
@@ -307,10 +307,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(fs.existsSync(cfgPath), 'opencode.jsonc must be written by the Quick Update path');
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             assert.ok(Array.isArray(cfg.plugin), 'plugin must be an array');
-            assert.ok(
-                cfg.plugin.some(p => String(p).includes('bdb-aos')),
-                'bdb-aos.js must be registered in the plugin array'
-            );
+            assert.ok(!cfg.plugin.some(p => String(p).includes('bdb-aos')), 'bdb-aos.js is auto-loaded from plugins/, never listed in plugin[]');
         });
 
         test('hooks are copied to plugins/aos-hooks and the plugin stays registered once', () => {
@@ -323,7 +320,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 assert.deepStrictEqual(fs.readFileSync(copy), fs.readFileSync(path.join(REPO_ROOT, '.claude', 'hooks', `${f}.mjs`)));
             }
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-            assert.strictEqual(cfg.plugin.filter(p => String(p).includes('bdb-aos')).length, 1);
+            assert.strictEqual(cfg.plugin.filter(p => String(p).includes('bdb-aos')).length, 0);
             assert.ok(!cfg.plugin.some(p => String(p).includes('aos-hooks')), 'aos-hooks must not be registered as a plugin');
         });
 
@@ -333,7 +330,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             run(CALL(cfgPath));
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             const hits = cfg.plugin.filter(p => String(p).includes('bdb-aos'));
-            assert.strictEqual(hits.length, 1, `bdb-aos registered ${hits.length}x, expected exactly 1`);
+            assert.strictEqual(hits.length, 0, `bdb-aos listed ${hits.length}x in plugin[], expected auto-load only`);
         });
 
         test('preserves user-owned keys in an existing opencode.jsonc', () => {
@@ -350,16 +347,16 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             assert.strictEqual(cfg.model, 'anthropic/claude-sonnet-4-5', 'user model must survive');
             assert.ok(cfg.plugin.includes('opencode-helicone-session'), 'foreign plugin entries must survive');
-            assert.ok(cfg.plugin.some(p => String(p).includes('bdb-aos')), 'bdb-aos must be added');
+            assert.ok(!cfg.plugin.some(p => String(p).includes('bdb-aos')), 'bdb-aos is auto-loaded, not added to plugin[]');
         });
 
         test('shipped slash-command payload is copied alongside the plugin', () => {
-            const cmdSrc = path.join(REPO_ROOT, '.opencode', 'commands', 'startcycle-graph.md');
-            assert.ok(fs.existsSync(cmdSrc), 'startcycle-graph.md command payload must exist in the repo');
+            const cmdSrc = path.join(REPO_ROOT, '.opencode', 'commands', 'fabric-graph.md');
+            assert.ok(fs.existsSync(cmdSrc), 'fabric-graph.md command payload must exist in the repo');
 
             const cfgPath = path.join(tmpDir, '.config', 'opencode', 'opencode.jsonc');
             run(CALL(cfgPath));
-            const cmdDest = path.join(tmpDir, '.config', 'opencode', 'commands', 'startcycle-graph.md');
+            const cmdDest = path.join(tmpDir, '.config', 'opencode', 'commands', 'fabric-graph.md');
             assert.ok(fs.existsSync(cmdDest), 'command must be copied to ~/.config/opencode/commands/');
         });
 
@@ -393,11 +390,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
         });
     });
 
-    describe('R2: Workflow Execution via Hooks (startcycle-dispatch.mjs)', () => {
+    describe('R2: Workflow Execution via Hooks (fabric-dispatch.mjs)', () => {
 
-        test('startcycle-dispatch.mjs exits cleanly (0) on non-command prompts without throwing ReferenceError', () => {
+        test('fabric-dispatch.mjs exits cleanly (0) on non-command prompts without throwing ReferenceError', () => {
             // Test Antigravity format
-            const agRes = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+            const agRes = runNodeScript(FABRIC_DISPATCH_SRC, {
                 input: JSON.stringify({
                     conversationId: 'conv-test-1',
                     prompt: 'What does this project do?'
@@ -408,7 +405,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(!agRes.stderr.includes('SyntaxError'), 'Must not throw SyntaxError');
 
             // Test Codex format
-            const cdxRes = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+            const cdxRes = runNodeScript(FABRIC_DISPATCH_SRC, {
                 input: JSON.stringify({
                     session_id: 'codex-sess-1',
                     prompt: 'Refactor the helper functions',
@@ -419,11 +416,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(!cdxRes.stderr.includes('ReferenceError'), 'Must not throw ReferenceError');
         });
 
-        test('startcycle-dispatch.mjs recognizes /startcycle-graph prompt and extracts goal', () => {
+        test('fabric-dispatch.mjs recognizes /fabric-graph prompt and extracts goal', () => {
             // Invoking with goal via stdin
-            const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+            const res = runNodeScript(FABRIC_DISPATCH_SRC, {
                 input: JSON.stringify({
-                    prompt: '/startcycle-graph Add user authentication via OAuth'
+                    prompt: '/fabric-graph Add user authentication via OAuth'
                 })
             });
 
@@ -434,8 +431,8 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(!res.stderr.includes('ReferenceError: pipeline is not defined'), 'pipeline runtime shim must prevent crash');
         });
 
-        test('startcycle-dispatch.mjs accepts CLI arguments when run as a standalone script', () => {
-            const res = runNodeScript(STARTCYCLE_DISPATCH_SRC, {
+        test('fabric-dispatch.mjs accepts CLI arguments when run as a standalone script', () => {
+            const res = runNodeScript(FABRIC_DISPATCH_SRC, {
                 args: ['--help']
             });
             // Running with --help or standalone goal should not crash with SyntaxError

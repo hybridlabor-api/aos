@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -13,25 +13,16 @@ const original = readFileSync(MANIFEST, 'utf8');
 const manifest = JSON.parse(original);
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 
-// The manifest ships one explicit path per skill directory. A new skill that
-// nobody re-ran the generator for would reach users as an inert file, so
-// --check is the only thing standing between that and a silently short plugin.
+// The manifest no longer ships skills; they are installed separately by the AOS
+// installer and live in loose copies as the single source of truth.
 assert.equal(manifest.version, pkg.version, 'plugin version must track package.json');
 
 // `claude plugin tag` refuses to release unless both manifests agree.
 const market = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
 const entry = market.plugins.find((plugin) => plugin.name === manifest.name);
 assert.equal(entry?.version, pkg.version, 'marketplace entry version must track package.json');
-assert.ok(manifest.skills.length > 100, `expected the full skill pack, got ${manifest.skills.length}`);
-assert.deepEqual(manifest.skills, [...manifest.skills].sort(), 'skills must be sorted for a stable diff');
-
-for (const entry of manifest.skills) {
-  assert.ok(entry.startsWith('./skills/'), `unexpected skill path: ${entry}`);
-  assert.ok(
-    readFileSync(join(ROOT, entry, 'SKILL.md'), 'utf8').length > 0,
-    `manifest lists a skill with no readable SKILL.md: ${entry}`,
-  );
-}
+assert.ok(!manifest.skills, 'manifest must not bundle skills (installed separately by AOS)');
+assert.ok(manifest.commands && manifest.commands.length > 0, 'manifest must have commands');
 
 // Agents resolve by convention at <plugin-root>/agents/*.md. The manifest's
 // "agents" key passes schema validation and then loads nothing, so it must stay
@@ -40,17 +31,18 @@ assert.ok(!('agents' in manifest), 'the agents manifest key is a no-op; agents l
 
 run('--check');
 
-// Subfolder plugin: identical manifest, symlinks into the repo root.
+// Subfolder plugin: identical manifest, real copies (git symlinks break with core.symlinks=false), no skills.
 const SUB = join(ROOT, 'plugins', 'bdb-aos');
 const SUB_MANIFEST = join(SUB, '.claude-plugin', 'plugin.json');
 const subOriginal = readFileSync(SUB_MANIFEST, 'utf8');
 assert.equal(subOriginal, original, 'subfolder plugin.json must match the root manifest');
 assert.equal(entry.source, './plugins/bdb-aos', 'marketplace entry must point at the subfolder plugin');
-for (const name of ['skills', 'agents']) {
-  assert.ok(lstatSync(join(SUB, name)).isSymbolicLink(), `plugins/bdb-aos/${name} must be a symlink`);
-  assert.equal(readlinkSync(join(SUB, name)).replace(/\\/g, '/'), `../../${name}`); // Windows readlink returns backslashes
+for (const name of ['agents', 'commands', 'agy-commands']) {
+  assert.ok(lstatSync(join(SUB, name)).isDirectory() && !lstatSync(join(SUB, name)).isSymbolicLink(), `plugins/bdb-aos/${name} must be a real directory`);
 }
-assert.ok(readFileSync(join(SUB, manifest.skills[0], 'SKILL.md'), 'utf8').length > 0, 'skills resolve through the symlink');
+assert.ok(!existsSync(join(SUB, 'skills')), 'plugins/bdb-aos/skills must not exist');
+const listed = execFileSync('git', ['ls-files', '-s', 'plugins/bdb-aos'], { cwd: ROOT, encoding: 'utf8' });
+assert.ok(!/^120000 /m.test(listed), 'no git symlink (mode 120000) under plugins/bdb-aos');
 
 try {
   writeFileSync(SUB_MANIFEST, '{"name":"bdb-aos"}\n');
@@ -59,11 +51,10 @@ try {
   writeFileSync(SUB_MANIFEST, subOriginal);
 }
 try {
-  rmSync(join(SUB, 'agents'));
-  assert.throws(() => run('--check'), /symlinks/, '--check must fail on a missing symlink');
+  writeFileSync(join(SUB, 'commands', 'doctor.md'), 'drift\n');
+  assert.throws(() => run('--check'), /copies/, '--check must fail on a drifted copy');
 } finally {
-  rmSync(join(SUB, 'agents'), { force: true });
-  symlinkSync('../../agents', join(SUB, 'agents'));
+  run();
 }
 run('--check');
 
@@ -126,4 +117,4 @@ for (const file of ['.codex-plugin/plugin.json', 'plugin.json', '.agents/plugins
 }
 run('--check');
 
-console.log(`build-plugin-manifest: ${manifest.skills.length} skills, --check catches drift`);
+console.log(`build-plugin-manifest: slim manifest (${manifest.commands.length} commands), --check catches drift`);

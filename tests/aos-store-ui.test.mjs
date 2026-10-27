@@ -118,23 +118,23 @@ test('WP4: catalog/previewMeta are exported for the hub', async () => {
 });
 
 test('GET /api/skill: core skill doc, frontmatter + body, root-relative path', async () => {
-  const res = await fetch(base + '/api/skill?name=startcycle');
+  const res = await fetch(base + '/api/skill?name=fabric');
   assert.equal(res.status, 200);
   const d = await res.json();
-  assert.equal(d.name, 'startcycle');
+  assert.equal(d.name, 'fabric');
   assert.equal(d.kind, 'skill');
   assert.match(d.frontmatter, /name:/);
   assert.ok(d.body.length > 0);
   assert.equal(d.truncated, false);
   assert.match(d.path, /^(skills|agents|\.claude)\//);
-  assert.equal(d.path, 'skills/basic/startcycle/SKILL.md');
+  assert.equal(d.path, 'skills/basic/fabric/SKILL.md');
 });
 
 test('GET /api/skill: 400 for traversal, empty name and bad kind; 404 for unknown', async () => {
   for (const q of ['name=a%2Fb', 'name=..', 'name=%2e%2e%2fetc', 'name=', '']) {
     assert.equal((await fetch(`${base}/api/skill?${q}`)).status, 400, q);
   }
-  assert.equal((await fetch(base + '/api/skill?name=startcycle&kind=foo')).status, 400);
+  assert.equal((await fetch(base + '/api/skill?name=fabric&kind=foo')).status, 400);
   assert.equal((await fetch(base + '/api/skill?name=no-such-skill-xyz')).status, 404);
 });
 
@@ -167,10 +167,10 @@ test('readLocalDoc: CRLF frontmatter split; symlink, directory and outside-root 
 test('B3: GET / serves the card UI with the inspector, /api/skill wiring and the token placeholder replaced', async () => {
   const html = await (await fetch(base + '/')).text();
   assert.match(html, /id="inspector"/);
-  assert.match(html, /\/api\/skill/);
+  assert.match(html, /api\/skill/);
   assert.match(html, /const TOKEN='[0-9a-f]{48}'/);
   assert.doesNotMatch(html, /__TOKEN__/);
   const section = html.slice(html.indexOf('const insp='), html.indexOf("document.addEventListener('keydown'"));
-  assert.ok(section.includes("'/api/preview'"), 'inspector dry run posts to /api/preview');
+  assert.ok(section.includes("'api/preview'"), 'inspector dry run posts to /api/preview');
   assert.ok(!section.includes('/api/install'), 'inspector section never references /api/install');
 });

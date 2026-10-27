@@ -1,6 +1,6 @@
 ---
 name: modern-javascript-patterns
-description: "Comprehensive guide for mastering modern JavaScript (ES6+) features, functional programming patterns, and best practices for writing clean, maintainable, and performant code."
+description: "Modern JavaScript: ES6+, functional patterns, best practices. Clean, maintainable, performant code."
 category: library
 risk: safe
 source: community

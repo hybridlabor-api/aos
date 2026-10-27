@@ -81,6 +81,14 @@ function writeAtomic(file, value) {
   fs.renameSync(tmp, file)
 }
 
+// Exclusive create: link() fails with EEXIST when the file exists, so a second write never overwrites the first.
+export function writeExclusive(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(value), { mode: 0o600, flag: 'wx' })
+  try { fs.linkSync(tmp, file) } finally { try { fs.unlinkSync(tmp) } catch { /* gone */ } }
+}
+
 const codeHash = (salt, code) => sha256(`${salt}:${code}`)
 
 // CLI side: writes the pending record. The code goes to the terminal only and is never
@@ -272,14 +280,10 @@ export function createClick({ port, home, now = Date.now, gate }) {
     const { signCount } = verifyAssertion({ credential: cred, assertion, expectedChallenge: entry.challenge, origin })
     if (signCount > (cred.signCount || 0)) writeAtomic(path.join(gateDir, 'trail-credential.json'), { ...cred, signCount })
 
-    // link() fails when the receipt exists: deciding twice cannot overwrite the first.
-    fs.mkdirSync(goDir, { recursive: true, mode: 0o700 })
-    const tmp = `${receiptFile(payload.session_key, payload.request_id)}.${process.pid}.tmp`
     const body = { payload, assertion: { id: assertion.id, authenticatorData: assertion.authenticatorData, clientDataJSON: assertion.clientDataJSON, signature: assertion.signature } }
-    fs.writeFileSync(tmp, JSON.stringify(body), { mode: 0o600, flag: 'wx' })
-    try { fs.linkSync(tmp, receiptFile(payload.session_key, payload.request_id)) } catch (e) {
+    try { writeExclusive(receiptFile(payload.session_key, payload.request_id), body) } catch (e) {
       throw new ClickError(e && e.code === 'EEXIST' ? 'request-decided' : 'receipt-write-failed', e && e.code === 'EEXIST' ? 409 : 500)
-    } finally { try { fs.unlinkSync(tmp) } catch { /* tmp already gone */ } }
+    }
     decided.add(payload.request_id)
     return { ok: true, kind: payload.kind, expiresAt: payload.expires_at }
   }
