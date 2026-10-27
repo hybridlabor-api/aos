@@ -128,11 +128,26 @@ const doingText = (s) => {
   return ''
 }
 
+// Live counts. The first value is set silently; a later change replays the
+// CSS count-roll (app.css). Reduced motion turns the animation off in CSS.
+const lastCount = new Map()
+function setCount(id, text, value) {
+  const node = document.getElementById(id)
+  if (!node) return
+  node.textContent = text
+  const prev = lastCount.get(id)
+  lastCount.set(id, value)
+  if (prev === undefined || prev === value || !node.classList) return
+  node.classList.remove('roll')
+  void node.offsetWidth
+  node.classList.add('roll')
+}
+
 function renderWaiting(model) {
   const list = document.getElementById('waiting-list')
   clear(list)
   const items = model.waiting || []
-  document.getElementById('waiting-count').textContent = items.length ? `(${items.length})` : ''
+  setCount('waiting-count', items.length ? `(${items.length})` : '', items.length)
   if (!items.length) {
     list.appendChild(el('li', { class: 'dim', text: 'nothing is waiting on you' }))
     return
@@ -165,7 +180,7 @@ function renderSessions(model) {
   const body = document.getElementById('sessions-body')
   clear(body)
   const sessions = model.sessions || []
-  document.getElementById('sessions-count').textContent = sessions.length ? `(${sessions.length})` : ''
+  setCount('sessions-count', sessions.length ? `(${sessions.length})` : '', sessions.length)
   if (!sessions.length) {
     body.appendChild(el('span', { class: 'dim', text: 'no session is reporting' }))
     return
@@ -280,7 +295,7 @@ function renderPlans(model) {
 function renderArchive(model) {
   const host = document.getElementById('archive-list')
   const items = model.archive || []
-  document.getElementById('archive-count').textContent = String(items.length)
+  setCount('archive-count', String(items.length), items.length)
   clear(host)
   if (!items.length) {
     host.removeAttribute('data-cols')
