@@ -36,6 +36,7 @@ test('drive runs a whole run and exits 0 at ready_to_ship, one JSON event per li
   assert.equal(end.at(-1).kind, 'ready_to_ship');
   assert.deepEqual(r.lines.at(-1), { event: 'done', run: 'r', phase: 'ready_to_ship', iteration: 0 });
   assert.equal(r.errors, '');
+  assert.equal(fs.existsSync(path.join(p.dir, 'production_artifacts', 'runs', 'r', 'reports')), false, 'drive hands the report over directly, it writes nothing through the executor\'s report path');
 }));
 
 test('drive on a finished run runs nothing: 0 when it is ready to ship, 6 when a human is needed or it was cancelled', withProject(async (p) => {
@@ -218,6 +219,15 @@ test('CLI drive, fake executor: an out-of-scope change fails the step on both at
   const { d, done } = viaCli(p, 'scope');
   assert.equal(d.code, 6);
   assert.match(done.reason, /src\/evil\.txt changed outside allowed_writes/);
+}));
+
+test('CLI drive, fake executor: an executor that links its report path to a user file cannot make the driver overwrite it', { skip: process.platform === 'win32' }, withProject((p) => {
+  const victim = path.join(p.base, 'settings.json');
+  fs.writeFileSync(victim, 'precious');
+  const { d, done } = viaCli(p, 'symlink', [], { FAKE_VICTIM: victim });
+  assert.equal(d.code, 6);
+  assert.match(done.reason, /architect gave no usable result in 2 attempts: the report path is a link/);
+  assert.equal(fs.readFileSync(victim, 'utf8'), 'precious');
 }));
 
 test('CLI drive, fake executor: a driver that is not set up leaves the step open', withProject((p) => {

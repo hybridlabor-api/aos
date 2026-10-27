@@ -141,7 +141,7 @@ const stepFor = (p, over = {}) => ({
   expected_report: path.join(p.dir, 'production_artifacts', 'runs', 'r', 'reports', '0-architect-1.json'),
   timeout_s: 30, scope: 'read-only', allowed_writes: ['production_artifacts/**'], model_hint: {}, ...over,
 });
-const fake = (p, scen, over = {}) => executeStep(stepFor(p), { mode: 'fake', env: { ...process.env, AOS_FABRIC_FAKE_EXECUTOR: writeFakeExecutor(p.base), FAKE_SCEN: scen }, ...over });
+const fake = (p, scen, over = {}, extraEnv = {}) => executeStep(stepFor(p), { mode: 'fake', env: { ...process.env, AOS_FABRIC_FAKE_EXECUTOR: writeFakeExecutor(p.base), FAKE_SCEN: scen, ...extraEnv }, ...over });
 
 test('a normal executor leaves a valid report, and the driver stamps who ran it', withProject(async (p) => {
   const r = await fake(p, 'ok');
@@ -172,6 +172,16 @@ test('a report file above the size cap is a broken report, not a memory problem'
   assert.equal(r.report.status, 'fail');
   assert.equal(r.report.findings[0].id, 'bad-report');
   assert.match(r.report.findings[0].summary, /the report is too large: the report file is \d+ bytes, more than the 2097152 allowed/);
+}));
+
+test('a report path that the executor turned into a link is not followed: the report fails, the file behind the link is untouched', { skip: process.platform === 'win32' }, withProject(async (p) => {
+  const victim = path.join(p.base, 'victim.json');
+  fs.writeFileSync(victim, 'precious');
+  const r = await fake(p, 'symlink', {}, { FAKE_VICTIM: victim });
+  assert.equal(r.report.status, 'fail');
+  assert.equal(r.report.findings[0].id, 'bad-report');
+  assert.match(r.report.findings[0].summary, /the report path is a link/);
+  assert.equal(fs.readFileSync(victim, 'utf8'), 'precious');
 }));
 
 test('a report printed as the last JSON object of stdout is accepted when no file was written', withProject(async (p) => {

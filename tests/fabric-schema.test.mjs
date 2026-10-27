@@ -83,6 +83,11 @@ test('report: findings are validated item by item', () => {
   assert.equal(validateReport(report({ findings: Array.from({ length: 201 }, (_, i) => ({ ...good, id: `f${i}` })) })).ok, false);
 });
 
+test('report: artifact keys are plain words, they become keys of the state', () => {
+  for (const key of ['plan', 'frontend', 'review_2', 'A1']) assert.equal(validateReport(report({ artifacts: { [key]: 'a.md' } })).ok, true, key);
+  for (const key of ['', 'a b', 'a\nb', '../x', 'x'.repeat(41), 'ä']) assert.equal(validateReport(report({ artifacts: { [key]: 'a.md' } })).ok, false, JSON.stringify(key));
+});
+
 test('report: artifacts, gate, optional_nodes, files_changed and needs_human are typed', () => {
   assert.equal(validateReport(report({ artifacts: { plan: 'a.md' } })).ok, true);
   assert.equal(validateReport(report({ artifacts: { plan: 3 } })).ok, false);

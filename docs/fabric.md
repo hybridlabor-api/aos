@@ -67,13 +67,13 @@ from `pipeline.json`, never binding), `timeout_s` (per node in `.agents/nodes.js
 `artifacts` (`plan` for Architect, the node's `artifactKey` for build nodes), `files_changed`, `needs_human`, `executor`,
 `gate` (Shipping: `lint typecheck tests a11y seo security`, each `pass|fail|skip`), `optional_nodes` (Architect: optional
 build nodes the plan needs). A TechLead rejection is `ok` plus blocking findings for `architect`; a human change request is
-`fail` plus a blocking finding for `architect`. Another major version is exit 2; unknown fields of major 1 are ignored
+`fail` plus a blocking finding for `architect` (a `fail` that `report --fail` records for a crashed or silent worker is a failed step to retry, also for the human step). Another major version is exit 2; unknown fields of major 1 are ignored
 but kept in the event log.
 
 **The report is a proposal.** `report` checks it against reality: `artifacts` must exist inside the work tree (no
 absolute path, no `..`, no link leaving it, only letters, digits and `. _ - / @ +`, because artifact paths reappear in later briefs and commands), Shipping must give every gate key, and `git status` is compared with the
 snapshot taken when the step was issued: a path changed outside `allowed_writes` (or outside the work tree) turns the
-report into a failed step. A work tree that is no git repository cannot be checked and is noted in the event.
+report into a failed step. A work tree that is no git repository (or has no git) cannot be checked and is noted in the event; a repository whose change cannot be read (timeout, too much output, dubious ownership, a lost baseline) is a failed step too, never "nothing changed". Artifact paths are stored in normal form. A build node can close a finding of the Reviewer (`status`), nothing more, and the Reviewer's next brief shows only its own earlier blocking findings, without status.
 
 ### State
 
