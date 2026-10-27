@@ -551,12 +551,29 @@ function awaitRequest(port, key, timeoutMs) {
             reject(new Error('await response was not JSON (server restarted?) - re-run await; feedback is never lost'));
           }
         });
+        // Headers (and heartbeat blanks) are already out when the server drops the socket: no 'end', no request error.
+        res.on('error', reject);
+        res.on('close', () => { if (!res.complete) reject(Object.assign(new Error('await connection reset (ECONNRESET)'), { code: 'ECONNRESET' })); });
       }
     );
     req.setTimeout(0);
     req.on('error', reject);
     req.end();
   });
+}
+
+// The server drops held polls when it restarts on new code (watchCodeStamp) or crashes; queued
+// feedback survives on disk, so wait for it to come back and re-park instead of giving up.
+async function awaitWithReconnect(port, key, timeoutMs, { attempts = 20, retryMs = 500 } = {}) {
+  for (let i = 0; ; i++) {
+    try {
+      return await awaitRequest(port, key, timeoutMs);
+    } catch (error) {
+      if (i >= attempts) throw error;
+      for (let j = 0; j < 40 && !(await healthCheck(port)); j++) await sleep(retryMs / 5);
+      await sleep(retryMs);
+    }
+  }
 }
 
 // A bdb-plan-builder session is keyed by the built plan.builder.html, but agents
@@ -655,7 +672,7 @@ async function cmdAwait(file, args, { stateDir, port }) {
   const timeoutRaw = valueAfter(args, '--timeout-ms');
   const timeoutMs = timeoutRaw === null ? null : Number.parseInt(timeoutRaw, 10) || 0;
   process.stderr.write('[plan-canvas] waiting for human feedback... leave this running (re-run if interrupted; queued feedback is never lost)\n');
-  const result = await awaitRequest(port, sessionKeyFor(canonicalizeArtifactPath(file)), timeoutMs);
+  const result = await awaitWithReconnect(port, sessionKeyFor(canonicalizeArtifactPath(file)), timeoutMs);
   if (result.status === 'feedback') {
     result.next_step = result.sessionEnded
       ? 'The user sent this feedback and ended the session. Address it and report in chat; do not reopen the canvas uninvited.'
