@@ -99,6 +99,9 @@ async function main() {
   return 0;
 }
 
+// Hard wall-clock budget: ~70 % of this hook's 5 s timeout; past it, exit 0 with nothing claimed or printed (claim and
+// print run synchronously together, so the timer never fires between them).
+setTimeout(() => process.exit(0), 3500 - process.uptime() * 1000).unref();
 main().then(
   (code) => process.exit(code),
   () => process.exit(0),

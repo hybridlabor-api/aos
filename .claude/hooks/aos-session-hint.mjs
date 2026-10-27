@@ -131,6 +131,8 @@ async function main() {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 if (process.argv[1] && isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 3 s timeout; past it, exit 0 without a hint.
+  setTimeout(() => process.exit(0), 2000 - process.uptime() * 1000).unref();
   try { await main(); } catch {}
   process.exit(0);
 }

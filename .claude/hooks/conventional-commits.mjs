@@ -130,6 +130,8 @@ export function checkConventionalCommit(command) {
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
 async function main() {
+  // Hard wall-clock budget: ~70 % of this hook's 10 s timeout. Past it: exit 0, as for unparseable input.
+  setTimeout(() => process.exit(0), 7000 - process.uptime() * 1000).unref();
   const rawInput = (await readStdinBounded(2000)) ?? "";
   let input = {};
   if (rawInput.trim()) {

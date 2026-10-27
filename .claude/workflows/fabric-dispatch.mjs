@@ -291,6 +291,11 @@ let inputSkills = [];
 let isHookInvocation = false;
 // Codex/Claude payloads carry hook_event_name and reject agy's injectSteps; agy payloads do not.
 let hookEventName = '';
+// Hook mode only (Codex UserPromptSubmit and agy PreInvocation, both 30 s): a hard budget of ~70 % of that. Every
+// synchronous child below gets at most the time left (hookMs), so the budget timer can fire right after it.
+const HOOK_BUDGET_MS = 20000;
+let hookDeadline = 0;
+const hookMs = (ms) => (hookDeadline ? Math.max(1, Math.floor(Math.min(ms ?? Infinity, hookDeadline - Date.now()))) : ms);
 
 // 1. Fast-exit & input handling for hook invocations (Antigravity PreInvocation, Codex UserPromptSubmit)
 if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && fs) {
@@ -299,6 +304,12 @@ if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && f
     try { stdinRaw = ((await readStdinBounded(1500)) ?? '').trim(); } catch {}
     if (stdinRaw) {
       isHookInvocation = true;
+      hookDeadline = Date.now() + HOOK_BUDGET_MS - process.uptime() * 1000;
+      // Past the budget: the same no-op answer as the fast exit below, exit 0.
+      setTimeout(() => {
+        if (!hookEventName) process.stdout.write(JSON.stringify({ injectSteps: [] }) + '\n');
+        process.exit(0);
+      }, hookDeadline - Date.now()).unref();
       let payload = null;
       try { payload = JSON.parse(stdinRaw); } catch {}
 
@@ -508,7 +519,7 @@ if (typeof globalThis.agent === 'undefined') {
           for (const name of missing) {
             try {
               const r = child_process.spawnSync(process.execPath, [cli, 'install', name], {
-                encoding: 'utf8', timeout: 120000, shell: false,
+                encoding: 'utf8', timeout: hookMs(120000), shell: false, windowsHide: true,
               });
               if (r.status === 0 && have(name)) res.installed.push(name);
               else res.stillMissing.push(name);
@@ -623,9 +634,10 @@ if (typeof globalThis.agent === 'undefined') {
         {
           cwd: options.cwd,
           encoding: 'utf8',
-          timeout: options.timeoutMs,
+          timeout: hookMs(options.timeoutMs),
           maxBuffer: options.maxBuffer,
           shell: false,
+          windowsHide: true,
         }
       );
       try {
@@ -654,8 +666,9 @@ if (typeof globalThis.agent === 'undefined') {
       try {
         const agyRes = child_process.spawnSync('agy', ['--print', prompt, '--output-format', 'json', '--print-timeout', '30s'], {
           encoding: 'utf8',
-          timeout: 35000,
+          timeout: hookMs(35000),
           shell: false,
+          windowsHide: true,
           env: options.trail ? { ...process.env, AOS_TRAIL_NODE: options.trail.node, AOS_TRAIL_PLAN: options.trail.plan } : process.env,
         });
         if (agyRes.status === 0 && agyRes.stdout) {
@@ -1442,13 +1455,15 @@ function humanCanvasGate(planFile) {
   const timeoutRaw = process.env.AOS_PLAN_AWAIT_TIMEOUT_MS;
   const timeoutMs = timeoutRaw !== undefined && timeoutRaw !== '' ? Number.parseInt(timeoutRaw, 10) || 0 : (headless ? 30 * 60 * 1000 : 0);
   let run;
+  const cap = hookMs(timeoutMs > 0 ? timeoutMs : undefined);
   try {
     run = child_process.spawnSync(...cliCall('aos-plan-canvas', args), {
       cwd: process.cwd(),
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
       shell: IS_WIN,
-      ...(timeoutMs > 0 ? { timeout: timeoutMs } : {})
+      windowsHide: true,
+      ...(cap > 0 ? { timeout: cap } : {})
     });
   } catch (error) {
     run = { error };
@@ -1645,7 +1660,7 @@ while (!approved) {
 
   try {
     if (fs && fs.existsSync && fs.existsSync(architectureHtml) && child_process) {
-      const canvas = child_process.spawn(...cliCall('aos-plan-canvas', ['open', architectureHtml, '--no-open']), { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: IS_WIN, detached: true });
+      const canvas = child_process.spawn(...cliCall('aos-plan-canvas', ['open', architectureHtml, '--no-open']), { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: IS_WIN, detached: true, windowsHide: true });
       if (canvas && typeof canvas.on === 'function') canvas.on('error', (e) => process.stderr.write(`[fabric-dispatch] architecture canvas not opened: ${e?.message || e}\n`));
       if (canvas && typeof canvas.unref === 'function') canvas.unref();
     }
@@ -1755,14 +1770,14 @@ const NODE_NAMES = humanList(NODE_ENUM);
 let trailPlan = planPath;
 if (/plan\.mdx$/i.test(planPath) && child_process) {
   try {
-    const t = child_process.spawnSync(...cliCall('aos-plan-canvas', ['trail', planPath, '--force']), { cwd: process.cwd(), encoding: 'utf8', shell: IS_WIN });
+    const t = child_process.spawnSync(...cliCall('aos-plan-canvas', ['trail', planPath, '--force']), { cwd: process.cwd(), encoding: 'utf8', shell: IS_WIN, windowsHide: true, timeout: hookMs(60000) });
     const out = t.status === 0 ? lastJsonObject(t.stdout)?.out : '';
     if (out) trailPlan = out;
   } catch (e) { process.stderr.write(`[fabric-dispatch] trail derivation skipped: ${e?.message || e}\n`); }
 }
 try {
   child_process?.spawn(...cliCall('aos-trail', [process.cwd(), '--plan', trailPlan, '--no-open']),
-    { detached: true, stdio: 'ignore', shell: IS_WIN }).on('error', (e) => process.stderr.write(`[fabric-dispatch] live map not started: ${e?.message || e}\n`)).unref();
+    { detached: true, stdio: 'ignore', shell: IS_WIN, windowsHide: true }).on('error', (e) => process.stderr.write(`[fabric-dispatch] live map not started: ${e?.message || e}\n`)).unref();
 } catch (e) { process.stderr.write(`[fabric-dispatch] live map not started: ${e?.message || e}\n`); }
 
 let findings = [];

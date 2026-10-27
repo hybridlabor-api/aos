@@ -26,6 +26,9 @@ const logErr = (m) => {
 };
 process.on("uncaughtException", (e) => { logErr(`uncaught: ${e?.stack || e}`); process.exitCode = 0; });
 process.on("unhandledRejection", (e) => { logErr(`unhandled: ${e?.stack || e}`); process.exitCode = 0; });
+// Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude 5 s, Codex 10 s). The only exit
+// call: by then the identity line (if any) left long ago. The detached finisher has no harness timeout and no budget.
+if (!finish) setTimeout(() => { logErr("hook budget exceeded"); process.exit(0); }, 3500 - process.uptime() * 1000).unref();
 
 // Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
 // the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
@@ -116,7 +119,9 @@ try {
       const title = lib.sessionTitleOf
         ? lib.sessionTitleOf({ harness, payload: input, env: process.env })
         : undefined;
-      const harnessPid = lib.resolveHarnessPid ? lib.resolveHarnessPid(hookPpid) : hookPpid;
+      // The `ps` walks below block the event loop, so they end at a deadline that leaves the budget timer its margin.
+      const until = finish ? undefined : Date.now() + 1200;
+      const harnessPid = lib.resolveHarnessPid ? lib.resolveHarnessPid(hookPpid, { until }) : hookPpid;
       if (harness === "codex") {
         // Documented codex fallback: with no workspace name the thread id (the session id) labels it.
         const r = lib.ensureSidecar({ harness, sessionId, parentPid: harnessPid, mode: "codex", thread: sessionId, title: title || sessionId });
@@ -128,7 +133,7 @@ try {
         const r = lib.ensureSidecar({ harness, sessionId, parentPid: harnessPid, title });
         reportSkip(r);
         // the bdb-aos plugin monitor has no session_id: it finds this session's inbox through a pid binding
-        if (harness === "claude" && r?.name) (await loadLib("a2a-monitor.mjs"))?.bindSession(r.name);
+        if (harness === "claude" && r?.name) (await loadLib("a2a-monitor.mjs"))?.bindSession(r.name, finish ? {} : { until: Date.now() + 1000 });
       }
     }
   }

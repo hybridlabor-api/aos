@@ -175,4 +175,7 @@ async function main() {
   );
 }
 
+// Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude and agy 10 s). Past it the
+// stop is allowed, exactly like unreadable hook input (fail open, see the header).
+setTimeout(allow, 7000 - process.uptime() * 1000).unref();
 await main();

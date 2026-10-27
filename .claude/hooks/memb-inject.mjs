@@ -30,23 +30,51 @@ import { readFileSync, existsSync, realpathSync, mkdirSync, writeFileSync, fstat
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const COLLECTION = 'bdb_agent_memory';
 const DEFAULT_GROUP_IDS = 'bdb_developer';
 const PROJECT_ROW_CAP = 5;
 const ROW_CHARS = 180;
+// Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (agy 8 s, Claude 10 s, Codex 30 s).
+const BUDGET_MS = 5500;
 const failOpen = () => process.exit(0);
+
+// Children still running. On a timeout the whole tree goes: on Windows the cmd.exe that runs npm's deja.cmd shim
+// leaves node and deja.exe behind, so only taskkill /T reaches them; on POSIX the child leads its own process group.
+const children = new Set();
+function killTree(child) {
+  try {
+    if (process.platform === 'win32') spawnSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true, timeout: 2000 });
+    else process.kill(-child.pid, 'SIGKILL');
+  } catch { try { child.kill('SIGKILL'); } catch {} }
+}
+
+// Async execFileSync stand-in: stdout, or '' on a spawn error, a non-zero exit or the timeout. The event loop stays
+// free, so the hook budget can still fire while a child hangs.
+export function runBounded(cmd, args, { timeout = 3000, ...opts } = {}) {
+  return new Promise((resolve) => {
+    let child;
+    let out = '';
+    const done = (v) => { clearTimeout(timer); children.delete(child); resolve(v); };
+    const timer = setTimeout(() => { if (child?.pid) killTree(child); done(''); }, timeout);
+    try {
+      child = spawn(cmd, args, { ...opts, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, detached: process.platform !== 'win32' });
+    } catch { return done(''); }
+    children.add(child);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('error', () => done(''));
+    child.on('close', (code) => done(code === 0 ? out : ''));
+  });
+}
 
 // `deja wip --json` run in the project root, rendered as context lines.
 // Best-effort: deja missing, slow, or silent yields []. Windows needs a shell
 // to spawn npm's deja.cmd shim; the arguments are fixed, so nothing is injected.
-export function dejaWip(cwd, run = execFileSync, timeout = 3000) {
+export async function dejaWip(cwd, run = runBounded, timeout = 3000) {
   try {
-    const out = run('deja', ['wip', '--json'], {
-      cwd, encoding: 'utf8', timeout,
-      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
-    });
+    const out = await run('deja', ['wip', '--json'], { cwd, timeout, shell: process.platform === 'win32' });
     const wip = JSON.parse(out);
     const lines = (Array.isArray(wip?.lines) ? wip.lines : [])
       .map((l) => String(l).trim().replace(/\s+/g, ' '))
@@ -68,12 +96,9 @@ export function dejaContextOn(env = process.env, home = os.homedir()) {
 }
 
 // `deja hook-context --plain --once`: deja's own session digest, capped. [] when deja is missing or silent.
-export function dejaContext(cwd, run = execFileSync, timeout = 3000) {
+export async function dejaContext(cwd, run = runBounded, timeout = 3000) {
   try {
-    const out = String(run('deja', ['hook-context', '--plain', '--once'], {
-      cwd, encoding: 'utf8', timeout,
-      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
-    })).trim();
+    const out = String(await run('deja', ['hook-context', '--plain', '--once'], { cwd, timeout, shell: process.platform === 'win32' })).trim();
     return out ? [out.slice(0, 1200)] : [];
   } catch {
     return [];
@@ -82,13 +107,10 @@ export function dejaContext(cwd, run = execFileSync, timeout = 3000) {
 
 // `deja last 1 --json` for this project: { title, updated } of the newest session, or null.
 // The project name reaches a win32 shell (npm's deja.cmd shim), so only shell-inert names are passed.
-export function dejaLast(project, cwd, run = execFileSync, timeout = 2500) {
+export async function dejaLast(project, cwd, run = runBounded, timeout = 2500) {
   if (project && !/^[\w.-]+$/.test(project)) return null;
   try {
-    const out = run('deja', ['last', '1', '--json', ...(project ? ['--project', project] : [])], {
-      cwd, encoding: 'utf8', timeout,
-      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
-    });
+    const out = await run('deja', ['last', '1', '--json', ...(project ? ['--project', project] : [])], { cwd, timeout, shell: process.platform === 'win32' });
     const s = JSON.parse(out)?.sessions?.[0];
     return s?.title ? { title: String(s.title), updated: s.updated || s.started || '' } : null;
   } catch {
@@ -284,7 +306,8 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
   try { ({ DatabaseSync } = await import('node:sqlite')); } catch {}
   const db = DatabaseSync && existsSync(dbPath) ? new DatabaseSync(dbPath, { readOnly: true }) : null;
   try {
-    try { db?.exec('PRAGMA busy_timeout = 5000;'); } catch {}
+    // Each query blocks the event loop while it waits on a lock, so the wait stays far inside the hook budget.
+    try { db?.exec('PRAGMA busy_timeout = 500;'); } catch {}
     const textOf = (payload) => {
       const p = JSON.parse(payload);
       return (p.memory || p.data || '').trim().replace(/\s+/g, ' ');
@@ -436,15 +459,15 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     const deadline = Date.now() + 3000;
     const left = () => Math.max(0, deadline - Date.now());
     if (!promptSubmit) {
-      const digest = sessionStart && dejaContextOn() && left() > 100 ? dejaContext(projectRoot, execFileSync, left()) : [];
+      const digest = sessionStart && dejaContextOn() && left() > 100 ? await dejaContext(projectRoot, runBounded, left()) : [];
       if (digest.length) contextItems.push(...digest);
-      else if (left() > 100) contextItems.push(...dejaWip(projectRoot, execFileSync, left()));
+      else if (left() > 100) contextItems.push(...(await dejaWip(projectRoot, runBounded, left())));
     }
 
     if (sessionStart && onStatus && Number(process.env.AOS_DELEGATE_DEPTH || 0) === 0 && process.env.AOS_SESSION_HINT !== 'off') {
       try {
         const project = candidateProjectIds[0] || '';
-        const last = left() > 100 ? dejaLast(project, projectRoot, execFileSync, left()) : null;
+        const last = left() > 100 ? await dejaLast(project, projectRoot, runBounded, left()) : null;
         if (statusCount || last) onStatus(visibleMemoryLine({ count: statusCount, project, last }));
       } catch {}
     }
@@ -511,6 +534,8 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
 // Main logic runs only when the file is executed directly as a hook; importing
 // the module (e.g. from tests) must stay side-effect free.
 async function main() {
+  // Past the budget: kill what still runs and exit 0 with nothing on stdout, before the harness timeout fires.
+  setTimeout(() => { for (const c of children) killTree(c); failOpen(); }, BUDGET_MS - process.uptime() * 1000).unref();
   try {
     let inputRaw = '';
     inputRaw = (await readStdinBounded(1500)) ?? '';

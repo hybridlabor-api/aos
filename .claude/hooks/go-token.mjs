@@ -69,6 +69,8 @@ export function issueGoToken(prompt, { transcript_path, session_id, message_id }
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
 if (isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 5 s timeout. Past it: exit 0 without a token, as on bad input.
+  setTimeout(() => process.exit(0), 3500 - process.uptime() * 1000).unref();
   try {
     const input = JSON.parse((await readStdinBounded(2000)) ?? "");
     issueGoToken(input.prompt, input);

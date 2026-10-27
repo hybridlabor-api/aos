@@ -75,4 +75,4 @@ jobs:
         run: node --check installer.js
 
       - name: Windows hook tests (cmd /c, dry-run smoke)
-        run: node --test tests/windows-hooks.test.js tests/antigravity-hooks.test.js
+        run: node --test tests/windows-hooks.test.js tests/antigravity-hooks.test.js tests/hook-budgets.test.mjs
