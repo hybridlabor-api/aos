@@ -41,6 +41,19 @@ test('store search finds shipped aos skills by multi-word intent', () => {
   assert.match(run(['search', 'zzzz-no-such-skill']), /No store items found/);
 });
 
+test('store search ranks exact name, then name word, then description', () => {
+  const names = (q) => run(['search', ...q.split(' ')]).split('\n').filter((l) => l.startsWith('skill\t')).map((l) => l.split('\t')[1]);
+  const fabric = names('fabric');
+  assert.equal(fabric[0], 'fabric');
+  assert.ok(fabric.indexOf('fabric-graph') < 6 && fabric.indexOf('fabric-multigraph') < 6, fabric.join());
+  assert.equal(names('ask-tim')[0], 'ask-tim');
+});
+
+test('ask-tim catalogue lists every shipped skill and is not stale', () => {
+  const r = spawnSync(process.execPath, [join(root, 'scripts', 'build-skill-catalogue.mjs'), '--check'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+});
+
 test('store CLI dry-run does not write files', () => {
   const output = run(['install', 'django-patterns', '--project', '--dry-run']);
   assert.match(output, /\[dry-run\] write/);

@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_BYTES, aosInstalledExact, fetchSkillFiles, readAosFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
+import { MAX_BYTES, aosInstalledExact, fetchSkillFiles, readAosFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rankSearch, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
 import { installPack, removePack, packOverview, knownPack, packSkillNames } from '../lib/store-packs.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -219,12 +219,8 @@ async function main() {
     return;
   }
   if (command === 'search') {
-    // Every word must match (any order); '-' and '_' count as spaces. The shipped aos skills are searched too.
-    const norm = (t) => t.toLowerCase().replace(/[-_]/g, ' ');
-    const words = norm(positional.slice(1).join(' ')).split(/\s+/).filter(Boolean);
-    if (!words.length) throw new Error('Search requires a query.');
-    const items = allItems(option('--type') || '', { includeLocal: true })
-      .filter(({ name, item }) => { const hay = ' ' + norm(`${name} ${item.description} ${item.category}`); return words.every((w) => hay.includes(' ' + w)); });
+    if (!positional.slice(1).join(' ').trim()) throw new Error('Search requires a query.');
+    const items = rankSearch(allItems(option('--type') || '', { includeLocal: true }), positional.slice(1).join(' '));
     printItems(items);
     return;
   }
