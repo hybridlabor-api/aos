@@ -319,13 +319,21 @@ test('fixture TCP server -> up:true via the port probe', async () => {
 });
 
 test('hub row is probed, not assumed up (CLI status runs without the hub)', async () => {
-  const fixture = createServer_fwd((req, res) => { res.writeHead(200); res.end('ok'); });
+  // Identity: the hub answers {service:'aos-hub'} on /api/health; a bare 200 is a foreign listener.
+  const fixture = createServer_fwd((req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true,"service":"aos-hub"}'); });
   await new Promise((ok) => fixture.listen(0, '127.0.0.1', ok));
   const port = fixture.address().port;
   const closed = (await statusService(recordingCtx({ portOverrides: { hub: 59991 }, wikiRoot: join(tmp, 'no-dev4') }))).find((r) => r.id === 'hub');
   assert.equal(closed.up, false);
   const open = (await statusService(recordingCtx({ portOverrides: { hub: port }, wikiRoot: join(tmp, 'no-dev5') }))).find((r) => r.id === 'hub');
   assert.equal(open.up, true);
+  assert.equal(open.foreign, false);
+  const bare = createServer_fwd((req, res) => { res.writeHead(200); res.end('ok'); });
+  await new Promise((ok) => bare.listen(0, '127.0.0.1', ok));
+  const foreign = (await statusService(recordingCtx({ portOverrides: { hub: bare.address().port }, wikiRoot: join(tmp, 'no-dev6') }))).find((r) => r.id === 'hub');
+  assert.equal(foreign.up, false);
+  assert.equal(foreign.foreign, true);
+  bare.close();
   fixture.close();
 });
 
