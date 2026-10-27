@@ -98,6 +98,15 @@ test('commit writes the event, the projection and the graph-gate mirror', withDi
   assert.equal(s.projectionStale(r.state), true, 'a missing projection is stale: the log wins');
 }));
 
+test('a second write replaces the projection and the mirror (rename over an existing file, on Windows too)', withDir((root) => {
+  const s = createStore('r', { root });
+  start(s);
+  for (let i = 1; i <= 3; i++) s.commit({ kind: 'report_accepted', step_id: `0-a-${i}`, digest: `d${i}`, state: state({ iteration: i }), open_step: null });
+  assert.equal(JSON.parse(fs.readFileSync(s.state, 'utf8')).iteration, 3);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'production_artifacts', 'state.json'), 'utf8')).iteration, 3);
+  assert.equal(s.replay().events.length, 4);
+}));
+
 test('replay folds start, accepted reports and cancel into the last state', withDir((root) => {
   const s = createStore('r', { root });
   start(s);
