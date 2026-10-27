@@ -79,7 +79,7 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
 // Codex on Windows runs the hook inside a kill-on-close job object and Node cannot break away from it
 // (detached is not CREATE_BREAKAWAY_FROM_JOB), so the finisher and the sidecar die when the hook returns.
 // Win32_Process.Create starts the process under WmiPrvSE, outside that job. Resolves true when WMI accepted it.
-export function startOutsideJob(args, { cwd = process.cwd(), execFileImpl = execFile, timeoutMs = 6000 } = {}) {
+export function startOutsideJob(args, { cwd = process.cwd(), execFileImpl = execFile, timeoutMs = 5000 } = {}) {
   return new Promise((resolve) => {
     try {
       const req = createRequire(import.meta.url);
@@ -175,7 +175,7 @@ if (isMain()) {
   // Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude 5 s, Codex 10 s). The only exit
   // call: by then the identity line (if any) left long ago. The detached finisher has no harness timeout and no budget.
   // Windows+codex also waits for the WMI launch (PowerShell cold start), still under the 10 s hook timeout.
-  const budgetMs = process.platform === "win32" && harness === "codex" ? 8000 : 3500;
+  const budgetMs = process.platform === "win32" && harness === "codex" ? 7000 : 3500;
   if (!finish) setTimeout(() => { logErr(harness, finish, "hook budget exceeded"); process.exit(0); }, budgetMs - process.uptime() * 1000).unref();
 
   let input = {};

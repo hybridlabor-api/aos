@@ -1,7 +1,7 @@
 // Windows+Codex: the finisher must start outside Codex's kill-on-close job (WMI), and fall back to a plain spawn when WMI fails.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startOutsideJob } from '../.claude/hooks/a2a-session.mjs';
@@ -30,4 +30,19 @@ test('startOutsideJob reports false on a PowerShell error or a non-zero WMI Retu
 test('the WMI branch is Windows+codex only and falls back to the detached spawn', () => {
   assert.match(SRC, /process\.platform === "win32" && harness === "codex"[^\n]*\n?[^\n]*startOutsideJob/);
   assert.match(SRC, /if \(!viaWmi\) \{\s*const child = spawn\(/);
+});
+
+test('reply does not mkdir/chmod an existing per-peer dir (sandboxed Codex can only write the file)', async () => {
+  const { mkdtempSync, mkdirSync, readFileSync, rmSync, chmodSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { reply } = await import('../lib/a2a-client.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'aos-reply-'));
+  process.env.AOS_A2A_INBOX = root;
+  try {
+    const d = join(root, 'codex-abcd1234');
+    mkdirSync(d, { mode: 0o755 });
+    const { path } = reply({ name: 'codex-abcd1234', taskId: 't1', text: 'pong' });
+    assert.equal(readFileSync(path, 'utf8'), 'pong');
+    assert.equal(statSync(d).mode & 0o777, process.platform === 'win32' ? statSync(d).mode & 0o777 : 0o755);
+  } finally { delete process.env.AOS_A2A_INBOX; rmSync(root, { recursive: true, force: true }); }
 });
