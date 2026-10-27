@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Declarative node registry for /fabric-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher. executor (harness/model class) and scope (read-only | worktree-write | none) are optional and enforced by the dispatcher (graph.md, Workers and scopes). No model is pinned here: a node's model comes only from pipeline.json (docs/agent-models.md).",
+  "description": "Declarative node registry for /fabric-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher. executor (harness/model class), scope (read-only | worktree-write | none), timeout_s (hard limit of one step in seconds) and allowed_writes (globs a step may change) are optional and enforced by the dispatcher and by aos-fabric (graph.md, Workers and scopes). No model is pinned here: a node's model comes only from pipeline.json (docs/agent-models.md).",
   "common": ["read-the-damn-docs", "agenttrail", "archify", "plan-canvas", "stay-within-limits", "quick-recap", "verification-before-completion"],
   "chain": {
     "hops": {
@@ -45,6 +45,8 @@
       "optional": false,
       "executor": "planner",
       "scope": "read-only",
+      "timeout_s": 900,
+      "allowed_writes": ["production_artifacts/**"],
       "skills": [
         "read-the-damn-docs",
         "bdbrainstorm",
@@ -65,6 +67,8 @@
       "optional": false,
       "executor": "planner",
       "scope": "read-only",
+      "timeout_s": 600,
+      "allowed_writes": [],
       "skills": [
         "read-the-damn-docs",
         "fabric-graph",
@@ -84,6 +88,8 @@
       "optional": false,
       "executor": "builder",
       "scope": "worktree-write",
+      "timeout_s": 3600,
+      "allowed_writes": ["**"],
       "skills": [
         "godmode-ui-ux",
         "bdbdesignpro",
@@ -106,6 +112,8 @@
       "optional": false,
       "executor": "builder",
       "scope": "worktree-write",
+      "timeout_s": 3600,
+      "allowed_writes": ["**"],
       "skills": [
         "godmode-engineering",
         "software-architecture",
@@ -129,6 +137,8 @@
       "optional": true,
       "executor": "builder",
       "scope": "worktree-write",
+      "timeout_s": 3600,
+      "allowed_writes": ["**"],
       "skills": [
         "godmode-eventtech",
         "godmode-media-creation",
@@ -150,6 +160,8 @@
       "optional": false,
       "executor": "reviewer",
       "scope": "read-only",
+      "timeout_s": 1200,
+      "allowed_writes": ["production_artifacts/**"],
       "skills": [
         "architect-review",
         "systematic-debugging"
@@ -166,6 +178,8 @@
       "optional": false,
       "executor": "gate",
       "scope": "none",
+      "timeout_s": 1800,
+      "allowed_writes": ["production_artifacts/**"],
       "skills": [
         "godmode-shipping",
         "brag",
