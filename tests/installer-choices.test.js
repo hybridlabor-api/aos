@@ -128,3 +128,40 @@ test('media server selection: forced list and non-interactive detection defaults
         selection.SERVER_GROUPS.media
     );
 });
+
+test('askUpdatesOnce: existing notify is asked once, then remembered', async () => {
+    const home = tmp();
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ updates: 'notify' }));
+    let calls = 0, initial;
+    const ui = { select: async (_m, _o, init) => { calls++; initial = init; return 'auto'; } };
+    assert.strictEqual(await profile.askUpdatesOnce({ home, ui }), 'auto');
+    assert.strictEqual(initial, 'notify');
+    const st = profile.readSettings(home, () => {});
+    assert.strictEqual(st.updates, 'auto');
+    assert.strictEqual(st.updatesAsked, true);
+    assert.strictEqual(await profile.askUpdatesOnce({ home, ui }), null);
+    assert.strictEqual(calls, 1);
+});
+
+test('askUpdatesOnce: unattended or no UI never asks and sets no marker', async () => {
+    const home = tmp();
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ updates: 'off' }));
+    let calls = 0;
+    const ui = { select: async () => { calls++; return 'auto'; } };
+    assert.strictEqual(await profile.askUpdatesOnce({ home, ui, unattended: true }), null);
+    assert.strictEqual(await profile.askUpdatesOnce({ home, ui: {} }), null);
+    assert.strictEqual(calls, 0);
+    const st = profile.readSettings(home, () => {});
+    assert.strictEqual(st.updates, 'off');
+    assert.notStrictEqual(st.updatesAsked, true);
+});
+
+test('askUpdatesOnce: wizard marker suppresses the question', async () => {
+    const home = tmp();
+    profile.writeSettings(home, { disabled: [], updates: 'notify', updatesAsked: true });
+    let calls = 0;
+    await profile.askUpdatesOnce({ home, ui: { select: async () => { calls++; return 'auto'; } } });
+    assert.strictEqual(calls, 0);
+});

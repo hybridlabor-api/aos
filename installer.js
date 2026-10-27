@@ -9048,6 +9048,7 @@ async function main() {
         const chosenUpdate = updatesChoice || UPDATES_ARG || v5Profile.DEFAULT_UPDATES;
         const st = v5Profile.readSettings(homeDir, () => {});
         st.updates = chosenUpdate;
+        if (updatesChoice) st.updatesAsked = true;
         if (!DRY_RUN) v5Profile.writeSettings(homeDir, st);
     }
     if (!isAutoYes && !DRY_RUN && process.stdout.isTTY && process.stdin.isTTY) {
