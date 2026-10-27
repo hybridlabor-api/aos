@@ -277,6 +277,15 @@ const GLYPH_A = ['.###.', '#...#', '#...#', '#####', '#...#', '#...#', '#...#']
 
 const hexRgb = (h: string) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]
 
+// Uint8Array.toBase64 is missing on engines before ES2026; btoa is the portable fallback
+export const bytesToBase64 = (bytes: Uint8Array): string => {
+  const native = bytes as Uint8Array & { toBase64?: () => string }
+  if (typeof native.toBase64 === 'function') return native.toBase64()
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin)
+}
+
 export function logoRgba(): { rgba: string; width: number; height: number } {
   const [ar, ag, ab] = hexRgb(AOS.accent)
   const [ir, ig, ib] = hexRgb(AOS.accentInk)
@@ -291,7 +300,7 @@ export function logoRgba(): { rgba: string; width: number; height: number } {
       bytes.set(glyph ? [ir, ig, ib, 255] : [ar, ag, ab, 255], o)
     }
   }
-  return { rgba: (bytes as Uint8Array & { toBase64(): string }).toBase64(), width: LOGO_PX, height: LOGO_PX }
+  return { rgba: bytesToBase64(bytes), width: LOGO_PX, height: LOGO_PX }
 }
 
 export const logoMark = (hasImage: boolean): { kind: 'image' | 'text'; text: string } =>
