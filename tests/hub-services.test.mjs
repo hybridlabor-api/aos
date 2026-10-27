@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer as createServer_fwd } from 'node:http';
+
+const closeServer = (srv) => new Promise((ok) => { srv.closeAllConnections(); srv.close(ok); });
 import { createHub } from '../lib/hub/server.mjs';
 import { routes as servicesRoutes } from '../lib/hub/routes-services.mjs';
 import {
@@ -315,7 +317,7 @@ test('fixture TCP server -> up:true via the port probe', async () => {
   const ctx = recordingCtx({ portOverrides: { memb: port }, wikiRoot: join(tmp, 'no-dev2') });
   const rows = await statusService(ctx);
   assert.equal(rows.find((r) => r.id === 'memb').up, true);
-  fixture.close();
+  await closeServer(fixture);
 });
 
 test('hub row is probed, not assumed up (CLI status runs without the hub)', async () => {
@@ -333,8 +335,8 @@ test('hub row is probed, not assumed up (CLI status runs without the hub)', asyn
   const foreign = (await statusService(recordingCtx({ portOverrides: { hub: bare.address().port }, wikiRoot: join(tmp, 'no-dev6') }))).find((r) => r.id === 'hub');
   assert.equal(foreign.up, false);
   assert.equal(foreign.foreign, true);
-  bare.close();
-  fixture.close();
+  await closeServer(bare);
+  await closeServer(fixture);
 });
 
 test('serviceMeta: npm uncheckable -> state uncheckable; force flag supported', async () => {
