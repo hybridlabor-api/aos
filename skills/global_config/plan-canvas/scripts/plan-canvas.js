@@ -390,11 +390,18 @@ async function doOpen(file, args, { stateDir, port }) {
     artifact = built.outFile;
   }
 
-  await ensureServer({ stateDir, port });
-  const res = await request(port, 'POST', '/api/sessions', {
-    file: artifact,
-    reopen: args.includes('--reopen')
-  });
+  // An idle-out can land between the health check and the POST (ECONNRESET/ECONNREFUSED): start it again and retry.
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await ensureServer({ stateDir, port });
+      res = await request(port, 'POST', '/api/sessions', { file: artifact, reopen: args.includes('--reopen') });
+      break;
+    } catch (error) {
+      if (attempt >= 3 || !['ECONNRESET', 'ECONNREFUSED'].includes(error.code)) throw error;
+      await sleep(300);
+    }
+  }
   if (res.statusCode === 409) {
     return {
       ...res.body,
