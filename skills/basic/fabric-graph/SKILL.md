@@ -1,126 +1,88 @@
 ---
 name: fabric-graph
 description: >-
-  Use when running the autonomous multi-agent build pipeline after /bdbrainstorm
-  or /grill-me, when the user types /fabric-graph or "run a fabric", or
-  when a task needs durable state, a review repair loop and an automated
-  quality gate. Routes to the fabric-dispatch Dynamic Workflow, which reads
-  production_artifacts/state.json and invokes Architect, TechLead, UI/UX,
-  Engineering, Media/EventTech, Reviewer, and Shipping in turn per
-  .agents/graph.md's edge table — the agents never invoke each other.
+  Use for /fabric-graph or "run a fabric": the autonomous build pipeline with
+  durable state, a review repair loop and a quality gate, driven by the
+  aos-fabric CLI in any harness. Nodes never call each other; the contract is
+  .agents/graph.md.
 category: bdb-core
 ---
 
 # 🚀 BDB Autonomous Development Cycle (`/fabric-graph`)
 
-**Step 0 — bootstrap the contract into this project, before calling
-`Workflow`.** Every agent the dispatcher spawns is told to read/write
-`production_artifacts/state.json` "per `.agents/state.schema.json`" — a path
-resolved against the CURRENT PROJECT, not globally. If this project has
-never run `/fabric-graph` before, that file (and `.agents/graph.md`) won't be
-here yet, and every agent will freelance the state shape instead of
-conforming to the schema (observed for real: a run's `state.json` was
-missing `run_id`/`max_iterations`/`gate`/`findings`/`approvals` and had
-several fields the schema doesn't define at all). Fix it first:
-
-```bash
-mkdir -p .agents
-[ -f .agents/graph.md ] || cp "$HOME/.agents/graph.md" .agents/graph.md
-[ -f .agents/state.schema.json ] || cp "$HOME/.agents/state.schema.json" .agents/state.schema.json
-[ -f .agents/nodes.json ] || cp "$HOME/.agents/nodes.json" .agents/nodes.json
-```
-
-`nodes.json` is not optional and is the one that fails loudest: it is the
-node registry the dispatcher loads as its very first step, and without it
-the run escalates immediately with *"`.agents/nodes.json` failed to load, or
-is missing required node id(s)"* — before Architect or any other agent has
-run. (Found exactly that way: a first run in a project that had followed
-this bootstrap step as it was previously written, which copied only the
-other two files.)
-
-If any of the three doesn't exist under `$HOME/.agents/` either, stop and
-tell the user: this machine has no canonical copy of the graph contract to
-bootstrap from, and `/fabric-graph` cannot run correctly until one is
-installed. Don't silently proceed.
-(`.claude/agents/*.md`, the seven agent persona files, do NOT need this
-treatment — Claude Code resolves subagents from the user-level
-`~/.claude/agents/` fine without a project-local copy.)
-
-**Action — do this, and nothing else:** call the `Workflow` tool with
-`scriptPath` pointing at this repo's dispatcher script — resolve `$HOME`
-yourself (e.g. `echo $HOME` or your own environment info) rather than
-hardcoding a username, giving
-`$HOME/.claude/workflows/fabric-dispatch.mjs` — and `args` set to the
-goal text that follows `ARGUMENTS:` below this file's content. Pass the goal
-through verbatim, including any `--skill=<name>` flag(s) it contains — the
-dispatcher script parses those itself (see below), do not strip or
-interpret them yourself. If there is no `ARGUMENTS:` text, pass no `args`
-(or `args: undefined`) — the workflow itself asks for a goal in that case
-rather than guessing one.
-
-**Injecting a specific skill.** `/fabric-graph --skill=<name> <goal>`
-(repeatable, quote a name with spaces) forces that skill into this run as a
-hard requirement for the build nodes, validated to exist before anything
-else runs — this is how you make the pipeline use your own private skill
-that isn't part of `.agents/nodes.json`'s registry.
-
-`<name>` is the **exact skill directory name**, not a description — `senior-frontend`,
-not "the UI one". Two ways to find it without leaving the terminal:
-
-- `/ask-tim` — the routing skill; start there when you know the *job* but not the name
-- list the installed skills directly, if you half-remember the spelling. The installer
-  syncs the same set to every harness it detects, so use whichever path is yours:
-  `~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.cursor/skills`, or
-  `~/.roo/skills`. `ls ~/.agents/skills` is the safest guess on an unknown machine —
-  that one is written on every install regardless of harness.
-
-A name that does not resolve halts the run before any agent works, and the
-error now lists installed near-misses rather than only saying "not found".
-That is deliberate: silently running without a skill you explicitly demanded
-is worse than stopping.
-
-See [`.agents/graph.md`](../../../.agents/graph.md)'s "Mandatory Skill
-Injection" section for the full mechanics; nothing about it needs handling
-in this router file, since `args` is passed through as raw text either way.
-
-Use `scriptPath`, not `name: "fabric-dispatch"` — by-name lookup for a
-custom (non-built-in) workflow script has been observed to fail with
-`Workflow "fabric-dispatch" not found. Available: deep-research`, even
-when the script exists at the expected path and is correctly named inside
-its own `meta.name`. `scriptPath` pointing directly at the file works
-reliably; `name` apparently requires a separate registration step (the
-`/workflows` monitor's `s save` action looked like a candidate, but that's
-an interactive step a slash command can't trigger on its own, so don't rely
-on it).
-
-Then wait for the `Workflow` tool call to finish and report its result
-(including `phase`, any `reason`, and — at `ready_to_ship` — the instruction
-to reply `GO`) back to the user. Do not summarize or reinterpret it; relay it.
+`aos-fabric` is the dispatcher of this pipeline, and it is the same in every
+harness, on macOS, Linux and Windows 10+. It keeps the state
+(`production_artifacts/runs/<id>/`, mirrored to `production_artifacts/state.json`),
+decides every edge (`lib/fabric/edges.mjs`, contract in
+[`.agents/graph.md`](../../../.agents/graph.md)) and hands out one step at a time.
+You, or a worker you start, do the step and give the report back. Nodes never
+call each other, and nothing but `aos-fabric` writes state.
 
 **Do NOT decompose the task, write anything under `production_artifacts/`, or
-implement any part of the goal yourself in response to this skill.** This
-file exists only to route the `/fabric-graph` slash command to the real
-dispatcher — a Dynamic Workflow script
-(`.claude/workflows/fabric-dispatch.mjs`) that holds the actual
-node/edge graph, spawns the seven agents, and drives the repair loop. If you
-catch yourself about to write a plan file or code directly because of this
-skill, stop — that means the `Workflow` tool call was skipped, which is
-exactly the failure this file was rewritten to close (see
-`SESSION-HANDOVER-v3.13.md` in the source repo for the incident: an earlier
-version of this file embedded the full pipeline description in prose, and
-the model followed it "in spirit" inline instead of invoking the script —
-silently skipping the whole graph, with no `state.json`, no subagents, no
-Reviewer, and no quality gate ever running).
+implement any part of the goal yourself in response to this skill.** Start the
+run and follow the steps it hands out. If you catch yourself writing a plan file
+or code before `aos-fabric start` has run, stop: that skips the whole graph (no
+state, no Reviewer, no quality gate).
+
+## Run it
+
+1. **Start.** `aos-fabric start --run <id> --goal-file goal.md` (or `--goal "<text>"`).
+   Pass the goal through verbatim. `--skill <name>` (repeatable) forces a skill into
+   the run, see below. The same `--run` and goal again returns the current state and
+   writes nothing, so a lost terminal is no problem. `--run` may be left out: the id
+   is then derived from the goal.
+2. **Headless, one command.** `aos-fabric drive --run <id>` runs every step on a worker
+   (`--executor aos-acp`, the default; `ao` or `auto` when an AO daemon is up), prints one
+   JSON event per line and ends at `ready_to_ship` (exit 0) or when a human is needed
+   (exit 6). It enforces each node's `timeout_s` and turns a crash, a missing report or a
+   broken report into a failed step.
+3. **Or step by step, with your own executor** (a session, a subagent, a shell script):
+   - `aos-fabric next --run <id>` prints JSON with `kind`. `step`: carry it out. `done`,
+     `escalated`, `ready_to_ship`, `cancelled`: stop and relay `reason`.
+   - Read `step.brief` and do exactly that work. The brief names the report file
+     (`step.expected_report`): write the report JSON there.
+   - `aos-fabric report --run <id> --step <step_id> --file <report.json>` returns the next
+     step. No usable report (crash, timeout)? `aos-fabric report ... --fail "<reason>"`
+     counts the step as failed. The same report twice is a no-op; another report for an
+     accepted step is exit 4.
+   - A step runs at most `max_attempts` (2) times; after that, or at the iteration limit
+     (`--max-iterations`, default 3), or when the Reviewer repeats the same blocking
+     findings after a repair round, the run is `escalated` and needs the human.
+
+`aos-fabric status --run <id>` shows phase, iteration, open findings and the lock;
+`aos-fabric cancel --run <id>` ends a run. Exit codes: 0 ok, 1 unexpected, 2 invalid
+input, 3 unknown run or step, 4 conflict, 5 lock busy (retry shortly, at most 5 times),
+6 run is terminal, 7 state corrupt (fail closed: a human reads `events.jsonl`).
+
+**The report is a proposal.** `aos-fabric report` checks it against the work tree:
+the artifacts must exist inside it, and `git status` must show no change outside the
+step's `allowed_writes`. A report that does not hold up is recorded as a failed step.
+
+**At `ready_to_ship`, relay the result and ask for the literal word GO.** The push, tag
+or publish is a separate step guarded by `go-gate.mjs`; a run never grants a GO.
+
+**Reviewer discipline.** The Reviewer's brief carries no goal and no reasoning of any
+build node, only the plan and the artifacts. Keep it that way if you write briefs by hand.
+
+## Injecting a specific skill
+
+`aos-fabric start --skill <name>` (repeatable, also `--skill=<name>`) forces that skill
+into the run as a hard requirement for Architect and the build nodes, validated to exist
+before anything runs. `<name>` is the **exact skill directory name**, not a description:
+`senior-frontend`, not "the UI one". A name that does not resolve stops `start` with exit 2
+and lists installed near-misses. Silently running without a skill you demanded is worse than
+stopping. Find the name with `/ask-tim`, or list the skill folders of your harness
+(`ls ~/.agents/skills` is the safest guess: it is written on every install). The mechanics
+are in [`.agents/graph.md`](../../../.agents/graph.md), "Mandatory Skill Injection".
 
 ## Flags and configuration
 
-Pass these through verbatim in the goal text; the dispatcher parses them itself.
-
-- `--skill=<name>` (repeatable): hard-required skill, see above.
-- `--profile=<name>`: select a domain profile from `.agents/profiles/<name>.json` (`copywriter`, `creator`, `kicad`, `touchdesigner`). An unknown or repeated `--profile` escalates before any agent works. Without the flag the dispatcher matches profile triggers against the goal, and falls back to the default software pipeline. See `.agents/graph.md`, "Domain profiles".
-- `--workstreams`: let Architect plan dynamic workstreams (1 to 6, `execution_manifest` in `state.json`) instead of the fixed build nodes. See `.agents/graph.md`.
+- `--skill <name>` (repeatable): hard-required skill, see above.
+- `--max-iterations <n>`: ceiling of the repair loop, 1 to 20 (default 3). Stays under the 8-block override of a Stop hook, so the escalation message reaches the human.
+- `--executor aos-acp|ao|auto`: who runs the steps under `drive`. `ao` falls back to `aos-acp` when AO is absent; AOS works fully without AO.
+- Domain profiles (`--profile=<name>`) and dynamic workstreams (`--workstreams`) are not part of the `aos-fabric` loop yet. They run on the workflow script `.claude/workflows/fabric-dispatch.mjs` (the legacy engine, still its default), see `.agents/graph.md`, "Domain profiles".
 - Teams and roles: `aos-team list|show|new`, resolved Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/`) > shipped defaults.
-- `.aos/pipeline.json` (project) or `~/.aos/pipeline.json`: per-role model overrides, see `docs/agent-models.md`.
+- `.aos/pipeline.json` (project) or `~/.aos/pipeline.json`: per-role harness and model hints, see `docs/agent-models.md`. A hint is never binding.
 
 **Linear run.** `fabric-graph` is the only full pipeline. For a straight-line run with file hand-offs and no `state.json`, follow [`linear.md`](linear.md) instead of calling the dispatcher.
 
@@ -128,19 +90,21 @@ Pass these through verbatim in the goal text; the dispatcher parses them itself.
 
 ## Live map
 
-When the build phase begins, the dispatcher starts the aos-trail live map
-(Trigger B) with the command below; it is safe to run twice, since
-`aos-trail` reuses a map already running for this repo:
+When the build phase begins, start the aos-trail live map (Trigger B) with the
+command below; it is safe to run twice, since `aos-trail` reuses a map already
+running for this repo:
 `aos-trail --ensure`
 (it prints a URL, default http://localhost:5330; inside AO, where
 `AO_BROWSER_CAPABILITY` is set, also run `ao preview <url>`). If the plan was
 opened in plan-canvas (pipeline context), also run
 `aos-plan-canvas trail <plan-dir>` first so the map gets the execution plan.
 The Architect creates the plan from a template (`aos-plan-canvas new <template-id> production_artifacts/plan`);
-before any build node the dispatcher waits for the human verdict via `aos-plan-canvas open <plan> --await`
-(`approve` continues, `request-changes` returns to Architect with the feedback; `AOS_PLAN_APPROVAL=auto` is the CI-only skip and prints a visible warning).
+once TechLead approves, `aos-fabric` hands out a `human` step and no build node starts before it is done. `drive` runs
+`aos-plan-canvas open <plan> --await` itself; by hand you run that command and report `ok` (approve), `fail` with one
+blocking finding for the feedback (request-changes: back to Architect) or `escalate` (no verdict is coming).
+`AOS_PLAN_APPROVAL=auto` is the CI-only skip and prints a visible warning.
 Headless runs (`CI` set or stdin not a TTY) wait at most 30 minutes by default and then escalate; `AOS_PLAN_AWAIT_TIMEOUT_MS=<ms>` overrides it (`0` = unbounded). An ended session, timeout or missing `aos-plan-canvas` CLI escalates instead of looping Architect; comment-only feedback is request-changes with all comment texts.
-After approval every worker starts with `AOS_TRAIL_NODE`/`AOS_TRAIL_PLAN` (or a `[trail-node:<id>]` brief marker).
+After approval every worker starts with `AOS_TRAIL_NODE`/`AOS_TRAIL_PLAN` (`drive` passes `--trail-node` to its workers).
 Put the live-map link in your reply (the autostart hook also adds it as context when active). Agents follow
 the status-mark rules from the `agenttrail` skill: `[~]` before starting,
 `[x]` when done, `[!]` when stuck, with `by: <agent>`, saving the plan file
@@ -180,20 +144,17 @@ Cross-session and tool access: master -> project -> package chain, `aos-gateway`
 
 ## Why this file is a thin router, not a spec
 
-The full contract — state schema, node/edge table, the Stop-hook
-loop-keeper, the no-progress guard — lives in
-[`.agents/graph.md`](../../../.agents/graph.md) and
-[`.agents/state.schema.json`](../../../.agents/state.schema.json). Those are
-read by the dispatcher script itself and by the agents it invokes, not
-duplicated here — so there is nothing here to follow "in spirit" instead of
-actually running.
+The full contract — state schema, node/edge table, the loop-keeper hook, the
+no-progress guard — lives in [`.agents/graph.md`](../../../.agents/graph.md) and
+[`.agents/state.schema.json`](../../../.agents/state.schema.json). The rules run in
+`lib/fabric/edges.mjs`, one pure function, so there is nothing here to follow "in
+spirit" instead of actually running. Details of the CLI, the step and report schemas
+and the executors: `docs/fabric.md`.
 
-## If the `Workflow` tool is unavailable
+## Workflow runtime (optional)
 
-Some harnesses (or Claude Code with Dynamic Workflows toggled off in
-`/config`) have no `Workflow` tool at all. Only in that case, fall back to
-manually driving `.agents/graph.md`'s node/edge table yourself as the
-dispatcher: read `production_artifacts/state.json`, decide the next node
-per the edge predicates, invoke exactly that one agent, and repeat. Never
-let one agent's output instruct another agent directly — that hand-off
-pattern is the thing `.agents/graph.md` (F-17) rules out.
+A harness that has a workflow runtime can also run `.claude/workflows/fabric-dispatch.mjs`.
+With `--engine=cli` in the goal (or `AOS_FABRIC_ENGINE=cli`) that script is a thin client of
+`aos-fabric`: it asks for the next step, lets an agent do it and hands the report back. Without
+the switch it runs the legacy engine, which keeps `--profile` and `--workstreams`. The
+linear variant without state is in [`linear.md`](linear.md).

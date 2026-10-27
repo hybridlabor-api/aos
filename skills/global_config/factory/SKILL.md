@@ -73,6 +73,14 @@ gate on, config values never substitute for GO.
 Modules can run independently. Each reads the same project config and must not
 borrow permissions from another workflow.
 
+## Build runs
+
+When a module has to build a change and its `implement` policy allows it, hand the build to `aos-fabric`, the same loop
+in every harness: `aos-fabric start --run <id> --goal-file <file>`, then `aos-fabric drive --run <id>` (or `next` and
+`report` by hand with your own executor). The run ends at `ready_to_ship` or `escalated`; neither publishes anything,
+so push, merge and release still follow the action policy and the go-gate. Inside `aos-factory --unattended` the
+command is the same (`docs/factory.md`, "Build runs").
+
 ## Prompt overlays
 
 `skill_prompts` is an open map from a skill name to a multiline prompt. Each
