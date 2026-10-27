@@ -793,7 +793,7 @@ async function checkDaemonsAndModules() {
     } else if (!venvPython || !existsSync(venvPython)) {
       add('daemons', 'memB MCP venv', false, `no venv python at ${tilde(venvPython || '')}`, 're-run the AOS installer to create the venv', true);
     } else {
-      const r = spawnSync(venvPython, ['-c', 'import memb; import run as memb_run'], { cwd: membMcp, timeout: 10000, encoding: 'utf8' });
+      const r = spawnSync(venvPython, ['-c', 'import memb; import run as memb_run'], { cwd: membMcp, timeout: 10000, encoding: 'utf8', windowsHide: true });
       if (r.error || r.status !== 0) {
         const why = r.error && r.error.code === 'ETIMEDOUT' ? 'timed out after 10s' : (r.stderr || '').trim().split('\n').slice(-3).join(' | ') || `exit ${r.status}`;
         add('daemons', 'memB MCP venv', false, `entry import failed: ${why}`, 'reinstall the venv: re-run the AOS installer (requirements reconcile) or delete the .venv and re-run', true);
@@ -858,7 +858,7 @@ async function checkDaemonsAndModules() {
       let reaVer = null;
       if (reaPath) {
         try {
-          reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
         } catch {}
       }
       // Fall back to the npm package name when the global `rea` shim is absent.
@@ -912,14 +912,14 @@ async function checkDaemonsAndModules() {
   let aoVer = null;
   if (aoBin) {
     try {
-      aoVer = execFileSync(aoBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      aoVer = execFileSync(aoBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
     } catch {}
   }
   const aoListening = await portOpen(3101);
   let aoServiceInfo = 'Not running';
   if (aoBin) {
     try {
-      const statusOut = execFileSync(aoBin, ['service', 'status'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+      const statusOut = execFileSync(aoBin, ['service', 'status'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
       const runningLine = statusOut.split('\n').find(l => l.toLowerCase().includes('running'));
       if (runningLine) aoServiceInfo = runningLine.trim();
     } catch {}
@@ -937,11 +937,11 @@ async function checkDaemonsAndModules() {
   if (aoBin && aoCheckout && existsSync(path.join(aoCheckout, '.git'))) {
     const build = readGoBuildInfo(aoBin);
     let head = null;
-    try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
+    try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim(); } catch {}
     // Only backend/ builds the binary: commits elsewhere in the checkout (app, docs) do not make it stale.
     let backendSame = false;
     if (build && head && build.revision !== head) {
-      try { execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'diff', '--quiet', build.revision, head, '--', 'backend'], { stdio: 'ignore' }); backendSame = true; } catch {}
+      try { execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'diff', '--quiet', build.revision, head, '--', 'backend'], { stdio: 'ignore', windowsHide: true }); backendSame = true; } catch {}
     }
     const same = !!(build && head && (build.revision === head || backendSame) && !build.modified);
     add('daemons', 'AO revision vs checkout', same,
@@ -1056,7 +1056,7 @@ function checkPlugins() {
     const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
     const off = MODS.filter((m) => !enabled.includes(m));
     let ver = null;
-    try { ver = /(\d+\.\d+\.\d+)/.exec(execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))?.[1] || null; } catch { /* version unknown */ }
+    try { ver = /(\d+\.\d+\.\d+)/.exec(execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }))?.[1] || null; } catch { /* version unknown */ }
     add('plugins', 'Claude Code mods', off.length === 0,
       `enabled: ${enabled.join(', ') || 'none'}; not enabled: ${off.join(', ') || 'none'}; Claude Code in PATH is ${ver || 'of unknown version'}`,
       `Mods need Claude Code >= 2.1.287 (the doctor checks the CLI in PATH). Run \`claude update\`, then \`aos package install ${off.join('|')}\`.`, true);

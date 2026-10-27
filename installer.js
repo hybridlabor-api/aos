@@ -2399,7 +2399,7 @@ function ensureTauriPilotCli({ exec = execFileSync, has = hasExecutable } = {}) 
     }
     log.step(`Installing the tauri-pilot CLI: ${TAURI_PILOT_INSTALL_CMD} (compiles from source, can take several minutes)`);
     try {
-        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000 });
+        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000, windowsHide: true });
         uninstallRecords.recordCargoCrate(homeDir, 'rustauri', 'tauri-pilot-cli');
         return true;
     } catch (e) {

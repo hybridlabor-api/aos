@@ -283,7 +283,7 @@ function dirSize(p) {
 
 // ------------------------------------------------------------------ execute
 // Stop by script path first (a running node would restart nothing, but holds the port), then drop the .vbs.
-function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 })) {
+function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000, windowsHide: true })) {
   for (const s of list || []) {
     // Full path under this profile's home only: the bare suffix also matches other Windows users' services.
     if (s.full) try { run('powershell', winStartup.stopArgs([s.full])); } catch { /* powershell unavailable */ }
@@ -389,7 +389,7 @@ async function execute(p) {
       // between iterations finds no script to restart. Match the exact bat file
       // name in the command line, never a generic word like "node".
       try {
-        execFileSync('powershell', winStartup.stopLikeArgs(a.match), { stdio: 'ignore' });
+        execFileSync('powershell', winStartup.stopLikeArgs(a.match), { stdio: 'ignore', windowsHide: true });
       } catch { /* nothing running or powershell unavailable */ }
       if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
@@ -555,7 +555,7 @@ async function execute(p) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       // run: gateway and hub stop their service through it (launchctl, systemctl, or the Windows Startup .vbs process).
-      const c = { home: HOME, dryRun: DRY, platform: process.platform, aosRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), env: process.env, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
+      const c = { home: HOME, dryRun: DRY, platform: process.platform, aosRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), env: process.env, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000, windowsHide: true }) };
       if (!always.includes(id) && !(pkg.present ? pkg.present(c) : (await pkg.detect(c)).installed)) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) { failures.push(`${pkg.name}: ${r.error}`); console.log(`  ${pkg.name}: ${r.error}`); }
