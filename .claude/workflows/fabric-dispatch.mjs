@@ -477,7 +477,7 @@ if (typeof globalThis.agent === 'undefined') {
       const missing = [];
       const suggestions = [];
 
-      const skillNames = mandatorySkills || [];
+      const skillNames = Array.isArray(options?.skills) ? options.skills : [];
       const home = os ? os.homedir() : '';
       const candidateRoots = [
         path ? path.join(home, '.claude', 'skills') : '',
@@ -590,20 +590,26 @@ if (typeof globalThis.agent === 'undefined') {
       let state = {};
       try {
         if (fs.existsSync(statePath)) {
-          state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+          const raw = fs.readFileSync(statePath, 'utf8');
+          state = JSON.parse(raw);
         }
-      } catch {}
+      } catch (err) {
+        return { merged: 0, skipped: [`state.json parse failed: ${err.message}`], needsHuman: true };
+      }
       state.artifacts = state.artifacts || {};
       state.findings = state.findings || [];
 
       let mergedCount = 0;
       const skipped = [];
       let needsHuman = false;
+      const toUnlink = [];
 
       let fragmentFiles = [];
       try {
         fragmentFiles = fs.readdirSync(stateDDir).filter((f) => f.endsWith('.json'));
-      } catch {}
+      } catch (err) {
+        return { merged: 0, skipped: [`state.d read failed: ${err.message}`], needsHuman: true };
+      }
 
       for (const file of fragmentFiles) {
         const fPath = path.join(stateDDir, file);
@@ -628,7 +634,7 @@ if (typeof globalThis.agent === 'undefined') {
           }
           if (fragment.needs_human) needsHuman = true;
           mergedCount++;
-          fs.unlinkSync(fPath);
+          toUnlink.push(fPath);
         } catch (err) {
           skipped.push(`${file} (${err.message})`);
         }
@@ -640,7 +646,18 @@ if (typeof globalThis.agent === 'undefined') {
       try {
         fs.mkdirSync(path.dirname(statePath), { recursive: true });
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
-      } catch {}
+      } catch (err) {
+        process.stderr?.write?.(`[fabric-dispatch] state.json write failed: ${err.message}\n`);
+        return { merged: 0, skipped: [`state.json write failed: ${err.message}`], needsHuman: true };
+      }
+
+      for (const fPath of toUnlink) {
+        try {
+          fs.unlinkSync(fPath);
+        } catch (err) {
+          skipped.push(`unlink failed for ${path.basename(fPath)}: ${err.message}`);
+        }
+      }
 
       return { merged: mergedCount, skipped, needsHuman: !!state.needs_human };
     }
@@ -706,6 +723,7 @@ if (typeof globalThis.agent === 'undefined') {
     }
 
     // LLM Agent Steps: runner adapter / graceful execution
+    let agyExecutorError = null;
     if (child_process) {
       try {
         const agyRes = child_process.spawnSync('agy', ['--print', prompt, '--output-format', 'json', '--print-timeout', '30s'], {
@@ -717,10 +735,96 @@ if (typeof globalThis.agent === 'undefined') {
         if (agyRes.status === 0 && agyRes.stdout) {
           const jsonMatch = agyRes.stdout.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            return JSON.parse(jsonMatch[0]);
+            const envelope = JSON.parse(jsonMatch[0]);
+            // agy --output-format json wraps the response: { conversation_id, status, response: <string> }
+            if (envelope.response && typeof envelope.response === 'string') {
+              try {
+                const parsed = JSON.parse(envelope.response);
+                return validateRoleResponse(parsed, label, options);
+              } catch {
+                return validateRoleResponse(envelope, label, options);
+              }
+            }
+            return validateRoleResponse(envelope, label, options);
           }
         }
-      } catch {}
+        // agy failed or returned no parseable JSON: fail closed instead of canned success
+        const code = agyRes.status;
+        const stderr = typeof agyRes.stderr === 'string' ? agyRes.stderr.slice(0, 200) : '';
+        agyExecutorError = code === null ? 'agy process timeout' : `agy exited ${code}${stderr ? `: ${stderr}` : ''}`;
+      } catch (err) {
+        agyExecutorError = `agy spawn failed: ${err?.code === 'ENOENT' ? 'agy not found on PATH' : (err?.code === 'ETIMEDOUT' ? 'agy call timeout' : (err?.message || String(err)).slice(0, 100))}`;
+      }
+    } else {
+      agyExecutorError = 'no process runtime (not in Node environment)';
+    }
+
+    function validateRoleResponse(obj, label, opts) {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+      if (label.startsWith('reviewer')) {
+        if (!Array.isArray(obj.findings)) return { findings: [], blockingCount: 0 };
+        const blockingCount = obj.findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
+        return { ...obj, blockingCount };
+      }
+      if (label.startsWith('shipping')) {
+        if (!obj.gate || typeof obj.gate !== 'object') return { gate: {}, blockingNodes: [] };
+        const failing = Object.keys(obj.gate).some((k) => obj.gate[k] !== 'pass' && obj.gate[k] !== 'skip');
+        if (Object.keys(obj.gate).length === 0 && failing) return { gate: obj.gate, blockingNodes: [], escalate: true };
+        return obj;
+      }
+      if (label.startsWith('techlead')) {
+        if (typeof obj.approved !== 'boolean') return { approved: false, reason: 'invalid response', escalate: true };
+        return obj;
+      }
+      if (label.startsWith('architect')) {
+        if (!obj.planPath || typeof obj.planPath !== 'string') return { planPath: '', needsMedia: false, deliverOk: false, error: 'invalid response', escalate: true };
+        return obj;
+      }
+      return obj;
+    }
+
+    // Executor failed: return explicit failure that dispatcher escalates on, never canned success
+    if (agyExecutorError) {
+      process.stderr?.write?.(`[fabric-dispatch] executor failed: ${agyExecutorError}\n`);
+
+      if (label.startsWith('architect')) {
+        return { planPath: '', needsMedia: false, deliverOk: false, error: agyExecutorError, escalate: true };
+      }
+      if (label.startsWith('techlead')) {
+        return { approved: false, reason: `executor failed: ${agyExecutorError}`, escalate: true };
+      }
+      if (label.startsWith('reviewer')) {
+        return {
+          findings: [{
+            id: 'executor-failed',
+            severity: 'blocking',
+            node: 'reviewer',
+            summary: 'executor unavailable (agy call failed)',
+            status: 'open'
+          }],
+          blockingCount: 1
+        };
+      }
+      if (label.startsWith('shipping')) {
+        const gateObj = {};
+        if (options?.schema?.properties?.gate?.required) {
+          for (const k of options.schema.properties.gate.required) {
+            gateObj[k] = 'fail';
+          }
+        } else {
+          for (const k of ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security']) {
+            gateObj[k] = 'fail';
+          }
+        }
+        return { gate: gateObj, blockingNodes: [] };
+      }
+      // Build nodes cannot produce fragments if executor is unavailable; return needsHuman
+      if (label.startsWith('ws_') || ['ui_ux', 'engineering', 'media_eventtech'].includes(label)) {
+        return { needsHuman: true };
+      }
+      if (label === 'escalate' || label === 'merge-' || label.startsWith('merge-')) {
+        return { merged: 0, skipped: [], needsHuman: true };
+      }
     }
 
     if (label.startsWith('architect')) {
@@ -1434,6 +1538,7 @@ if (mandatorySkillNames.length > 0) {
     {
       label: 'validate-mandatory-skills',
       ...modelOpt('validate_skills'),
+      skills: mandatorySkillNames,
       schema: {
         type: 'object',
         required: ['found', 'missing', 'store_matches'],
@@ -1681,6 +1786,13 @@ if (preApprovedPlan) {
     }
   );
 
+  if (architectResult?.escalate || architectResult?.error) {
+    return await escalate(
+      `Architect executor failed: ${architectResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
   planPath = architectResult?.planPath;
   needsMedia = !!architectResult?.needsMedia;
   skipNodes = profileOptionalIds.length > 0 && Array.isArray(architectResult?.skipNodes)
@@ -1800,6 +1912,13 @@ if (preApprovedPlan) {
       },
     }
   );
+
+  if (techLeadResult?.escalate || techLeadResult?.error) {
+    return await escalate(
+      `TechLead executor failed: ${techLeadResult?.error || techLeadResult?.reason || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
 
   approved = !!techLeadResult?.approved;
   lastRejectionReason = techLeadResult?.reason ?? '';
@@ -1922,6 +2041,9 @@ while (!reviewedClean) {
       return await escalate(`Build node ${nodesToRun[0].id} requested human input.`);
     }
   } else {
+    if (pipelineResults.some((r) => r?.escalate || r?.needsHuman || r?.error)) {
+      return await escalate(`One or more build nodes failed: ${pipelineResults.map((r, i) => `node ${i}: escalate=${!!r?.escalate} needsHuman=${!!r?.needsHuman} error=${r?.error || ''}`).join('; ')}`);
+    }
     // Barrier: every build node in this pass has returned and written only its
     // own production_artifacts/state.d/<id>.json fragment (dispatchNote()'s
     // build-role branch). Fold them into state.json now, before Reviewer (or
@@ -2086,8 +2208,15 @@ while (!reviewedClean) {
     );
   }
 
+  if (reviewResult?.escalate || reviewResult?.error) {
+    return await escalate(
+      `Reviewer executor failed: ${reviewResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
   findings = reviewResult?.findings ?? [];
-  const blockingCount = reviewResult?.blockingCount ?? findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
+  const blockingCount = findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
 
   if (blockingCount === 0) {
     // Clean. Note on .agents/graph.md's original "doubt theater" guard (2
@@ -2188,8 +2317,20 @@ while (!allGatesPass) {
     }
   );
 
+  if (shipResult?.escalate || shipResult?.error) {
+    return await escalate(
+      `Shipping executor failed: ${shipResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
   lastGate = shipResult?.gate ?? {};
-  const failing = Object.entries(lastGate).filter(([, v]) => v === 'fail');
+  if (Object.keys(lastGate).length === 0) {
+    return await escalate('Shipping returned an empty gate object.');
+  }
+  const failing = GATE_KEYS
+    .map((k) => [k, lastGate[k]])
+    .filter(([, v]) => v !== 'pass' && v !== 'skip');
 
   if (failing.length === 0) {
     allGatesPass = true;
@@ -2234,7 +2375,13 @@ while (!allGatesPass) {
     if (pipelineResults[0]?.needsHuman) {
       return await escalate(`Build node ${blockingNodes[0].id} requested human input during gate fix.`);
     }
+    if (pipelineResults[0]?.escalate || pipelineResults[0]?.needsHuman === true || pipelineResults[0]?.error) {
+      return await escalate(`Build node ${blockingNodes[0].id} failed during gate fix: escalate=${!!pipelineResults[0]?.escalate} needsHuman=${pipelineResults[0]?.needsHuman} error=${pipelineResults[0]?.error || ''}`);
+    }
   } else {
+    if (pipelineResults.some((r) => r?.escalate || r?.needsHuman || r?.error)) {
+      return await escalate(`One or more build nodes failed during gate-fix repair: ${pipelineResults.map((r, i) => `node ${i}: escalate=${!!r?.escalate} needsHuman=${!!r?.needsHuman} error=${r?.error || ''}`).join('; ')}`);
+    }
     // Same barrier as the build/review loop above: this pipeline() call just
     // ran build nodes concurrently, each writing only its own state.d
     // fragment. Fold them in before Shipping re-checks the gate.
