@@ -650,6 +650,7 @@ if (typeof globalThis.agent === 'undefined') {
     }
 
     // LLM Agent Steps: runner adapter / graceful execution
+    let agyExecutorError = null;
     if (child_process) {
       try {
         const agyRes = child_process.spawnSync('agy', ['--print', prompt, '--output-format', 'json', '--print-timeout', '30s'], {
@@ -664,7 +665,59 @@ if (typeof globalThis.agent === 'undefined') {
             return JSON.parse(jsonMatch[0]);
           }
         }
-      } catch {}
+        // agy failed or returned no parseable JSON: fail closed instead of canned success
+        const code = agyRes.status;
+        const stderr = typeof agyRes.stderr === 'string' ? agyRes.stderr.slice(0, 200) : '';
+        agyExecutorError = code === null ? 'agy process timeout' : `agy exited ${code}${stderr ? `: ${stderr}` : ''}`;
+      } catch (err) {
+        agyExecutorError = `agy spawn failed: ${err?.code === 'ENOENT' ? 'agy not found on PATH' : (err?.message || String(err)).slice(0, 100)}`;
+      }
+    } else {
+      agyExecutorError = 'no process runtime (not in Node environment)';
+    }
+
+    // Executor failed: return explicit failure that dispatcher escalates on, never canned success
+    if (agyExecutorError) {
+      process.stderr?.write?.(`[fabric-dispatch] executor failed: ${agyExecutorError}\n`);
+
+      if (label.startsWith('architect')) {
+        return { planPath: '', needsMedia: false, deliverOk: false, error: agyExecutorError, escalate: true };
+      }
+      if (label.startsWith('techlead')) {
+        return { approved: false, reason: `executor failed: ${agyExecutorError}`, escalate: true };
+      }
+      if (label.startsWith('reviewer')) {
+        return {
+          findings: [{
+            id: 'executor-failed',
+            severity: 'blocking',
+            node: 'reviewer',
+            summary: 'executor unavailable (agy call failed)',
+            status: 'open'
+          }],
+          blockingCount: 1
+        };
+      }
+      if (label.startsWith('shipping')) {
+        const gateObj = {};
+        if (options?.schema?.properties?.gate?.required) {
+          for (const k of options.schema.properties.gate.required) {
+            gateObj[k] = 'fail';
+          }
+        } else {
+          for (const k of ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security']) {
+            gateObj[k] = 'fail';
+          }
+        }
+        return { gate: gateObj, blockingNodes: [] };
+      }
+      // Build nodes cannot produce fragments if executor is unavailable; return needsHuman
+      if (label.startsWith('ws_') || ['ui_ux', 'engineering', 'media_eventtech'].includes(label)) {
+        return { needsHuman: true };
+      }
+      if (label === 'escalate' || label === 'merge-' || label.startsWith('merge-')) {
+        return { merged: 0, skipped: [], needsHuman: true };
+      }
     }
 
     if (label.startsWith('architect')) {
@@ -1566,6 +1619,13 @@ while (!approved) {
     }
   );
 
+  if (architectResult?.escalate || architectResult?.error) {
+    return await escalate(
+      `Architect executor failed: ${architectResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
   planPath = architectResult?.planPath;
   needsMedia = !!architectResult?.needsMedia;
   skipNodes = profileOptionalIds.length > 0 && Array.isArray(architectResult?.skipNodes)
@@ -1685,6 +1745,13 @@ while (!approved) {
       },
     }
   );
+
+  if (techLeadResult?.escalate || techLeadResult?.error) {
+    return await escalate(
+      `TechLead executor failed: ${techLeadResult?.error || techLeadResult?.reason || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
 
   approved = !!techLeadResult?.approved;
   lastRejectionReason = techLeadResult?.reason ?? '';
@@ -1870,6 +1937,13 @@ while (!reviewedClean) {
     }
   );
 
+  if (reviewResult?.escalate || reviewResult?.error) {
+    return await escalate(
+      `Reviewer executor failed: ${reviewResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
+
   findings = reviewResult?.findings ?? [];
   const blockingCount = reviewResult?.blockingCount ?? findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
 
@@ -1971,6 +2045,13 @@ while (!allGatesPass) {
       },
     }
   );
+
+  if (shipResult?.escalate || shipResult?.error) {
+    return await escalate(
+      `Shipping executor failed: ${shipResult?.error || 'unknown executor failure'}. ` +
+      'Run /fabric-graph again once agy is available.'
+    );
+  }
 
   lastGate = shipResult?.gate ?? {};
   const failing = Object.entries(lastGate).filter(([, v]) => v === 'fail');
