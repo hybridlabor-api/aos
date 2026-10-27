@@ -397,6 +397,8 @@ if (typeof globalThis.pipeline === 'undefined') {
 if (typeof globalThis.agent === 'undefined') {
   globalThis.agent = async function standaloneAgent(prompt, options = {}) {
     const label = options.label || '';
+    // Normalize gate-fix labels: strip -gate-fix-N suffix for matching (e.g. ui_ux-gate-fix-1 -> ui_ux)
+    const normalizedLabel = label.replace(/-gate-fix-\d+$/, '');
 
     // Deterministic step: load-profile (same load step shape as load-registry)
     if (label === 'load-profile') {
@@ -700,7 +702,9 @@ if (typeof globalThis.agent === 'undefined') {
           state.iteration = iteration;
           fs.mkdirSync(path.dirname(statePath), { recursive: true });
           fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
-        } catch {}
+        } catch (err) {
+          process.stderr?.write?.(`[fabric-dispatch] escalate state write failed: ${err?.message || err}\n`);
+        }
       }
       return { phase: 'escalated' };
     }
@@ -764,12 +768,12 @@ if (typeof globalThis.agent === 'undefined') {
             if (envelope.response && typeof envelope.response === 'string') {
               try {
                 const parsed = JSON.parse(envelope.response);
-                return validateRoleResponse(parsed, label, options);
+                return validateRoleResponse(parsed, normalizedLabel, options);
               } catch {
-                return validateRoleResponse(envelope, label, options);
+                return validateRoleResponse(envelope, normalizedLabel, options);
               }
             }
-            return validateRoleResponse(envelope, label, options);
+            return validateRoleResponse(envelope, normalizedLabel, options);
           }
         }
         // agy failed or returned no parseable JSON: fail closed instead of canned success
@@ -783,41 +787,40 @@ if (typeof globalThis.agent === 'undefined') {
       agyExecutorError = 'no process runtime (not in Node environment)';
     }
 
-    function validateRoleResponse(obj, label, opts) {
-      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
-      if (label.startsWith('reviewer')) {
-        if (!Array.isArray(obj.findings)) return { findings: [], blockingCount: 0 };
+    function validateRoleResponse(obj, roleLabel, opts) {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { escalate: true, error: `invalid response type: ${typeof obj}` };
+      if (roleLabel.startsWith('reviewer')) {
+        if (!Array.isArray(obj.findings)) return { findings: [], blockingCount: 0, escalate: true, error: 'findings is not an array' };
         const blockingCount = obj.findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
         return { ...obj, blockingCount };
       }
-      if (label.startsWith('shipping')) {
-        if (!obj.gate || typeof obj.gate !== 'object') return { gate: {}, blockingNodes: [] };
-        const failing = Object.keys(obj.gate).some((k) => obj.gate[k] !== 'pass' && obj.gate[k] !== 'skip');
-        if (Object.keys(obj.gate).length === 0 && failing) return { gate: obj.gate, blockingNodes: [], escalate: true };
+      if (roleLabel.startsWith('shipping')) {
+        if (!obj.gate || typeof obj.gate !== 'object') return { gate: {}, blockingNodes: [], escalate: true, error: 'gate is not an object' };
         return obj;
       }
-      if (label.startsWith('techlead')) {
+      if (roleLabel.startsWith('techlead')) {
         if (typeof obj.approved !== 'boolean') return { approved: false, reason: 'invalid response', escalate: true };
         return obj;
       }
-      if (label.startsWith('architect')) {
+      if (roleLabel.startsWith('architect')) {
         if (!obj.planPath || typeof obj.planPath !== 'string') return { planPath: '', needsMedia: false, deliverOk: false, error: 'invalid response', escalate: true };
         return obj;
       }
-      return obj;
+      // Unknown role: escalate to be safe
+      return { escalate: true, error: `unknown role label: ${roleLabel}` };
     }
 
     // Executor failed: return explicit failure that dispatcher escalates on, never canned success
     if (agyExecutorError) {
       process.stderr?.write?.(`[fabric-dispatch] executor failed: ${agyExecutorError}\n`);
 
-      if (label.startsWith('architect')) {
+      if (normalizedLabel.startsWith('architect')) {
         return { planPath: '', needsMedia: false, deliverOk: false, error: agyExecutorError, escalate: true };
       }
-      if (label.startsWith('techlead')) {
+      if (normalizedLabel.startsWith('techlead')) {
         return { approved: false, reason: `executor failed: ${agyExecutorError}`, escalate: true };
       }
-      if (label.startsWith('reviewer')) {
+      if (normalizedLabel.startsWith('reviewer')) {
         return {
           findings: [{
             id: 'executor-failed',
@@ -826,10 +829,11 @@ if (typeof globalThis.agent === 'undefined') {
             summary: 'executor unavailable (agy call failed)',
             status: 'open'
           }],
-          blockingCount: 1
+          blockingCount: 1,
+          escalate: true
         };
       }
-      if (label.startsWith('shipping')) {
+      if (normalizedLabel.startsWith('shipping')) {
         const gateObj = {};
         if (options?.schema?.properties?.gate?.required) {
           for (const k of options.schema.properties.gate.required) {
@@ -840,71 +844,12 @@ if (typeof globalThis.agent === 'undefined') {
             gateObj[k] = 'fail';
           }
         }
-        return { gate: gateObj, blockingNodes: [] };
+        return { gate: gateObj, blockingNodes: [], escalate: true };
       }
-      // Build nodes cannot produce fragments if executor is unavailable; return needsHuman
-      if (label.startsWith('ws_') || ['ui_ux', 'engineering', 'media_eventtech'].includes(label)) {
-        return { needsHuman: true };
-      }
-      if (label === 'escalate' || label === 'merge-' || label.startsWith('merge-')) {
-        return { merged: 0, skipped: [], needsHuman: true };
-      }
+      // For every other label when executor fails, escalate
+      return { escalate: true, error: agyExecutorError };
     }
 
-    if (label.startsWith('architect')) {
-      const baseRes = {
-        planPath: 'production_artifacts/00_execution_plan.md',
-        needsMedia: false,
-        architectureSpec: 'production_artifacts/00_architecture.json',
-        architectureHtml: 'production_artifacts/00_architecture.html',
-        deliverOk: true
-      };
-      if (prompt.includes('execution_manifest')) {
-        baseRes.execution_manifest = {
-          createdBy: 'architect',
-          workstreams: [
-            { id: 'ws_core', agentType: 'godmode-engineering', skills: ['godmode-engineering'], artifactKey: 'backend' },
-            { id: 'ws_ui', agentType: 'godmode-ui-ux', skills: ['godmode-ui-ux'], artifactKey: 'frontend' }
-          ]
-        };
-      }
-      return baseRes;
-    }
-    if (label.startsWith('techlead')) {
-      return { approved: true, reason: 'Approved capability map' };
-    }
-    if (label.startsWith('reviewer')) {
-      return { findings: [], blockingCount: 0 };
-    }
-    if (label.startsWith('shipping')) {
-      const gateObj = { lint: 'pass', typecheck: 'pass', tests: 'pass', a11y: 'pass', seo: 'pass', security: 'pass' };
-      if (options?.schema?.properties?.gate?.required) {
-        for (const k of options.schema.properties.gate.required) {
-          gateObj[k] = 'pass';
-        }
-      }
-      return {
-        gate: gateObj,
-        blockingNodes: [],
-      };
-    }
-    if (label.startsWith('ws_') || ['ui_ux', 'engineering', 'media_eventtech'].includes(label)) {
-      if (fs) {
-        try {
-          const stateDDir = path ? path.resolve('production_artifacts', 'state.d') : 'production_artifacts/state.d';
-          fs.mkdirSync(stateDDir, { recursive: true });
-          const fragPath = path.join(stateDDir, `${label}.json`);
-          fs.writeFileSync(fragPath, JSON.stringify({
-            node: label,
-            artifacts: { [label]: `production_artifacts/${label}_spec.md` },
-            findings: []
-          }, null, 2) + '\n');
-        } catch {}
-      }
-      return { needsHuman: false };
-    }
-
-    return { needsHuman: false };
   };
 }
 
@@ -1593,7 +1538,18 @@ if (mandatorySkillNames.length > 0) {
       },
     }
   );
+  const found = skillCheckResult?.found ?? [];
   const missing = skillCheckResult?.missing ?? [];
+  const reported = new Set([...found, ...missing]);
+  const unreported = mandatorySkillNames.filter(s => !reported.has(s));
+
+  if (unreported.length > 0) {
+    return await escalate(
+      `Skill validation returned incomplete results: ${unreported.join(', ')} not reported in found or missing. ` +
+      'Every requested skill must appear in the validation result.'
+    );
+  }
+
   if (missing.length > 0) {
     const storeMatches = skillCheckResult?.store_matches ?? [];
     const near = skillCheckResult?.suggestions ?? [];
@@ -1611,7 +1567,7 @@ if (mandatorySkillNames.length > 0) {
       'Refusing to silently proceed without a mandated skill.';
     return await escalate(message);
   }
-  mandatorySkills = skillCheckResult?.found ?? mandatorySkillNames;
+  mandatorySkills = found;
 }
 
 // Validate --plan approval record if provided. Must have a valid
@@ -2096,8 +2052,8 @@ while (!reviewedClean) {
   });
 
   if (isSolo) {
-    if (pipelineResults[0]?.needsHuman) {
-      return await escalate(`Build node ${nodesToRun[0].id} requested human input.`);
+    if (pipelineResults[0]?.escalate || pipelineResults[0]?.error || pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${nodesToRun[0].id} failed: escalate=${!!pipelineResults[0]?.escalate} error=${pipelineResults[0]?.error || ''} needsHuman=${!!pipelineResults[0]?.needsHuman}`);
     }
   } else {
     if (pipelineResults.some((r) => r?.escalate || r?.needsHuman || r?.error)) {
@@ -2453,11 +2409,8 @@ while (!allGatesPass) {
   });
 
   if (isSolo) {
-    if (pipelineResults[0]?.needsHuman) {
-      return await escalate(`Build node ${blockingNodes[0].id} requested human input during gate fix.`);
-    }
-    if (pipelineResults[0]?.escalate || pipelineResults[0]?.needsHuman === true || pipelineResults[0]?.error) {
-      return await escalate(`Build node ${blockingNodes[0].id} failed during gate fix: escalate=${!!pipelineResults[0]?.escalate} needsHuman=${pipelineResults[0]?.needsHuman} error=${pipelineResults[0]?.error || ''}`);
+    if (pipelineResults[0]?.escalate || pipelineResults[0]?.error || pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${blockingNodes[0].id} failed during gate fix: escalate=${!!pipelineResults[0]?.escalate} error=${pipelineResults[0]?.error || ''} needsHuman=${!!pipelineResults[0]?.needsHuman}`);
     }
   } else {
     if (pipelineResults.some((r) => r?.escalate || r?.needsHuman || r?.error)) {
