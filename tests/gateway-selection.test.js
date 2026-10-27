@@ -14,19 +14,14 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-gwsel-'));
 const ENTRY = (n) => ({ command: 'node', args: [`${n}.js`] });
 const launcher = '/home/u/.agents/bin/aos-mcp-env.mjs';
 
-test('deriveGatewayServers: base only, media adds, creator adds; desktop servers are direct by design', () => {
+test('deriveGatewayServers: base only, media adds, creator adds; keep never dropped', () => {
     assert.deepEqual(selection.deriveGatewayServers(), selection.SERVER_GROUPS.base);
     assert.equal(selection.deriveGatewayServers({ media: true }).filter((n) => selection.SERVER_GROUPS.media.includes(n)).length, 4);
     assert.equal(selection.deriveGatewayServers({ creator: true }).filter((n) => selection.SERVER_GROUPS.creator.includes(n)).length, 5);
-    // desktop servers are no longer selectable; base + media + creator = GATEWAY_SERVERS exactly
-    assert.deepEqual(selection.deriveGatewayServers({ media: true, creator: true }).sort(), cfg.GATEWAY_SERVERS.slice().sort());
+    assert.deepEqual(selection.deriveGatewayServers({ media: true, creator: true, desktop: true }).sort(), cfg.GATEWAY_SERVERS.slice().sort());
     // creator as an array = only the detected creator servers
     assert.deepEqual(selection.deriveGatewayServers({ creator: ['bdb_blender_mcp'] }).filter((n) => selection.SERVER_GROUPS.creator.includes(n)), ['bdb_blender_mcp']);
     assert.ok(selection.deriveGatewayServers({ keep: ['github'] }).includes('github'));
-    // desktop servers (zavora_computer_use, bdb_windows_computer_use, bdb_remoteos_mcp) are direct by design
-    assert.ok(cfg.DIRECT_SERVERS.includes('zavora_computer_use'));
-    assert.ok(cfg.DIRECT_SERVERS.includes('bdb_windows_computer_use'));
-    assert.ok(cfg.DIRECT_SERVERS.includes('bdb_remoteos_mcp'));
 });
 
 test('resolveGatewayServers: a valid stored choice wins; invalid falls back to derivation', () => {
