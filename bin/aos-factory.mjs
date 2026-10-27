@@ -65,7 +65,8 @@ cd /work
 exec "$@"`;
 
 export function buildRunArgv({ runtime, clone, image, cmd, envNames = [], platform = process.platform }) {
-  const argv = [runtime, "run", "--rm", "--entrypoint", "sh",
+  const pull = image === DEFAULT_IMAGE ? ["--pull=never"] : [];
+  const argv = [runtime, "run", "--rm", ...pull, "--entrypoint", "sh",
     "--mount", `type=bind,source=${mountSource(clone, platform)},target=/work`,
     "-w", "/work", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
     "-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=/work"];
@@ -96,7 +97,7 @@ export function imageExists(image, runtime, run = sh) {
 }
 
 export function resolveBuildHint(pkgRoot) {
-  return `docker build -t ${DEFAULT_IMAGE} -f ${join(pkgRoot, "docker/factory/Dockerfile")} ${pkgRoot}`;
+  return `docker build -t ${DEFAULT_IMAGE} -f ${JSON.stringify(join(pkgRoot, "docker/factory/Dockerfile"))} ${JSON.stringify(pkgRoot)}`;
 }
 
 const git = (cwd, args, run = sh) => {
@@ -118,7 +119,7 @@ export function main(args = process.argv.slice(2), {
   const rt = detectRuntime({ platform, which, run });
   if (!rt.ok) { err(`aos-factory: unattended mode refused: ${rt.message}`); return 1; }
 
-  const usesDefaultImage = !o.image;
+  const usesDefaultImage = !o.image || o.image === DEFAULT_IMAGE;
   o.image = o.image || DEFAULT_IMAGE;
   if (usesDefaultImage && !imageExists(o.image, rt.runtime, run)) {
     const hint = resolveBuildHint(pkgRoot);

@@ -94,9 +94,18 @@ docker build -t aos-factory:local -f docker/factory/Dockerfile .
 
 Override the default image by passing `--image <your-image>`.
 
-The image must contain `sh`, `node`, `git`, the agent CLI and the AOS hooks for
-that agent. The Dockerfile supplied in `docker/factory/Dockerfile` is a minimal
-image suitable for unattended factory runs.
+The default image contains the AOS sandbox: Node, git, the AOS hooks and CLIs
+(`bin/`, `lib/`, `.claude/hooks/`). It contains no agent CLI. An agent run such as
+the `claude -p` example needs an image derived from it, passed via `--image`:
+
+```Dockerfile
+FROM aos-factory:local
+USER root
+RUN npm install -g @anthropic-ai/claude-code
+USER aos
+```
+
+The default image is run with `--pull=never`, so it is never fetched from a registry.
 
 **Isolated:**
 

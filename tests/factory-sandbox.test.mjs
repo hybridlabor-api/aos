@@ -62,6 +62,12 @@ test("argv mounts only the clone: no worktree, ssh, gitconfig, docker.sock or --
   assert.throws(() => buildRunArgv({ runtime: "docker", clone: "/tmp/x", image: "i", cmd: ["c"], envNames: ["A=B"] }), /bad --env/);
 });
 
+test("default image runs with --pull=never; an explicit other image does not", () => {
+  const base = { runtime: "docker", clone: "/tmp/x", cmd: ["c"], platform: "linux" };
+  assert.ok(buildRunArgv({ ...base, image: "aos-factory:local" }).includes("--pull=never"));
+  assert.ok(!buildRunArgv({ ...base, image: "custom:1" }).includes("--pull=never"));
+});
+
 test("Windows paths convert for Docker; mount-breaking characters are refused", () => {
   assert.equal(mountSource("C:\\Users\\u\\AppData\\Local\\Temp\\aos-factory-1\\repo", "win32"), "C:/Users/u/AppData/Local/Temp/aos-factory-1/repo");
   for (const p of ["/tmp/a,b", "/tmp/a\"b", "C:\\a,b", "/tmp/a\nb"]) assert.throws(() => mountSource(p, "linux"), /refused/);
@@ -156,7 +162,8 @@ test("Dockerfile exists and validates against the spec", () => {
   const content = readFileSync(dockerfile, "utf8");
   assert.match(content, /FROM node:\d+-slim/, "Dockerfile uses node slim base image");
   assert.ok(content.includes("git"), "Dockerfile installs git");
-  assert.ok(content.includes("sh"), "Dockerfile preserves sh (from base image)");
+  assert.ok(!/^COPY\s+\.\s/m.test(content), "Dockerfile does not COPY the whole build context");
+  assert.ok(content.includes("--omit=dev"), "Dockerfile installs production dependencies only");
   assert.ok(!content.match(/ADD.*https?:\/\//), "Dockerfile does not ADD from remote URLs");
   assert.match(content, /USER\s+\w+/, "Dockerfile has a non-root USER directive");
   assert.ok(!/^USER\s+root/m.test(content), "Dockerfile USER is not root");
