@@ -299,25 +299,34 @@ const pruneEmpty = (dir) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
   try { rmdirSync(dir); } catch { /* not empty */ }
 };
-// Synced skill copies carry .aos-skill-manifest.json, which is not in the install manifest, so the file
-// pass above never removes it. Runs after that pass, so an emptied copy goes whole.
+// Synced skill copies carry .aos-skill-manifest.json, which is not in the install manifest, so the file pass
+// never removes it. This pass runs after the file pass and removes that record, then the copy's directories that
+// are empty by then (rmdir only). Skill roots, $HOME, symlinks and every remaining file stay.
 const skillManifest = createRequire(import.meta.url)('../lib/skill-manifest.js');
+// Every dir a skill sync writes to (installer.js: resolveTargetPaths, globalSkillDestinations).
+const skillRoots = (home) => [
+  path.join(pm.claudeDir(home), 'skills'),
+  ...[['.config', 'opencode', 'skills'], ['.agents', 'skills'], ['.gemini', 'config', 'skills'], ['.codex', 'skills'],
+    ['.cursor', 'skills'], ['.roo', 'skills'], ['.windsurf', 'bdb-skills'], ['.aider', 'bdb-skills']].map((p) => path.join(home, ...p)),
+];
+const atOrBelow = (dir, p) => { const r = path.relative(dir, p); return r !== '..' && !r.startsWith('..' + path.sep) && !path.isAbsolute(r); };
 function removeSyncedSkillCopies({ home = HOME } = {}) {
-  const roots = [
-    path.join(pm.claudeDir(home), 'skills'),
-    path.join(home, '.config', 'opencode', 'skills'),
-    path.join(home, '.agents', 'skills'),
-    path.join(home, '.gemini', 'config', 'skills'),
-    path.join(home, '.codex', 'skills'),
-  ];
+  const real = (p) => { try { return realpathSync(p); } catch { return null; } };
+  const realHome = real(home);
   const done = [];
-  for (const root of roots) {
+  for (const root of skillRoots(home)) {
+    const realRoot = real(root);
+    if (!realRoot || !realHome || atOrBelow(realRoot, realHome)) continue; // absent, or a root that is $HOME or above it
     let names = [];
-    try { names = readdirSync(root); } catch { continue; }
+    try { names = readdirSync(realRoot); } catch { continue; }
     for (const name of names) {
       const copy = path.join(root, name);
-      const result = skillManifest.removeSyncedCopy(copy);
-      if (result !== 'none') done.push({ copy, result });
+      if (real(copy) !== path.join(realRoot, name)) continue; // a symlink, or anything that resolves outside the root
+      try {
+        if (!skillManifest.removeSyncedRecord(copy)) continue;
+        pruneEmpty(copy);
+        done.push({ copy, result: existsSync(copy) ? 'kept' : 'removed' });
+      } catch (e) { done.push({ copy, result: 'failed', error: e.message }); }
     }
   }
   return done;
@@ -440,9 +449,12 @@ async function execute(p) {
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
   attempt('synced skill copies', () => {
-    for (const { copy, result } of removeSyncedSkillCopies()) {
-      console.log(result === 'removed' ? `  ${tilde(copy)} removed` : `  ${tilde(copy)} kept (edited); its AOS manifest removed`);
+    const copies = removeSyncedSkillCopies();
+    for (const { copy, result, error } of copies) {
+      if (result === 'failed') failures.push(`${tilde(copy)}: AOS skill record cleanup failed (${error})`);
+      else if (result === 'kept') console.log(`  ${tilde(copy)} kept: files that are not AOS's remain; its AOS skill record removed`);
     }
+    console.log(`  ${copies.filter((c) => c.result === 'removed').length} synced skill copies removed with their AOS record`);
   });
   attempt('AOS-copied MCP server folders', () => {
     const { removed: gone, hints } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });

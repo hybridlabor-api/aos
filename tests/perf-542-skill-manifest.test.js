@@ -186,20 +186,109 @@ test('manifest via installer sync: unchanged skipped, edit detected, corrupt man
     }
 });
 
-test('synced skill copy with a manifest is removed completely by the uninstall helper', async () => {
-    const { pathToFileURL } = require('url');
-    const { removeSyncedSkillCopies } = await import(pathToFileURL(path.join(__dirname, '..', 'bin', 'aos-uninstall.mjs')).href);
+const loadUninstall = () => import(require('url').pathToFileURL(path.join(__dirname, '..', 'bin', 'aos-uninstall.mjs')).href);
+const record = (dir) => skillManifest.writeManifest(dir, 'source-hash', 'target-hash');
+const has = (...p) => fs.existsSync(path.join(...p));
+
+test('uninstall pass removes the AOS record and then-empty dirs only; user files, user skills and the roots stay', async () => {
+    const { removeSyncedSkillCopies } = await loadUninstall();
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-'));
     try {
-        const copy = path.join(home, '.claude', 'skills', 'memb-ingest');
-        writeTestFile(copy, 'SKILL.md', '# memb-ingest');
-        writeTestFile(path.join(copy, 'scripts'), 'run.js', 'module.exports = {};');
-        skillManifest.writeManifest(copy, dirHash(copy), dirHash(copy));
+        const root = path.join(home, '.claude', 'skills');
+        const emptied = path.join(root, 'memb-ingest'); // the file pass took its files: the record and an empty subdir are left
+        fs.mkdirSync(path.join(emptied, 'scripts'), { recursive: true });
+        record(emptied);
+        const withBackup = path.join(root, 'bdbrainstorm'); // an edited file's .bak and a user note keep their copy
+        writeTestFile(withBackup, 'SKILL.md.20261027T090000.bak', 'my edit');
+        writeTestFile(path.join(withBackup, 'refs'), 'notes.md', 'mine');
+        record(withBackup);
+        const unremoved = path.join(root, 'github-repo'); // a file nothing removed: this pass deletes no content
+        writeTestFile(unremoved, 'SKILL.md', '# github-repo');
+        record(unremoved);
+        const own = path.join(root, 'my-own'); // a user skill has no record
+        writeTestFile(own, 'SKILL.md', '# mine');
+        const corrupt = path.join(root, 'corrupt'); // a record that does not parse proves nothing
+        writeTestFile(corrupt, skillManifest.MANIFEST_FILE, '{not json');
+        const dirNamedLikeRecord = path.join(root, 'dir-record');
+        writeTestFile(path.join(dirNamedLikeRecord, skillManifest.MANIFEST_FILE), 'inner.txt', 'x');
+        writeTestFile(root, 'stray.txt', 'a file in the root');
+        const agents = path.join(home, '.agents', 'skills', 'codebase-memory');
+        fs.mkdirSync(agents, { recursive: true });
+        record(agents);
 
-        const done = removeSyncedSkillCopies({ home });
-        assert.deepStrictEqual(done, [{ copy, result: 'removed' }]);
-        assert.strictEqual(fs.existsSync(copy), false, 'copy and its manifest are gone');
+        const rel = (d) => `${path.relative(home, d.copy)}=${d.result}`;
+        assert.deepStrictEqual(removeSyncedSkillCopies({ home }).map(rel).sort(), [
+            `${path.join('.agents', 'skills', 'codebase-memory')}=removed`,
+            `${path.join('.claude', 'skills', 'bdbrainstorm')}=kept`,
+            `${path.join('.claude', 'skills', 'github-repo')}=kept`,
+            `${path.join('.claude', 'skills', 'memb-ingest')}=removed`,
+        ].sort());
+
+        assert.ok(!has(emptied) && !has(agents), 'a copy left with only its record goes whole');
+        assert.ok(!has(withBackup, skillManifest.MANIFEST_FILE) && !has(unremoved, skillManifest.MANIFEST_FILE), 'the record goes from a copy that still holds files');
+        assert.strictEqual(fs.readFileSync(path.join(withBackup, 'SKILL.md.20261027T090000.bak'), 'utf8'), 'my edit');
+        assert.strictEqual(fs.readFileSync(path.join(withBackup, 'refs', 'notes.md'), 'utf8'), 'mine');
+        assert.ok(has(unremoved, 'SKILL.md'));
+        assert.ok(has(own, 'SKILL.md') && has(corrupt, skillManifest.MANIFEST_FILE) && has(dirNamedLikeRecord, skillManifest.MANIFEST_FILE, 'inner.txt'), 'nothing unproven is touched');
+        assert.ok(has(root, 'stray.txt'));
+        for (const keep of [home, path.join(home, '.claude'), root, path.join(home, '.agents'), path.join(home, '.agents', 'skills')]) {
+            assert.ok(fs.statSync(keep).isDirectory(), `${path.relative(home, keep) || 'home'} stays`);
+        }
+        assert.deepStrictEqual(removeSyncedSkillCopies({ home }), [], 'a second pass finds nothing left to do');
     } finally {
         fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('uninstall pass never follows a symlinked copy or record and refuses a root that is $HOME', { skip: process.platform === 'win32' }, async () => {
+    const { removeSyncedSkillCopies } = await loadUninstall();
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-out-'));
+    try {
+        const root = path.join(home, '.claude', 'skills');
+        fs.mkdirSync(root, { recursive: true });
+        const target = path.join(outside, 'elsewhere'); // a symlinked copy points at a real copy outside the root
+        writeTestFile(target, 'keep.txt', 'x');
+        record(target);
+        fs.symlinkSync(target, path.join(root, 'linked'));
+        const linkedRecord = path.join(root, 'linked-record'); // a real copy whose record is a symlink
+        writeTestFile(linkedRecord, 'SKILL.md', '# x');
+        const realRecord = path.join(outside, 'record.json');
+        fs.writeFileSync(realRecord, JSON.stringify({ sourceHash: 'a', targetHash: 'b' }));
+        fs.symlinkSync(realRecord, path.join(linkedRecord, skillManifest.MANIFEST_FILE));
+        const victim = path.join(home, 'victim'); // child of HOME, with a valid record
+        record(victim);
+        fs.mkdirSync(path.join(home, '.codex'));
+        fs.symlinkSync(home, path.join(home, '.codex', 'skills')); // a skill root that resolves to HOME
+
+        assert.deepStrictEqual(removeSyncedSkillCopies({ home }), []);
+        assert.ok(has(target, skillManifest.MANIFEST_FILE) && has(target, 'keep.txt'), 'the symlink target is untouched');
+        assert.ok(fs.lstatSync(path.join(linkedRecord, skillManifest.MANIFEST_FILE)).isSymbolicLink() && fs.existsSync(realRecord));
+        assert.ok(has(victim, skillManifest.MANIFEST_FILE), 'nothing under a root that is HOME is touched');
+        assert.strictEqual(skillManifest.removeSyncedRecord(path.join(root, 'linked')), false, 'the library refuses a symlinked copy on its own');
+        assert.strictEqual(skillManifest.removeSyncedRecord(linkedRecord), false, 'and a symlinked record');
+    } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    }
+});
+
+test('uninstall pass follows a skill root that is a symlink to a real dir, as the file pass did', { skip: process.platform === 'win32' }, async () => {
+    const { removeSyncedSkillCopies } = await loadUninstall();
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-'));
+    const dotfiles = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-dot-'));
+    try {
+        fs.mkdirSync(path.join(home, '.agents'));
+        fs.symlinkSync(dotfiles, path.join(home, '.agents', 'skills'));
+        const emptied = path.join(dotfiles, 'foo');
+        fs.mkdirSync(emptied);
+        record(emptied);
+        writeTestFile(path.join(dotfiles, 'mine'), 'SKILL.md', '# mine');
+
+        assert.deepStrictEqual(removeSyncedSkillCopies({ home }), [{ copy: path.join(home, '.agents', 'skills', 'foo'), result: 'removed' }]);
+        assert.ok(!has(emptied) && has(dotfiles, 'mine', 'SKILL.md') && fs.lstatSync(path.join(home, '.agents', 'skills')).isSymbolicLink(), 'the root link and its target dir stay');
+    } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+        fs.rmSync(dotfiles, { recursive: true, force: true });
     }
 });
