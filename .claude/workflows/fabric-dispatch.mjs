@@ -295,7 +295,18 @@ let hookEventName = '';
 // synchronous child below gets at most the time left (hookMs), so the budget timer can fire right after it.
 const HOOK_BUDGET_MS = 20000;
 let hookDeadline = 0;
-const hookMs = (ms) => (hookDeadline ? Math.max(1, Math.floor(Math.min(ms ?? Infinity, hookDeadline - Date.now()))) : ms);
+// Past the budget: the same no-op answer as the fast exit below, exit 0.
+const hookExpired = () => {
+  if (!hookEventName) process.stdout.write(JSON.stringify({ injectSteps: [] }) + '\n');
+  process.exit(0);
+};
+// The time a synchronous child may take; once the budget is spent the hook ends here instead of spawning anything.
+const hookMs = (ms) => {
+  if (!hookDeadline) return ms;
+  const left = Math.floor(hookDeadline - Date.now());
+  if (left <= 0) hookExpired();
+  return Math.min(ms ?? Infinity, left);
+};
 
 // 1. Fast-exit & input handling for hook invocations (Antigravity PreInvocation, Codex UserPromptSubmit)
 if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && fs) {
@@ -305,11 +316,7 @@ if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && f
     if (stdinRaw) {
       isHookInvocation = true;
       hookDeadline = Date.now() + HOOK_BUDGET_MS - process.uptime() * 1000;
-      // Past the budget: the same no-op answer as the fast exit below, exit 0.
-      setTimeout(() => {
-        if (!hookEventName) process.stdout.write(JSON.stringify({ injectSteps: [] }) + '\n');
-        process.exit(0);
-      }, hookDeadline - Date.now()).unref();
+      setTimeout(hookExpired, hookDeadline - Date.now()).unref();
       let payload = null;
       try { payload = JSON.parse(stdinRaw); } catch {}
 
