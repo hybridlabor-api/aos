@@ -177,3 +177,19 @@ test('item 9: missing memb python skips memb_mcp in harnesses and keeps the gate
     assert.deepStrictEqual(gatewayHasMemory(home), { memb: true, deja: false }, 'memb gateway copy kept (cannot be replaced); deja moved direct');
     assert.ok(said.some((m) => /memb_mcp .*missing/.test(m)));
 });
+test('bare node/deja entries written by the installer count as confirmed and the gateway copy is removed', () => {
+    const home = tmp();
+    seedGateway(home);
+    const claude = path.join(home, '.claude.json');
+    fs.writeFileSync(claude, JSON.stringify({ mcpServers: {} }));
+    migrateMemoryDirect({ home, aosRoot: ROOT, now: 1, env: fakeComponents(home), log: quiet });
+    const abs = JSON.parse(fs.readFileSync(claude, 'utf8')).mcpServers;
+    const bare = (e) => ({ ...e, command: path.basename(e.command).replace(/\.exe$/i, '') });
+    fs.writeFileSync(claude, JSON.stringify({ mcpServers: { memb_mcp: bare(abs.memb_mcp), deja: bare(abs.deja) } }));
+    seedGateway(home);
+    const msgs = [];
+    const rep = migrateMemoryDirect({ home, aosRoot: ROOT, now: 2, env: fakeComponents(home), log: (m) => msgs.push(m) });
+    assert.equal(rep.gatewayCleaned, true);
+    assert.deepStrictEqual(gatewayHasMemory(home), { memb: false, deja: false });
+    assert.ok(!msgs.some((m) => /another command|gateway copy kept/.test(m)));
+});
