@@ -12,8 +12,8 @@ const profile = require('../lib/v5/profile.js');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-p0-'));
 
-// P0 #1: keep rule - fresh install should not preserve all currently running servers
-test('P0#1 keep rule: fresh install derives from base + detected apps, not from current upstreams', () => {
+// P0 #1: keep rule - first migration preserves currently running servers
+test('P0#1 keep rule: first migration keeps running upstreams, regardless of --yes', () => {
     const home = tmp();
     const dir = cfg.gatewayDir(home);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -31,25 +31,26 @@ test('P0#1 keep rule: fresh install derives from base + detected apps, not from 
     const st = {};
     profile.writeSettings(home, st);
 
-    // Fresh install: derive WITHOUT keep (detectCreatorServers will be empty since apps don't exist in temp)
+    // First migration: WITH keep (current running upstreams)
+    const current = ['github', 'bdb_unreal_mcp', 'bdb_davinci_mcp', 'adobe_uxp_mcp'];
     const r = selection.resolveGatewayServers({
         settingServers: st.gateway && st.gateway.servers,
         media: false, // no Pro MEDIA tier in this test
         creator: [], // no apps detected in temp dir
-        keep: [], // NOT including current upstreams
+        keep: current, // Always pass current upstreams to keep them
     });
 
-    // Should get only base servers, not the old unreal/davinci/adobe
-    assert.deepEqual(r.servers, selection.SERVER_GROUPS.base);
+    // Should keep the currently running servers
+    assert.ok(r.servers.includes('bdb_unreal_mcp'));
+    assert.ok(r.servers.includes('bdb_davinci_mcp'));
+    assert.ok(r.servers.includes('adobe_uxp_mcp'));
+    assert.ok(r.servers.includes('github'));
     assert.equal(r.fromSetting, false); // derived, not from stored setting
-    assert.deepEqual(r.kept, []); // nothing was "kept" since we didn't pass keep
-    assert.ok(!r.servers.includes('bdb_unreal_mcp'));
-    assert.ok(!r.servers.includes('bdb_davinci_mcp'));
-    assert.ok(!r.servers.includes('adobe_uxp_mcp'));
+    assert.deepEqual(r.kept, ['adobe_uxp_mcp', 'bdb_davinci_mcp', 'bdb_unreal_mcp']); // reported as kept (sorted)
 });
 
-// P0 #1: with keepCurrent flag (--yes mode for CI), preserve current servers
-test('P0#1 keep rule: --yes mode preserves current servers for CI', () => {
+// P0 #1: with stored selection, never re-add servers
+test('P0#1 keep rule: once a selection is stored, it is the whole truth (never re-adds deselected)', () => {
     const home = tmp();
     const dir = cfg.gatewayDir(home);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -60,44 +61,42 @@ test('P0#1 keep rule: --yes mode preserves current servers for CI', () => {
         },
     }, null, 2) + '\n', { mode: 0o600 });
 
-    const st = {};
+    const st = { gateway: { servers: ['github'] } }; // User selected only github
     profile.writeSettings(home, st);
 
-    // With keepCurrent=true, we include current upstreams
+    // Even with keep including unreal, it should NOT be added back
     const current = ['github', 'bdb_unreal_mcp'];
     const r = selection.resolveGatewayServers({
-        settingServers: st.gateway && st.gateway.servers,
+        settingServers: st.gateway.servers,
         media: false,
         creator: [],
-        keep: current, // WITH keep for --yes mode
+        keep: current, // keep is ignored when there's a stored selection
     });
 
-    // Should keep the current unreal server
-    assert.ok(r.servers.includes('bdb_unreal_mcp'));
+    // Should respect the stored selection (github only)
     assert.ok(r.servers.includes('github'));
-    assert.deepEqual(r.kept, ['bdb_unreal_mcp']); // reported as kept
+    assert.ok(!r.servers.includes('bdb_unreal_mcp'));
+    assert.equal(r.fromSetting, true); // from stored setting
+    assert.deepEqual(r.kept, []); // nothing kept since selection exists
 });
 
-// P0 #2: direct-only servers should be in DIRECT_SERVERS, not GATEWAY_SERVERS
-test('P0#2 direct-only servers: desktop/computer-use/remoteos are in DIRECT_SERVERS, not GATEWAY_SERVERS', () => {
-    // These servers stay direct by design (per-session state)
-    assert.ok(cfg.DIRECT_SERVERS.includes('zavora_computer_use'));
-    assert.ok(cfg.DIRECT_SERVERS.includes('bdb_windows_computer_use'));
-    assert.ok(cfg.DIRECT_SERVERS.includes('bdb_remoteos_mcp'));
+// P0 #2: desktop/computer-use servers are in GATEWAY_SERVERS as opt-in via `aos-gateway add`
+test('P0#2 desktop servers: computer-use/remoteos are in GATEWAY_SERVERS as opt-in (desktop group)', () => {
+    // These servers are offered through the gateway as opt-in
+    assert.ok(cfg.GATEWAY_SERVERS.includes('zavora_computer_use'));
+    assert.ok(cfg.GATEWAY_SERVERS.includes('bdb_windows_computer_use'));
+    assert.ok(cfg.GATEWAY_SERVERS.includes('bdb_remoteos_mcp'));
 
-    // They should NOT be in GATEWAY_SERVERS
-    assert.ok(!cfg.GATEWAY_SERVERS.includes('zavora_computer_use'));
-    assert.ok(!cfg.GATEWAY_SERVERS.includes('bdb_windows_computer_use'));
-    assert.ok(!cfg.GATEWAY_SERVERS.includes('bdb_remoteos_mcp'));
+    // They are in the desktop SERVER_GROUPS
+    assert.ok(selection.SERVER_GROUPS.desktop.includes('zavora_computer_use'));
+    assert.ok(selection.SERVER_GROUPS.desktop.includes('bdb_windows_computer_use'));
+    assert.ok(selection.SERVER_GROUPS.desktop.includes('bdb_remoteos_mcp'));
 });
 
-// P0 #2: all direct-only servers are accounted for
-test('P0#2 direct-only servers: all expected servers are marked direct', () => {
+// P0 #2: all genuinely direct-only servers are accounted for
+test('P0#2 direct-only servers: per-session and native-only servers stay direct', () => {
     const expected = [
         'mcsc',
-        'zavora_computer_use',
-        'bdb_windows_computer_use',
-        'bdb_remoteos_mcp',
         'bdb_rhino_mcp',
         'bdb_td_minddesigner',
         'rea_mcp',
@@ -159,7 +158,7 @@ test('P0#2 doctor reports a direct-by-design server as direct by design, not as 
     assert.match(byDesign.detail, /bdb_blender_official_mcp/);
 });
 
-test('P0#1 dropped-servers message names the running servers not carried over', () => {
+test('P0#1 kept-servers message names the running servers carried over', () => {
     const { resolveAndSaveSelection } = require('../lib/v5/pkg-gateway.js');
     const home = tmp();
     const dir = cfg.gatewayDir(home);
@@ -169,8 +168,7 @@ test('P0#1 dropped-servers message names the running servers not carried over', 
         bdb_unreal_mcp: { type: 'stdio', command: 'node', args: ['u.js'], tags: ['aos', 'bdb_unreal_mcp'] },
     } }, null, 2) + '\n', { mode: 0o600 });
     const lines = [];
-    const ctx = { home, aosRoot: home, platform: 'linux', env: {}, keepCurrentOnUpdate: false };
+    const ctx = { home, aosRoot: home, platform: 'linux', env: {} };
     resolveAndSaveSelection(ctx, (m) => lines.push(m));
-    assert.ok(lines.includes('gateway: first selection = base + detected apps; not carried over: bdb_unreal_mcp (add back with "aos-gateway add <name>")'), lines.join('\n'));
-    assert.ok(!lines.some((m) => /not carried over: github/.test(m)));
+    assert.ok(lines.some((m) => /keeping running upstreams \(github, bdb_unreal_mcp\)/.test(m)), lines.join('\n'));
 });
