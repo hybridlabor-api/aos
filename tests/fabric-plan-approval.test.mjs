@@ -1,42 +1,102 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import crypto from 'node:crypto';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import os from 'node:os';
+import { verifyPlanApproval } from '../lib/fabric-plan-approval.mjs';
+import { deduplicateFindings, checkNoProgress, normalizeComparisonKey } from '../lib/fabric-review-dedupe.mjs';
 
-function computeSha256(content) {
-  return crypto.createHash('sha256').update(content).digest('hex');
+function computeHash(content) {
+  return createHash('sha256').update(content).digest('hex');
 }
 
-function deduplicateFindings(allFindings) {
-  const seen = new Map();
-  const result = [];
-  for (const f of allFindings) {
-    const key = `${f.file}:${f.line || 'summary'}:${f.summary?.slice(0, 50) || ''}`;
-    if (seen.has(key)) {
-      const existing = seen.get(key);
-      if (['blocking', 'advisory'].includes(f.severity) &&
-          (!['blocking', 'advisory'].includes(existing.severity) ||
-           (f.severity === 'blocking' && existing.severity === 'advisory'))) {
-        existing.severity = f.severity;
-      }
-      existing.sources = (existing.sources || [existing.agent || 'unknown']).concat([f.agent || 'unknown']);
-    } else {
-      seen.set(key, { ...f, sources: [f.agent || 'unknown'] });
-      result.push(seen.get(key));
-    }
+test('verifyPlanApproval with valid sidecar', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'fabric-test-'));
+  try {
+    const planPath = path.join(tmpDir, 'plan.md');
+    const content = 'Test plan content';
+    writeFileSync(planPath, content);
+
+    const hash = computeHash(content);
+    const approvalPath = path.join(tmpDir, 'plan.approval.json');
+    const approval = {
+      schema: 'aos.plan-approval/1',
+      verdict: 'approve',
+      contentHash: hash,
+      timestamp: new Date().toISOString(),
+      source: 'plan-canvas'
+    };
+    writeFileSync(approvalPath, JSON.stringify(approval));
+
+    const result = verifyPlanApproval(planPath);
+    assert.strictEqual(result.valid, true, 'should validate correct approval');
+    assert.strictEqual(result.hash, hash, 'should return correct hash');
+    assert.deepStrictEqual(result.approval, approval, 'should return approval record');
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
   }
-  return result;
-}
-
-test('plan approval hash verification', () => {
-  const content = 'plan content here';
-  const hash = computeSha256(content);
-  const approval = { verdict: 'approve', contentHash: hash, timestamp: Date.now() };
-
-  assert.strictEqual(hash, computeSha256(content), 'hash should match same content');
-  assert.notStrictEqual(hash, computeSha256(content + ' modified'), 'hash should differ for modified content');
 });
 
-test('deduplicates findings by file:line:summary', () => {
+test('verifyPlanApproval with wrong hash', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'fabric-test-'));
+  try {
+    const planPath = path.join(tmpDir, 'plan.md');
+    const content = 'Test plan content';
+    writeFileSync(planPath, content);
+
+    const wrongHash = 'badhash' + computeHash('different content');
+    const approvalPath = path.join(tmpDir, 'plan.approval.json');
+    const approval = {
+      schema: 'aos.plan-approval/1',
+      verdict: 'approve',
+      contentHash: wrongHash,
+      source: 'plan-canvas'
+    };
+    writeFileSync(approvalPath, JSON.stringify(approval));
+
+    const result = verifyPlanApproval(planPath);
+    assert.strictEqual(result.valid, false, 'should reject wrong hash');
+    assert.match(result.reason, /does not match/, 'should report hash mismatch');
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('verifyPlanApproval with missing sidecar', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'fabric-test-'));
+  try {
+    const planPath = path.join(tmpDir, 'plan.md');
+    const content = 'Test plan content';
+    writeFileSync(planPath, content);
+
+    const result = verifyPlanApproval(planPath);
+    assert.strictEqual(result.valid, false, 'should fail when sidecar missing');
+    assert.match(result.reason, /could not read/, 'should report read failure');
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('verifyPlanApproval with malformed JSON', () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'fabric-test-'));
+  try {
+    const planPath = path.join(tmpDir, 'plan.md');
+    const content = 'Test plan content';
+    writeFileSync(planPath, content);
+
+    const approvalPath = path.join(tmpDir, 'plan.approval.json');
+    writeFileSync(approvalPath, '{invalid json}');
+
+    const result = verifyPlanApproval(planPath);
+    assert.strictEqual(result.valid, false, 'should fail on malformed JSON');
+    assert.match(result.reason, /could not read/, 'should report parse error');
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('deduplicateFindings merges by file:line:title', () => {
   const findings = [
     { file: 'src/app.ts', line: 10, summary: 'unused variable', severity: 'advisory', agent: 'reviewer-1' },
     { file: 'src/app.ts', line: 10, summary: 'unused variable', severity: 'blocking', agent: 'code-reviewer' },
@@ -49,26 +109,43 @@ test('deduplicates findings by file:line:summary', () => {
   assert.deepStrictEqual(deduped[0].sources, ['reviewer-1', 'code-reviewer'], 'should track both sources');
 });
 
-test('no-progress guard detects same finding IDs', () => {
-  const previousIds = new Set(['F001', 'F002']);
-  const currentIds = new Set(['F001', 'F002']);
+test('deduplicateFindings normalizes titles', () => {
+  const findings = [
+    { file: 'src/x.ts', line: 10, summary: 'Missing error handler!!!', severity: 'blocking', agent: 'reviewer-1' },
+    { file: 'src/x.ts', line: 10, summary: 'missing error handler', severity: 'advisory', agent: 'reviewer-2' },
+  ];
 
-  const sameAsLastTime =
-    currentIds.size > 0 &&
-    currentIds.size === previousIds.size &&
-    [...currentIds].every(id => previousIds.has(id));
-
-  assert.ok(sameAsLastTime, 'should detect identical finding sets');
+  const deduped = deduplicateFindings(findings);
+  assert.strictEqual(deduped.length, 1, 'should merge normalized titles');
+  assert.strictEqual(deduped[0].severity, 'blocking', 'should take highest severity');
+  assert.strictEqual(deduped[0].sources.length, 2, 'should list both sources');
 });
 
-test('no-progress guard allows new findings', () => {
-  const previousIds = new Set(['F001']);
-  const currentIds = new Set(['F001', 'F002']);
+test('checkNoProgress detects same blocking IDs', () => {
+  const currentFindings = [
+    { id: 'F001', severity: 'blocking', status: 'open', node: 'eng', summary: 'Bug' },
+    { id: 'F002', severity: 'blocking', status: 'open', node: 'ui', summary: 'Error' },
+  ];
+  const previousIds = new Set(['F001', 'F002']);
 
-  const sameAsLastTime =
-    currentIds.size > 0 &&
-    currentIds.size === previousIds.size &&
-    [...currentIds].every(id => previousIds.has(id));
+  const noProgress = checkNoProgress(currentFindings, previousIds);
+  assert.ok(noProgress, 'should detect identical blocking IDs');
+});
 
-  assert.ok(!sameAsLastTime, 'should allow progress when new findings appear');
+test('checkNoProgress allows new findings', () => {
+  const currentFindings = [
+    { id: 'F001', severity: 'blocking', status: 'open', node: 'eng', summary: 'Bug' },
+    { id: 'F003', severity: 'blocking', status: 'open', node: 'ui', summary: 'New issue' },
+  ];
+  const previousIds = new Set(['F001', 'F002']);
+
+  const noProgress = checkNoProgress(currentFindings, previousIds);
+  assert.ok(!noProgress, 'should allow progress when new findings appear');
+});
+
+test('normalizeComparisonKey uses node and title', () => {
+  const finding = { node: 'engineering', summary: 'Missing Error Handler!!' };
+  const key = normalizeComparisonKey(finding);
+  assert.match(key, /^engineering:/, 'should include node');
+  assert.match(key, /missingerrorhandler/, 'should normalize title');
 });

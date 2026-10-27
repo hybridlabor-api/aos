@@ -93,6 +93,13 @@ if (typeof process !== 'undefined') {
   } catch {}
 }
 
+let dedupeReviewMod = null;
+if (typeof process !== 'undefined') {
+  try {
+    dedupeReviewMod = await import(new URL('../../lib/fabric-review-dedupe.mjs', import.meta.url).href);
+  } catch {}
+}
+
 export const AGENT_ALIASES = workstreamMod?.AGENT_ALIASES || Object.freeze({
   'engineering': 'godmode-engineering',
   'godmode-engineering': 'engineering',
@@ -411,14 +418,23 @@ if (typeof globalThis.agent === 'undefined') {
       try {
         if (!fs.existsSync(planFile)) return { valid: false, reason: 'Plan file does not exist' };
         const content = fs.readFileSync(planFile, 'utf8');
-        // Check for approval record: .approval.json sidecar or approval frontmatter in the plan itself
-        const hashFromModule = typeof options?.computeHash === 'function' ? options.computeHash(content) : null;
-        const approvalPath = planFile.replace(/\.[^.]+$/, '.approval.json');
+
+        // Get sidecar path using same logic as lib/fabric-plan-approval.mjs
+        const parsedPath = path.parse(planFile);
+        const approvalPath = path.join(parsedPath.dir, `${parsedPath.name}.approval.json`);
+
         if (fs.existsSync(approvalPath)) {
           try {
             const approval = JSON.parse(fs.readFileSync(approvalPath, 'utf8'));
             if (approval && approval.verdict === 'approve' && approval.contentHash) {
-              const contentHash = hashFromModule || require('crypto').createHash('sha256').update(content).digest('hex');
+              // Compute hash using imported crypto module
+              let crypto;
+              try {
+                crypto = await import('node:crypto');
+              } catch {
+                crypto = { createHash: require('crypto').createHash };
+              }
+              const contentHash = crypto.createHash('sha256').update(content).digest('hex');
               if (approval.contentHash === contentHash) {
                 return { valid: true, approval, planFile, contentHash };
               }
@@ -438,6 +454,14 @@ if (typeof globalThis.agent === 'undefined') {
     // Deterministic step: merge-review (deduplicate findings from parallel reviewers)
     if (label === 'merge-review') {
       const allFindings = options?.allFindings || [];
+      const parallelReviewers = options?.parallelReviewers || [];
+
+      if (dedupeReviewMod?.deduplicateFindings) {
+        const deduplicated = dedupeReviewMod.deduplicateFindings(allFindings);
+        return { deduplicated };
+      }
+
+      // Fallback: inline deduplication if module load failed
       const seen = new Map();
       const result = [];
       for (const f of allFindings) {
@@ -1344,7 +1368,19 @@ function extractPlanFlag(text) {
     })
     .replace(/\s{2,}/g, ' ')
     .trim();
-  return { plan, goal, malformed, duplicates };
+
+  // Validate plan file: must exist and end with .md/.mdx/.markdown
+  let invalid = null;
+  if (plan) {
+    const ext = plan.toLowerCase();
+    if (!/(\.md|\.mdx|\.markdown)$/.test(ext)) {
+      invalid = 'Plan file must end with .md, .mdx, or .markdown extension';
+    } else if (fs && !fs.existsSync(plan)) {
+      invalid = `Plan file does not exist: ${plan}`;
+    }
+  }
+
+  return { plan, goal, malformed, duplicates, invalid };
 }
 
 function extractProfileFlag(text) {
@@ -1489,7 +1525,7 @@ if (profile) {
     }
   }
 }
-const { plan: planFromFlag, goal: goalAfterPlan, malformed: planMalformed, duplicates: planDuplicates } = extractPlanFlag(goalAfterProfile);
+const { plan: planFromFlag, goal: goalAfterPlan, malformed: planMalformed, duplicates: planDuplicates, invalid: planInvalid } = extractPlanFlag(goalAfterProfile);
 if (planDuplicates > 0) {
   return await escalate('--plan was given more than once. Provide exactly one plan file path.');
 }
@@ -1497,6 +1533,12 @@ if (planMalformed > 0) {
   return await escalate(
     `--plan was given with an empty value (${planMalformed} time(s)). Write --plan=<path>, e.g. --plan=production_artifacts/plan/plan.mdx.`
   );
+}
+if (planInvalid) {
+  return await escalate(`--plan validation failed: ${planInvalid}`);
+}
+if (workstreamsFromFlag && planFromFlag) {
+  return await escalate('--workstreams and --plan flags cannot be used together. Choose one: either a pre-approved --plan to skip Architect, or --workstreams to run the full pipeline.');
 }
 
 const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(goalAfterPlan);
@@ -1964,6 +2006,22 @@ if (preApprovedPlan && planApprovalRecord) {
     approval_source: preApprovedPlan,
     approval_hash: planApprovalRecord.contentHash,
   };
+
+  // Write the pre-approval metadata to state.json before the build loop
+  if (fs && path) {
+    try {
+      const statePath = path.resolve('production_artifacts', 'state.json');
+      let state = {};
+      if (fs.existsSync(statePath)) {
+        state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      }
+      Object.assign(state, stateFragmentPatch);
+      fs.mkdirSync(path.dirname(statePath), { recursive: true });
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+    } catch (err) {
+      process.stderr?.write?.(`[fabric-dispatch] warning: could not write state.json with approval metadata: ${err.message}\n`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -2013,6 +2071,7 @@ let findings = [];
 let reviewedClean = false;
 let nodesToRun = BUILD_NODES; // first pass: everyone applicable
 let previousBlockingIds = new Set(); // for the no-progress guard below
+let reviewRound = 0; // dedicated counter for reviewer cycles, separate from overall iteration
 
 while (!reviewedClean) {
   const isSolo = nodesToRun.length === 1;
@@ -2065,6 +2124,18 @@ while (!reviewedClean) {
   // Reviewer: ARTIFACT + CONTRACT only, per .agents/graph.md's discipline --
   // reviewerStateNote() (not dispatchNote()) is what actually enforces this;
   // see that function's own comment for why the distinction matters.
+
+  // Max 2 review rounds: if this is the third or later review cycle and blocking findings
+  // are still open, escalate rather than looping indefinitely.
+  reviewRound++;
+  if (reviewRound >= 3 && findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length > 0) {
+    return await escalate(
+      `Reviewer round ${reviewRound}: blocking findings still open after ${reviewRound - 1} previous review cycle(s). ` +
+      'Escalating rather than attempting a third or higher review round.',
+      { findings }
+    );
+  }
+
   const reviewerArtifactsNote = hasWorkstreamsFlag && executionManifest?.workstreams
     ? executionManifest.workstreams.map((ws) => `state.artifacts.${ws.artifactKey || ws.id}`).join(', ')
     : (profile && profile.artifacts ? Object.values(profile.artifacts).join(', ') : `production_artifacts/01_frontend_spec.md, 02_backend_schema.md${needsMedia ? ', 03_media_pipeline.md' : ''}`);
@@ -2137,20 +2208,30 @@ while (!reviewedClean) {
       ));
     });
 
-    // Merge all findings from 4 reviewers
+    // Validate all reviewer results before merging
     const allFindings = [];
-    for (const r of reviewerResults) {
-      if (r?.findings && Array.isArray(r.findings)) {
-        for (const f of r.findings) {
-          allFindings.push({ ...f, agent: r.agentType });
-        }
+    for (let i = 0; i < reviewerResults.length; i++) {
+      const r = reviewerResults[i];
+      const reviewerId = parallelReviewers[i];
+
+      // Fail closed: each reviewer result MUST be an object with a findings array
+      if (!r || typeof r !== 'object' || !Array.isArray(r.findings)) {
+        return await escalate(
+          `Reviewer ${reviewerId} returned invalid result: expected object with findings array. ` +
+          `Got: ${typeof r}${r && typeof r === 'object' ? ` (${Object.keys(r).join(', ')})` : ''}. ` +
+          'Run /fabric-graph again once all reviewers are available.'
+        );
+      }
+
+      for (const f of r.findings) {
+        allFindings.push({ ...f, agent: r.agentType || reviewerId });
       }
     }
 
     // Deduplicate findings
     const mergeResult = await agent(
       'Deduplicate findings',
-      { label: 'merge-review', allFindings }
+      { label: 'merge-review', allFindings, parallelReviewers }
     );
 
     const deduplicatedFindings = mergeResult?.deduplicated ?? allFindings;
