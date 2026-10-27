@@ -156,3 +156,50 @@ test('pinned packages: failed install leaves no cache hash, successful install w
         fs.rmSync(tmpDir, { recursive: true });
     }
 });
+
+test('gateway npm cache: skips only the specs npm already left unresolved', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const dir = path.join(tmpDir, 'gateway');
+        fs.mkdirSync(path.join(dir, 'node_modules'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'test', dependencies: { a: '1.0.0' } }) + '\n');
+        gatewayNpmCache.writeCache(dir, gatewayNpmCache.computePackageHash(dir), ['a@1.0.0']);
+
+        assert.strictEqual(gatewayNpmCache.canSkipGatewayInstall(dir, ['a@1.0.0']).skip, true);
+        const gone = gatewayNpmCache.canSkipGatewayInstall(dir, ['a@1.0.0', 'b@2.0.0']);
+        assert.deepStrictEqual([gone.skip, gone.reason], [false, 'package no longer runnable']);
+        assert.strictEqual(gatewayNpmCache.canSkipGatewayInstall(dir).skip, true, 'no missing list asked, none compared');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
+
+test('pinned packages: a package that went missing after a good install is installed again', async () => {
+    const pkgGateway = require('../lib/v5/pkg-gateway');
+    const savedSandbox = process.env.AOS_TEST_SANDBOX;
+    delete process.env.AOS_TEST_SANDBOX;
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const dir = path.join(tmpDir, 'gateway');
+        const pkgDir = path.join(dir, 'mcp-pkgs');
+        const servers = { demo: { command: 'npx', args: ['-y', 'demo-pkg@1.2.3'] } };
+        let runs = 0;
+        const ctx = { home: path.resolve(__dirname, '..'), log: () => {}, run: async () => { runs++; return { status: 0 }; } };
+
+        await pkgGateway.installPinnedPackages(ctx, dir, servers);
+        assert.strictEqual(runs, 1);
+
+        // The fake npm installed nothing, so demo-pkg stays unresolved: another install cannot change that.
+        fs.mkdirSync(path.join(pkgDir, 'node_modules'), { recursive: true });
+        await pkgGateway.installPinnedPackages(ctx, dir, servers);
+        assert.strictEqual(runs, 1, 'an install npm already ran for the same packages is not repeated');
+
+        // The cache says demo-pkg was runnable after the last install; it is not any more.
+        gatewayNpmCache.writeCache(pkgDir, gatewayNpmCache.computePackageHash(pkgDir), []);
+        await pkgGateway.installPinnedPackages(ctx, dir, servers);
+        assert.strictEqual(runs, 2, 'a package that went missing since is installed again');
+    } finally {
+        if (savedSandbox === undefined) delete process.env.AOS_TEST_SANDBOX; else process.env.AOS_TEST_SANDBOX = savedSandbox;
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});

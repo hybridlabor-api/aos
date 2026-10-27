@@ -233,3 +233,39 @@ test('Rust + Tauri skill copies and the cargo-built CLI are removed only when AO
         assert.strictEqual(ur.readRecords(home).rustauri, undefined);
     } finally { rm(home); }
 });
+
+test('skill sync records go only with the install manifest and after the file pass; user files and roots stay', () => {
+    const home = sandbox();
+    try {
+        const sha = (t) => require('node:crypto').createHash('sha256').update(t).digest('hex');
+        const root = path.join(home, '.claude', 'skills');
+        const record = JSON.stringify({ sourceHash: 'a', targetHash: 'b' });
+        const owned = path.join(root, 'memb-ingest', 'SKILL.md');
+        const mixedOwned = path.join(root, 'mixed', 'SKILL.md');
+        write(owned, '# shipped');
+        write(path.join(root, 'memb-ingest', '.aos-skill-manifest.json'), record);
+        write(mixedOwned, '# shipped');
+        write(path.join(root, 'mixed', 'notes.md'), 'mine');
+        write(path.join(root, 'mixed', '.aos-skill-manifest.json'), record);
+        write(path.join(root, 'mine', 'SKILL.md'), '# mine');
+        const npm = path.join(home, 'empty-bin', 'npm');
+        write(npm, '#!/bin/sh\nexit 0\n');
+        fs.chmodSync(npm, 0o755);
+        const run = () => {
+            const r = spawnSync(process.execPath, [path.join(REPO, 'bin', 'aos-uninstall.mjs'), '--yes'], { cwd: home, env: env(home), encoding: 'utf8' });
+            assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+        };
+
+        ur.recordNpmGlobal(home, '@vshulcz/deja-vu'); // a pending record lets the run start although there is no install manifest
+        run();
+        for (const d of ['memb-ingest', 'mixed']) assert.ok(fs.existsSync(path.join(root, d, '.aos-skill-manifest.json')), `${d}: without an install manifest the record stays`);
+        assert.ok(fs.existsSync(owned) && fs.existsSync(mixedOwned));
+
+        write(path.join(home, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [owned]: { sha256: sha('# shipped') }, [mixedOwned]: { sha256: sha('# shipped') } }));
+        run();
+        assert.ok(!fs.existsSync(path.join(root, 'memb-ingest')), 'its file went first, then the record and the emptied copy');
+        assert.deepStrictEqual(fs.readdirSync(path.join(root, 'mixed')), ['notes.md'], 'the user file stays, the record goes');
+        assert.ok(fs.existsSync(path.join(root, 'mine', 'SKILL.md')), 'a user skill is never touched');
+        assert.ok(fs.statSync(root).isDirectory(), 'the skill root stays');
+    } finally { rm(home); }
+});

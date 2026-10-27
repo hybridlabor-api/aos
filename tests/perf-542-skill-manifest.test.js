@@ -313,3 +313,128 @@ test('uninstall pass follows a skill root that is a symlink to a real dir, as th
         fs.rmSync(dotfiles, { recursive: true, force: true });
     }
 });
+
+test('manifest: a record written by another AOS version is not skipped', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const source = path.join(tmpDir, 'source');
+        const target = path.join(tmpDir, 'target');
+        writeTestFile(source, 'SKILL.md', '# Test Skill');
+        writeTestFile(target, 'SKILL.md', '# Test Skill');
+        skillManifest.writeManifest(target, dirHash(source), dirHash(target), '1.0.0');
+
+        assert.strictEqual(skillManifest.shouldSkipSkillSync(source, target, '1.0.0').skip, true);
+        const other = skillManifest.shouldSkipSkillSync(source, target, '1.0.1');
+        assert.deepStrictEqual([other.skip, other.reason], [false, 'version changed']);
+        assert.strictEqual(skillManifest.shouldSkipSkillSync(source, target).skip, true, 'no version asked, none compared');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
+
+test('manifest: a symlinked copy gets no record', { skip: process.platform === 'win32' }, () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const real = path.join(tmpDir, 'checkout');
+        writeTestFile(real, 'SKILL.md', '# dev checkout');
+        const link = path.join(tmpDir, 'skills-link');
+        fs.symlinkSync(real, link);
+        skillManifest.writeManifest(link, 'source-hash', 'target-hash', '1.0.0');
+        assert.strictEqual(has(real, skillManifest.MANIFEST_FILE), false, 'the uninstall never follows links, so nothing is written through one');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
+
+test('sync records a copy only when every file arrived, and the clean retry is recorded', () => {
+    const installer = require('../installer');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const source = path.join(tmpDir, 'src', 'my-skill');
+        const skillsDir = path.join(tmpDir, 'skills');
+        const target = path.join(skillsDir, 'my-skill');
+        writeTestFile(source, 'SKILL.md', '# Test Skill');
+        writeTestFile(source, 'index.js', 'module.exports = {};');
+        fs.mkdirSync(path.join(target, 'index.js'), { recursive: true }); // a directory where a file must land: that copy fails
+
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.strictEqual(skillManifest.readManifest(target), null, 'a half-written copy is not recorded as complete');
+
+        fs.rmdirSync(path.join(target, 'index.js'));
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.ok(skillManifest.readManifest(target), 'the next run copies it again and records it');
+        assert.strictEqual(fs.readFileSync(path.join(target, 'index.js'), 'utf8'), 'module.exports = {};');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
+
+test('pruning a retired skill backs up foreign files but not the AOS sync record', () => {
+    const { pruneRetiredSkills } = require('../lib/retired-skills');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-'));
+    try {
+        const root = path.join(home, '.agents', 'skills');
+        const dir = path.join(root, 'old-skill');
+        writeTestFile(dir, 'SKILL.md', '# old');
+        writeTestFile(dir, 'mine.txt', 'a user file');
+        record(dir);
+        const sha = crypto.createHash('sha256').update('# old').digest('hex');
+        const manifest = { [path.join(dir, 'SKILL.md')]: { sha256: sha } };
+
+        const res = pruneRetiredSkills({ home, manifest, roots: [root], backupDir: path.join(home, 'backup'), names: ['old-skill'] });
+        assert.deepStrictEqual(res.backedUp, [path.join(dir, 'mine.txt')], 'only the user file is backed up');
+        assert.ok(!has(dir), 'the retired skill goes whole');
+    } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
+test('Codex/OpenCode retirement drops a copy that holds only the AOS sync record, with no leftover warning', () => {
+    const installer = require('../installer');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-skillmf-'));
+    const savedMode = process.env.AOS_PLUGIN_MIGRATION;
+    delete process.env.AOS_PLUGIN_MIGRATION;
+    try {
+        const root = path.join(home, '.config', 'opencode', 'skills');
+        const stub = path.join(root, 'memb-ingest'); // removeLooseCopies took its files; the record and an empty folder are left
+        fs.mkdirSync(path.join(stub, 'scripts'), { recursive: true });
+        record(stub);
+        writeTestFile(path.join(home, '.agents', 'skills', 'memb-ingest'), 'SKILL.md', '# memb-ingest');
+
+        const res = installer.retireCodexSkillCopies({}, { home, rootDir: root, label: 'OpenCode', tag: 'opencode-skills' });
+        assert.deepStrictEqual(res.leftover, [], 'a record-only copy is not an edited copy');
+        assert.ok(!has(stub), 'the stub goes');
+        assert.ok(has(root), 'the root stays');
+    } finally {
+        if (savedMode === undefined) delete process.env.AOS_PLUGIN_MIGRATION; else process.env.AOS_PLUGIN_MIGRATION = savedMode;
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
+// Last on purpose: initSessionManifest leaves the installer's session state set for the rest of the process.
+test('a copy whose files the install manifest does not track is synced again instead of skipped', () => {
+    const installer = require('../installer');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const source = path.join(tmpDir, 'src', 'my-skill');
+        const skillsDir = path.join(tmpDir, 'skills');
+        const entry = path.join(skillsDir, 'my-skill', 'SKILL.md');
+        writeTestFile(source, 'SKILL.md', '# Test Skill');
+        writeTestFile(source, 'index.js', 'module.exports = {};');
+        const manifest = {};
+        installer.initSessionManifest(manifest, [path.join(tmpDir, 'src')]);
+
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.ok(manifest[entry], 'the first sync adopts the files into the install manifest');
+
+        delete manifest[entry]; // a run that died before the install manifest was saved: the record is on disk, the entries are not
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.ok(manifest[entry], 'the next run copies again and adopts the files');
+
+        const adopted = manifest[entry];
+        installer.syncSkillEntry(source, 'my-skill', skillsDir, []);
+        assert.strictEqual(manifest[entry], adopted, 'an adopted, unchanged copy is skipped');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});

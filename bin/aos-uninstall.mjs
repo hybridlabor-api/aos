@@ -324,7 +324,7 @@ function removeSyncedSkillCopies({ home = HOME } = {}) {
       if (real(copy) !== path.join(realRoot, name)) continue; // a symlink, or anything that resolves outside the root
       try {
         if (!skillManifest.removeSyncedRecord(copy)) continue;
-        pruneEmpty(copy);
+        try { pruneEmpty(copy); } catch { /* an unreadable folder inside keeps the copy */ }
         done.push({ copy, result: existsSync(copy) ? 'kept' : 'removed' });
       } catch (e) { done.push({ copy, result: 'failed', error: e.message }); }
     }
@@ -448,11 +448,12 @@ async function execute(p) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
-  attempt('synced skill copies', () => {
+  // Without the install manifest the file pass removed nothing, so no copy is "emptied" and nothing here is proven.
+  if (p.manifest) attempt('synced skill copies', () => {
     const copies = removeSyncedSkillCopies();
     for (const { copy, result, error } of copies) {
       if (result === 'failed') failures.push(`${tilde(copy)}: AOS skill record cleanup failed (${error})`);
-      else if (result === 'kept') console.log(`  ${tilde(copy)} kept: files that are not AOS's remain; its AOS skill record removed`);
+      else if (result === 'kept') console.log(`  ${tilde(copy)} kept: it still holds files or folders; its AOS skill record removed`);
     }
     console.log(`  ${copies.filter((c) => c.result === 'removed').length} synced skill copies removed with their AOS record`);
   });
