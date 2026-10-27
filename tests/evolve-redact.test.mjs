@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import { redact } from '../lib/evolve/redact.mjs';
 
+// Fake key-shaped fixtures, assembled at runtime so secret scanners do not flag the source.
+const STRIPE = ['sk', 'live', '51Abcdef1234567890abcdef123456'].join('_');
+const SLACK = ['xoxb', '1234567890', 'abcdefghijklmnop'].join('-');
+
 describe('AOS Evolve Redaction Engine (WP2)', () => {
   test('strips current user home directory from paths', () => {
     const home = os.homedir();
@@ -34,13 +38,13 @@ describe('AOS Evolve Redaction Engine (WP2)', () => {
 
   test('redacts OpenAI / Anthropic API keys (sk-... and sk_live_...)', () => {
     const input1 = 'Encountered 401 with authorization key sk-ant-api03-abcdef1234567890abcdef1234567890';
-    const input2 = 'Stripe key found: sk_live_51Abcdef1234567890abcdef123456';
+    const input2 = `Stripe key found: ${STRIPE}`;
     const res1 = redact(input1);
     const res2 = redact(input2);
 
     assert.ok(!res1.includes('sk-ant-api03-abcdef1234567890abcdef1234567890'));
     assert.ok(res1.includes('***REDACTED***'));
-    assert.ok(!res2.includes('sk_live_51Abcdef1234567890abcdef123456'));
+    assert.ok(!res2.includes(STRIPE));
     assert.ok(res2.includes('***REDACTED***'));
   });
 
@@ -106,10 +110,10 @@ PASS=xyz`;
   });
 
   test('redacts Slack tokens (xoxb-...) and AWS access keys (AKIA...)', () => {
-    const input = 'Credentials found: slack=xoxb-1234567890-abcdefghijklmnop and aws=AKIAIOSFODNN7EXAMPLE';
+    const input = `Credentials found: slack=${SLACK} and aws=AKIAIOSFODNN7EXAMPLE`;
     const result = redact(input);
 
-    assert.ok(!result.includes('xoxb-1234567890-abcdefghijklmnop'));
+    assert.ok(!result.includes(SLACK));
     assert.ok(!result.includes('AKIAIOSFODNN7EXAMPLE'));
     assert.ok(result.includes('***REDACTED***'));
   });
