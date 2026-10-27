@@ -253,25 +253,37 @@ async function loadArchifyContract() {
   return archifyContractPromise;
 }
 
-function readStdinSync() {
-  const chunks = [];
-  const buffer = Buffer.alloc(64 * 1024);
-  const sleeper = new Int32Array(new SharedArrayBuffer(4));
-  for (;;) {
-    let bytes;
-    try {
-      bytes = fs.readSync(0, buffer, 0, buffer.length, null);
-    } catch (error) {
-      if (error?.code === 'EAGAIN' || error?.code === 'EWOULDBLOCK') {
-        Atomics.wait(sleeper, 0, 0, 2);
-        continue;
-      }
-      throw error;
-    }
-    if (bytes === 0) break;
-    chunks.push(Buffer.from(buffer.subarray(0, bytes)));
-  }
-  return Buffer.concat(chunks).toString('utf8');
+// Bounded stdin read, same as .claude/hooks/rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows)
+// must not hang the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null.
+  let st;
+  try { st = fs.fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(fs.readFileSync(0, 'utf8')); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve('');
+  return new Promise((resolve) => {
+    let buf = '';
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: the run would not end.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith('}')) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on('end', finish);
+    process.stdin.on('error', () => finish(true));
+    process.stdin.resume();
+  });
 }
 
 let inputGoal = null;
@@ -284,7 +296,7 @@ let hookEventName = '';
 if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && fs) {
   try {
     let stdinRaw = '';
-    try { stdinRaw = readStdinSync().trim(); } catch {}
+    try { stdinRaw = ((await readStdinBounded(1500)) ?? '').trim(); } catch {}
     if (stdinRaw) {
       isHookInvocation = true;
       let payload = null;

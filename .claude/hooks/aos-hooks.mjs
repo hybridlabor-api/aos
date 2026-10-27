@@ -14,7 +14,7 @@
 // loopback POSTs per event, so it is a one-release escape hatch for maps that never announce themselves.
 // The script entry modules (node go-gate.mjs, node memb-inject.mjs, ...) keep working for the other harnesses.
 
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, fstatSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const BASH = new Set(['Bash']);
@@ -132,13 +132,46 @@ function flush({ code, stdout, stderr }) {
   if (stderr) process.stderr.write(stderr, out); else out();
 }
 
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
+
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
 if (isMain()) {
   const [event = '', ...rest] = process.argv.slice(2);
   const names = rest.filter((a) => a.endsWith('.mjs'));
   // Unreadable stdin is not an empty payload: the sentinel is not JSON, so go-gate denies like `node go-gate.mjs` does.
-  let raw = '\0unreadable hook input';
-  try { raw = readFileSync(0, 'utf8'); } catch { /* sentinel stays */ }
+  // A timeout or a read error (null) keeps the sentinel.
+  const raw = (await readStdinBounded(2000)) ?? '\0unreadable hook input';
   flush(await safeDispatch(event, names, raw, REGISTRY, { rest: rest.includes('--rest') }));
 }

@@ -2,9 +2,42 @@
 // PreToolUse hook: when a subagent is spawned (Agent/Task), make sure the agenttrail
 // live map runs and hand its URL to the model. Fail-open: never blocks, never throws.
 // Reads only tool_name, session_id, cwd -- never tool_input or prompt text.
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, fstatSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
 
 // Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
 export function hook(input) {
@@ -36,7 +69,7 @@ export function hook(input) {
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 if (isMain()) {
   let input = null;
-  try { input = JSON.parse(readFileSync(0, 'utf8')); } catch { /* fail open */ }
+  try { input = JSON.parse((await readStdinBounded(1500)) ?? ''); } catch { /* fail open */ }
   const r = hook(input);
   if (r.stdout) process.stdout.write(r.stdout);
   process.exit(0);

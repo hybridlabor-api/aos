@@ -39,7 +39,7 @@ The README groups the harnesses into tiers (Claude Code full; OpenCode gate and 
 | Tier | Gate hook | Grants / modes | Panel | A2A inbound | MCP gateway entries | Source |
 |---|---|---|---|---|---|---|
 | 1 Claude Code | `settings.json` PreToolUse, enforced | `go-grant.mjs` + `go-token.mjs` (UserPromptSubmit), all modes | Fleet mod (`plugins/bdb-aos-fleet`) | UserPromptSubmit drain + Stop nudge | yes | `lib/v5/profile.js` HARNESS_HOOKS.claude |
-| 2 OpenCode | plugin `tool.execute.before` | via plugin, no `off`, grants capped at 2 h | none | plugin injects a prompt | yes | `.opencode/plugins/bdb-aos.js` |
+| 2 OpenCode | plugin `tool.execute.before` | via plugin, all modes (`off` as on Claude, plain form only, max 24 h); agent-posted prompt routes stay guarded under `off` | none | plugin injects a prompt | yes | `.opencode/plugins/bdb-aos.js` |
 | 3 Codex | `[[hooks.PreToolUse]]` in `config.toml`, manual `/hooks` trust, firing unverified | not wired | none | `codex queue` / `exec resume` | not written (shape unverified) | `installer.js` mergeCodexTomlHooks |
 | 3 agy | named hook `aos-go-gate`, firing unverified | not wired | none | pull only (`a2a_inbox_pull`) | not written (shape unverified) | `installer.js` mergeAntigravityHooks |
 | 4 Cursor | none | none | none | MCP `aos-a2a-mcp`, opt-in `AOS_A2A_MCP=on` | yes | README harness table |
@@ -55,7 +55,7 @@ A grant or mode is always typed by the human as the whole message (`gogate grant
 | Harness | Where typed grants take effect |
 |---|---|
 | Claude Code | `go-grant.mjs` + `go-token.mjs` (UserPromptSubmit); all modes |
-| OpenCode | plugin loads go-gate, go-grant, go-token; `off` not available, grants capped at 2h |
+| OpenCode | plugin loads go-gate, go-grant, go-token; all modes incl. `off` (plain form, max 24 h, same as Claude); grants up to 24 h; prompts an agent posts to the OpenCode server never lift `off` |
 | Codex | gate hook only (PreToolUse); `go-grant`/`go-token` are not wired, so only a literal human `GO` counts. Firing is unverified: `docs/codex-gate-smoke.md` |
 | agy | gate hook only; grants and modes are not wired, only a literal human `GO` counts. Firing is unverified: `docs/codex-agy-setup.md` |
 | Cursor, Windsurf, Roo/Cline, Aider | no gate hook; rules and skills only |

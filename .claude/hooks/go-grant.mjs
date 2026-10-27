@@ -13,11 +13,11 @@
 //
 // CLI: node go-grant.mjs --status [--session <id>]   (read-only, prints status)
 
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   parseGogate, textHash, sessionKey, readState, writeState, gateLog, effectiveGate,
-  gogateCommandsFor, statusText, listStateKeys,
+  gogateCommandsFor, statusText, listStateKeys, readStdinBounded,
 } from "./go-gate.mjs";
 
 const emptyState = (source) => ({ transcript: source, grants: [] });
@@ -88,7 +88,7 @@ if (isMain()) {
     process.exit(0);
   }
   try {
-    const r = hook(JSON.parse(readFileSync(0, "utf8")));
+    const r = hook(JSON.parse((await readStdinBounded(2000)) ?? ""));
     if (r.stdout) process.stdout.write(r.stdout);
   } catch { /* a failing hook must never block the prompt */ }
   process.exit(0);

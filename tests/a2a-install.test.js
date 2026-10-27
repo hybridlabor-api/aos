@@ -78,7 +78,7 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     const ocConfig = fs.readFileSync(
       path.join(home, '.config', 'opencode', 'opencode.jsonc'), 'utf8'
     );
-    assert.match(ocConfig, /bdb-aos\.js/, 'opencode.jsonc must register the plugin');
+    assert.doesNotMatch(ocConfig, /bdb-aos\.js/, 'the plugin is auto-loaded from plugins/, never listed in plugin[]');
   });
 
   test('Claude SessionStart sidecar hook: registered only when the hook file ships, never fails when absent; skipped under AOS_A2A_SIDECAR=off', async () => {

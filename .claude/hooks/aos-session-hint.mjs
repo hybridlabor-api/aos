@@ -5,7 +5,7 @@
 //   Output: {"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"..."}}
 //   Off switches: AOS_SESSION_HINT=off (human or installer kills it) and
 //   AOS_DELEGATE_DEPTH>0 (delegated workers stay silent).
-import { readFileSync, existsSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync, realpathSync, fstatSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,6 +84,39 @@ export function agyHintFirstTime(conversationId, base = join(homedir(), ".aos", 
   return true;
 }
 
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
+
 // Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
 // buildHint writes its notices to stderr itself; stdout is returned.
 export async function hook(input) {
@@ -103,7 +136,7 @@ export async function hook(input) {
 
 async function main() {
   let input = {};
-  try { input = JSON.parse(readFileSync(0, "utf8")); } catch {} // unparseable input is still not an error
+  try { input = JSON.parse((await readStdinBounded(1500)) ?? ""); } catch {} // unparseable input is still not an error
   const r = await hook(input);
   if (r.stdout) process.stdout.write(r.stdout);
 }

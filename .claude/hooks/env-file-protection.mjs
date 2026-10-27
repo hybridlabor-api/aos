@@ -19,7 +19,7 @@
 // the agent is not. The go-gate store check is the exception: unparseable input that names the
 // store is denied.
 
-import { readFileSync, realpathSync, lstatSync, readlinkSync } from "node:fs";
+import { realpathSync, lstatSync, readlinkSync, readFileSync, fstatSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 
@@ -28,12 +28,37 @@ import { basename, dirname, isAbsolute, resolve } from "node:path";
 const TEMPLATE_FILE = /^\.env\.(example|sample|template|dist)$/i;
 const ENV_FILE = /^\.env(\..*)?$/i;
 
-function readStdin() {
-  try {
-    return readFileSync(0, "utf8");
-  } catch {
-    return "";
-  }
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
 }
 
 // Decision as { code, stdout, stderr }: shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
@@ -144,8 +169,8 @@ export function hook(rawInput) {
   return decision(isAgy, true);
 }
 
-function main() {
-  const r = hook(readStdin());
+async function main() {
+  const r = hook((await readStdinBounded(2000)) ?? "");
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
   process.exit(r.code);
@@ -173,4 +198,4 @@ export function targetsOf(input) {
   return out;
 }
 
-if (isMain()) main();
+if (isMain()) await main();

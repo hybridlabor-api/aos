@@ -41,9 +41,42 @@
 //      again would just burn turns until the platform cap force-overrides us
 //      with a warning. In that case: allow the stop and let the human see it.
 
-import { readFileSync, existsSync, writeFileSync, realpathSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, realpathSync, fstatSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
 
 const ALLOW = { code: 0, stdout: "", stderr: "" };
 
@@ -133,9 +166,8 @@ export function hook(rawInput, defaultCwd = process.cwd()) {
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
 if (isMain()) {
-  let raw = "";
-  try { raw = readFileSync(0, "utf8"); } catch { /* unreadable stdin: the hook fails open */ }
-  const r = hook(raw);
+  // Unreadable stdin or a timeout (null) fails open, as before.
+  const r = hook((await readStdinBounded(2000)) ?? "");
   if (r.stderr) process.stderr.write(r.stderr);
   process.exit(r.code);
 }

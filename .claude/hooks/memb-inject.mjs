@@ -33,7 +33,7 @@
  * Fails open: any error exits 0 silently.
  */
 
-import { readFileSync, existsSync, realpathSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, realpathSync, mkdirSync, writeFileSync, fstatSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -616,6 +616,39 @@ export function stampAgyIdentity(conversationId, base = path.join(os.homedir(), 
   try { mkdirSync(dir, { recursive: true }); writeFileSync(stamp, ''); return true; } catch { return false; }
 }
 
+// Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
+// the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
+function readStdinBounded(maxMs, maxBytes = 64 << 20) {
+  // A regular file or directory never blocks: read it at once. A read error (EISDIR, closed fd) is null, which go-gate denies.
+  let st;
+  try { st = fstatSync(0); } catch { return Promise.resolve(null); }
+  if (st.isFile() || st.isDirectory()) { try { return Promise.resolve(readFileSync(0, "utf8")); } catch { return Promise.resolve(null); } }
+  if (process.stdin.isTTY) return Promise.resolve("");
+  return new Promise((resolve) => {
+    let buf = "";
+    let settled = false;
+    const finish = (incomplete) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(to);
+      // pause() alone keeps an open pipe ref'd: a hook that ends without process.exit (a2a-session) would hang.
+      try { process.stdin.pause(); process.stdin.unref?.(); } catch {}
+      resolve(incomplete === true && !buf ? null : buf);
+    };
+    const to = setTimeout(finish, maxMs, true);
+    if (to.unref) to.unref();
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      buf += chunk;
+      if (buf.length >= maxBytes) return finish();
+      if (buf.trimEnd().endsWith("}")) try { JSON.parse(buf); finish(); } catch {}
+    });
+    process.stdin.on("end", finish);
+    process.stdin.on("error", () => finish(true));
+    process.stdin.resume();
+  });
+}
+
 // Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
 // Fails open: any error answers an empty result. stderr carries the one human-visible status line.
 export async function hook(eventData) {
@@ -667,7 +700,7 @@ export async function hook(eventData) {
 // the module (e.g. from tests) must stay side-effect free.
 async function main() {
   let inputRaw = '';
-  try { inputRaw = readFileSync(0, 'utf8'); } catch { failOpen(); }
+  inputRaw = (await readStdinBounded(1500)) ?? '';
   if (!inputRaw || !inputRaw.trim()) failOpen();
   let eventData = {};
   try { eventData = JSON.parse(inputRaw); } catch { failOpen(); }

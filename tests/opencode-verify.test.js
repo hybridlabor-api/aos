@@ -57,7 +57,7 @@ describe('opencode-verify', () => {
 
     test('full install passes every check', () => {
         installFiles();
-        put('.config/opencode/opencode.jsonc', `{ // c\n "plugin": ["${home}/.config/opencode/plugins/bdb-aos.js"] }`);
+        put('.config/opencode/opencode.jsonc', '{ // c\n "plugin": ["@dietrichgebert/ponytail@5.3.2"] }');
         const r = check(cli());
         for (const [n, v] of Object.entries(r)) assert.ok(v.ok, `${n}: ${v.detail}`);
         assert.equal(Object.keys(r).length, 6);
@@ -73,11 +73,21 @@ describe('opencode-verify', () => {
         assert.match(r['OpenCode commands'].detail, /missing \/bdb-aos-brainstorm/);
     });
 
-    test('same file by file URL, ~ path and dotdot is one registration; another file is a double load', () => {
+    test('any plugin[] entry for bdb-aos.js is a double load: the installed file (any spelling) or another file', () => {
         installFiles();
-        const same = [`file://${home}/.config/opencode/plugins/bdb-aos.js`, `${home}/.config/opencode/plugins/../plugins/bdb-aos.js`, '~/.config/opencode/plugins/bdb-aos.js'];
-        put('.config/opencode/opencode.json', JSON.stringify({ plugin: same }));
+        for (const spelling of [`file://${home}/.config/opencode/plugins/bdb-aos.js`, `${home}/.config/opencode/plugins/../plugins/bdb-aos.js`, '~/.config/opencode/plugins/bdb-aos.js']) {
+            put('.config/opencode/opencode.json', JSON.stringify({ plugin: [spelling] }));
+            const own = check(cli())['OpenCode plugin registration'];
+            assert.equal(own.ok, false, spelling);
+            assert.match(own.detail, /auto-loaded plugins\/bdb-aos\.js: OpenCode on Windows loads it twice/);
+        }
+        put('.config/opencode/opencode.json', '{}');
         assert.equal(check(cli())['OpenCode plugin registration'].ok, true);
+        put('.opencode/opencode.jsonc', JSON.stringify({ plugin: [`${home}/.opencode/plugins/bdb-aos.js`] }));
+        const legacy = check(cli())['OpenCode plugin registration'];
+        assert.equal(legacy.ok, false, 'a stale entry in the legacy ~/.opencode config is a second origin');
+        assert.match(legacy.detail, /listed in ~\/\.opencode\/opencode\.jsonc/);
+        put('.opencode/opencode.jsonc', '{}');
         put('.config/opencode/opencode.jsonc', JSON.stringify({ plugin: ['/elsewhere/repo/.opencode/plugins/bdb-aos.js'] }));
         const r = check(cli())['OpenCode plugin registration'];
         assert.equal(r.ok, false);
