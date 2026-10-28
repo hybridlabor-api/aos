@@ -78,6 +78,25 @@ const DATA_PATHS = [
 // --purge also removes AOS's own state files, each only while it is provably AOS's (see aosStateEntries).
 // Backups and the uninstall's own safety copies are never in this list: they are named under "Kept".
 const readJsonSafe = (f) => { try { return JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
+const mcpSecretsLib = createRequire(import.meta.url)('../lib/mcp-secrets.js');
+// Same launch as the shipped entry: command (path and .exe/.cmd ignored), args and url. env is the user's.
+const cmdName = (c) => path.basename(String(c || '').replace(/\\/g, '/')).replace(/\.(exe|cmd|bat)$/i, '');
+const sameLaunch = (a, b) => !!a && !!b && cmdName(a.command) === cmdName(b.command) && JSON.stringify(a.args || []) === JSON.stringify(b.args || []) && (a.url || '') === (b.url || '');
+// Every handler command in a hooks file is exactly one AOS hook script (optionally "|| exit 0"), nothing chained.
+const onlyAosHandlers = (cfg) => {
+  const cmds = [];
+  const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if ('command' in v) cmds.push(v.command); Object.values(v).forEach(walk); } };
+  walk(cfg);
+  const aosOnly = (cmd) => {
+    if (typeof cmd !== 'string') return false;
+    const c = cmd.replace(/\s*\|\|\s*exit 0\s*$/, '');
+    if (/[;&|`$<>]/.test(c)) return false;
+    const t = c.split(/[\s"']+/).filter(Boolean);
+    const script = /^node(\.exe)?$/i.test(path.basename(t[0] || '')) ? t[1] : t[0];
+    return !!script && profile.HOOK_SCRIPTS.includes(path.basename(script.replace(/\\/g, '/')));
+  };
+  return Object.keys(cfg).every((k) => k.startsWith('aos-')) && cmds.length > 0 && cmds.every(aosOnly);
+};
 const aosStateEntries = (home) => {
   const j = (...p) => path.join(home, ...p);
   const shippedPipeline = new URL('../assets/pipeline.default.json', import.meta.url);
@@ -90,15 +109,19 @@ const aosStateEntries = (home) => {
     // Editable by the user after install: removed only while it is still byte-identical to the shipped default.
     { path: j('.aos', 'pipeline.json'), what: 'default helper-agent model suggestions (unedited)',
       owned: (f) => { try { return readFileSync(f).equals(readFileSync(shippedPipeline)); } catch { return false; } } },
-    // Antigravity hook and MCP files: AOS's only when every entry in them is an AOS entry.
-    { path: j('.gemini', 'config', 'hooks.json'), what: 'Antigravity hooks (AOS entries only)',
-      owned: (f) => { const c = readJsonSafe(f); return !!c && typeof c === 'object' && Object.keys(c).every((k) => k.startsWith('aos-')); } },
-    { path: j('.gemini', 'config', 'mcp_config.json'), what: 'Antigravity MCP config (AOS servers only)',
+    // Antigravity hook and MCP files: AOS's only when every handler / server entry equals what AOS writes (content,
+    // never the name). They hold user config too, so they are moved to ~/.aos/backups, not deleted (backup: true).
+    { path: j('.gemini', 'config', 'hooks.json'), what: 'Antigravity hooks (AOS handlers only)', backup: true,
+      owned: (f) => { const c = readJsonSafe(f); return !!c && typeof c === 'object' && onlyAosHandlers(c); } },
+    { path: j('.gemini', 'config', 'mcp_config.json'), what: 'Antigravity MCP config (entries equal to the shipped AOS ones)', backup: true,
       owned: (f) => {
         const c = readJsonSafe(f);
         if (!c || typeof c !== 'object' || Object.keys(c).some((k) => k !== 'mcpServers')) return false;
-        const mine = new Set([...ur.aosMcpNames(), 'memb-mcp']);
-        return Object.keys(c.mcpServers || {}).every((n) => mine.has(n));
+        const names = Object.keys(c.mcpServers || {});
+        if (!names.length) return false;
+        let shipped = {};
+        try { shipped = mcpSecretsLib.shippedAll(); } catch { /* none */ }
+        return names.every((n) => shipped[n] && sameLaunch(c.mcpServers[n], shipped[n]));
       } },
   ];
 };
@@ -135,7 +158,7 @@ const WIN_STARTUP = [
   { label: 'synapse', vbsName: 'com.bdb.synapse.vbs', batDir: '.synapse', batName: 'run-synapse.bat' },
   { label: 'openwiki-visualizer', vbsName: 'com.bdb.openwiki-visualize.vbs', batDir: '.openwiki', batName: 'run-openwiki-visualize.bat' },
   // The memB WebUI .vbs starts python directly (no .bat); its process is matched by the server path.
-  { label: 'memb-webui', vbsName: 'com.bdb.memb.webui.vbs', match: '*memB*backend*server.py*' },
+  { label: 'memb-webui', vbsName: 'com.bdb.memb.webui.vbs', frag: (home) => [path.join(home, '.agents', 'memB'), 'backend', 'server.py'] },
 ];
 
 // v5 services: Startup .vbs written by pkg-gateway / pkg-hub; processes matched by their script path.
@@ -170,7 +193,7 @@ function batStopSpecs(bat, home) {
   const paths = [...text.matchAll(/"([^"\r\n]+)"/g)].map((m) => m[1])
     .filter((q) => /\.(mjs|js|exe)$/i.test(q) && roots.some((r) => winStartup.norm(q).startsWith(r)));
   const port = /\bvisualize\b[^\r\n]*?--port\s+(\d+)/i.exec(text);
-  return { paths: [...new Set(paths)], all: port ? ['openwiki', 'visualize', `--port ${port[1]}`] : null };
+  return { paths: [...new Set(paths)], all: port ? ['openwiki', 'visualize', `re:--port\\s+${port[1]}(\\s|$)`] : null };
 }
 
 // installer.js's detectInstallState() treats any of these as proof AOS is
@@ -202,7 +225,10 @@ function plan(opts = {}) {
   const edited = [];    // differs — back up, then delete
   const gone = [];      // already absent
 
+  const refused = [];   // manifest entries that are not safe to act on (data read from disk is not trusted)
   for (const [p, entry] of Object.entries(manifest || {})) {
+    const why = sweep.refuseManifestPath({ home, p, entry, platform });
+    if (why) { refused.push({ path: p, why }); continue; }
     if (!existsSync(p)) { gone.push(p); continue; }
     (sha256(p) === entry.sha256 ? ours : edited).push(p);
   }
@@ -223,11 +249,11 @@ function plan(opts = {}) {
     for (const s of WIN_STARTUP) {
       const vbs = path.join(startupDir, s.vbsName);
       const bat = s.batName ? path.join(home, s.batDir, s.batName) : null;
-      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${bat}*`), stop: bat ? batStopSpecs(bat, home) : null });
+      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.frag ? s.frag(home) : [bat], stop: bat ? batStopSpecs(bat, home) : null });
     }
     // OpenWiki daemon fallback entry (install_daemon.ps1) when no scheduled task could be registered.
     const owCmd = path.join(startupDir, 'BDB_OpenWiki_Daemon.cmd');
-    if (existsSync(owCmd)) agents.push({ label: 'openwiki-daemon', vbs: owCmd, match: '*openwiki_daemon.py*' });
+    if (existsSync(owCmd)) agents.push({ label: 'openwiki-daemon', vbs: owCmd, match: [path.join(home, '.agents', 'skills', 'openwiki-skill', 'scripts', 'openwiki_daemon.py')] });
   }
 
   // v5 gateway/hub autostart: removed by their own step after the package loop, not through WIN_STARTUP.
@@ -236,7 +262,8 @@ function plan(opts = {}) {
 
   let installedModules = [];
   try { installedModules = JSON.parse(readFileSync(path.join(home, '.agents', '.bdb-manifest.json'), 'utf8').replace(/^﻿/, '')).installedModules || []; } catch { /* no record */ }
-  const manifestPaths = Object.keys(manifest || {});
+  const refusedSet = new Set(refused.map((r) => r.path));
+  const manifestPaths = Object.keys(manifest || {}).filter((x) => !refusedSet.has(x));
   const modules = MODULE_DIRS
     .filter((m) => existsSync(m.path) && ((m.id && installedModules.includes(m.id)) || manifestPaths.some((p) => p.startsWith(m.path + path.sep))))
     .map((m) => m.path);
@@ -252,7 +279,7 @@ function plan(opts = {}) {
 
   const mcpTrees = removeGeneratedMcpTrees({ home, appData: opts.appData, dry: true, owned: manifestPaths });
 
-  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, state, stateKept, recorded, emptyDirs, codenotch, keptCommands, mcpTrees };
+  return { manifest, refused, ours, edited, gone, agents, winSvc, modules, legacy, data, state, stateKept, recorded, emptyDirs, codenotch, keptCommands, mcpTrees };
 }
 
 function describe(p) {
@@ -269,6 +296,7 @@ function describe(p) {
   console.log(`  ${String(ours.length).padStart(5)}  unchanged since install → removed`);
   console.log(`  ${String(edited.length).padStart(5)}  edited after install → .bak first, then removed`);
   console.log(`  ${String(gone.length).padStart(5)}  already gone`);
+  if (p.refused && p.refused.length) console.log(`  ${String(p.refused.length).padStart(5)}  refused (not a safe absolute path or no hash): ${p.refused.slice(0, 3).map((r) => JSON.stringify(r.path)).join(', ')}`);
 
   if (edited.length) {
     console.log('\n  edited:');
@@ -325,7 +353,7 @@ function describe(p) {
 
   if (data.length || (p.state && p.state.length)) {
     console.log('\n\x1b[31mWILL BE DELETED (--purge):\x1b[0m');
-    for (const d of p.state || []) console.log(`    \x1b[31m${tilde(d.path).padEnd(18)}\x1b[0m ${d.what}`);
+    for (const d of p.state || []) console.log(`    \x1b[31m${tilde(d.path).padEnd(18)}\x1b[0m ${d.what}${d.backup ? ' — moved to ~/.aos/backups, not deleted' : ''}`);
     for (const d of data) {
       let size = '';
       try { size = ` (${(dirSize(d.path) / 1e6).toFixed(1)} MB)`; } catch { /* unreadable */ }
@@ -336,8 +364,10 @@ function describe(p) {
 }
 
 // Every path that stays on purpose, named. extra: [{path, what}] AOS files kept because they are not (provably) AOS's.
+const movedToBackup = [];
 function printKept(extra = []) {
   console.log('\nKept:');
+  for (const [from, to] of movedToBackup) console.log(`    ${tilde(to).padEnd(18)} backed up here, was ${tilde(from)}`);
   if (!PURGE) for (const d of DATA_PATHS.filter((d) => existsSync(d.path))) console.log(`    ${tilde(d.path).padEnd(18)} ${d.what}`);
   for (const [f, what] of keptPaths(HOME)) console.log(`    ${tilde(f).padEnd(18)} ${what}`);
   for (const e of extra) console.log(`    ${tilde(e.path).padEnd(18)} edited since install, not AOS-only: ${e.what}`);
@@ -427,7 +457,7 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
   for (const root of roots) for (const name of new Set([...shipped, 'memb-mcp'])) {
     const dir = path.join(root, name);
     let st; try { st = lstatSync(dir); } catch { continue; }
-    if (!st.isDirectory()) continue;
+    if (!st.isDirectory() || sweep.behindLink({ home, file: dir })) continue;
     const trees = MCP_GENERATED.map((g) => path.join(dir, g)).filter(existsSync);
     const rec = mcpMarker.readMarker(dir);
     if (!rec) {
@@ -498,11 +528,11 @@ async function execute(p) {
       // between iterations finds no script to restart. Match the exact bat file
       // name in the command line, never a generic word like "node".
       try {
-        execFileSync('powershell', winStartup.stopLikeArgs(a.match), { stdio: 'ignore', windowsHide: true });
+        execFileSync('powershell', winStartup.stopAllArgs(a.match), { stdio: 'ignore', windowsHide: true, timeout: 60000 });
       } catch { /* nothing running or powershell unavailable */ }
       // The service is a child of that .bat and survives it (it holds ~/.openwiki open: --purge died with EPERM).
       for (const args of [a.stop && a.stop.paths.length && winStartup.stopArgs(a.stop.paths), a.stop && a.stop.all && winStartup.stopAllArgs(a.stop.all)].filter(Boolean)) {
-        try { execFileSync('powershell', args, { stdio: 'ignore', windowsHide: true }); } catch { /* nothing running or powershell unavailable */ }
+        try { execFileSync('powershell', args, { stdio: 'ignore', windowsHide: true, timeout: 60000 }); } catch { /* nothing running or powershell unavailable */ }
       }
       if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
@@ -573,7 +603,10 @@ async function execute(p) {
     if (n) console.log(`  ${n} permission rule(s) added by \`aos allow\` removed`);
   } catch { failures.push('aos allow rules'); console.log('  ~/.claude/settings.json unreadable — remove the rules added by `aos allow` (see ~/.aos/allow-records.json) by hand'); }
 
-  for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
+  for (const m of modules) {
+    if (sweep.behindLink({ home: HOME, file: m }) || (() => { try { return lstatSync(m).isSymbolicLink(); } catch { return false; } })()) { console.log(`  ${tilde(m)} kept: it is or sits behind a symlink or junction`); continue; }
+    try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ }
+  }
   if (modules.length) console.log(`  ${modules.length} modules removed`);
 
   const DEJA_PKG = '@vshulcz/deja-vu';
@@ -748,6 +781,12 @@ async function execute(p) {
 
   for (const d of [...(p.state || []), ...data]) {
     try {
+      if (d.backup) {
+        const dest = sweep.moveToBackup({ home: HOME, file: d.path, stamp });
+        if (dest) { movedToBackup.push([d.path, dest]); console.log(`  ${tilde(d.path)} moved to ${tilde(dest)}`); }
+        else failures.push(`${tilde(d.path)}: not moved (link or not a regular file)`);
+        continue;
+      }
       const r = sweep.guardedRemove({ home: HOME, target: d.path });
       if (r === 'refused') { failures.push(`${tilde(d.path)}: refused (outside AOS-owned paths or behind a link)`); continue; }
       console.log(`  \x1b[31mdeleted:\x1b[0m ${tilde(d.path)}`);

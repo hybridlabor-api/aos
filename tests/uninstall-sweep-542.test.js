@@ -139,12 +139,14 @@ test('Windows services: the visualizer is stopped by its "visualize --port N" co
     try {
         const bat = path.join(home, '.openwiki', 'run-openwiki-visualize.bat');
         write(bat, `@echo off\r\ncd /d "${home}"\r\n"C:\\Users\\api\\AppData\\Roaming\\npm\\openwiki.cmd" visualize --port 4322 --no-open >> "${home}\\.openwiki\\visualize.stdout.log" 2>> "${home}\\.openwiki\\e.log"\r\n`);
-        assert.deepStrictEqual(mod.batStopSpecs(bat, home), { paths: [], all: ['openwiki', 'visualize', '--port 4322'] });
+        assert.deepStrictEqual(mod.batStopSpecs(bat, home), { paths: [], all: ['openwiki', 'visualize', 're:--port\\s+4322(\\s|$)'] });
         const syn = path.join(home, '.synapse', 'run-synapse.bat');
         write(syn, `@echo off\r\nnode "${home}\\.agents\\bdb-synapse\\bin\\synapse.js" serve --port 7781 --no-open\r\n`);
         assert.deepStrictEqual(mod.batStopSpecs(syn, home).paths, [`${home}\\.agents\\bdb-synapse\\bin\\synapse.js`]);
-        const ps = winStartup.stopAllArgs(['openwiki', 'visualize', '--port 4322']).join(' ');
-        assert.match(ps, /Contains\('openwiki'\) -and .*Contains\('visualize'\) -and .*Contains\('--port 4322'\)/);
+        const ps = winStartup.stopAllArgs(mod.batStopSpecs(bat, home).all).join(' ');
+        assert.match(ps, /Contains\('openwiki'\) -and .*Contains\('visualize'\) -and \$c -match '--port\\s\+4322\(\\s\|\$\)'/);
+        const re = new RegExp('--port\\s+4322(\\s|$)');
+        assert.ok(re.test('x --port 4322') && re.test('x --port 4322 --no-open') && !re.test('x --port 43220 y'), 'port boundary');
         assert.match(ps, /GetOwner/, 'only this user\'s processes');
         assert.match(ps, /\$_\.ProcessId -ne \$PID/);
     } finally { rm(home); }
