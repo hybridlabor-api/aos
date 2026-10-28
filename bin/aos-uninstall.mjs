@@ -38,6 +38,8 @@ const npmUninstallGlobal = (pkg) => {
 const pk = createRequire(import.meta.url)('../lib/v5/packages.js');
 const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
 const winStartup = createRequire(import.meta.url)('../lib/v5/win-startup.js');
+const sweep = createRequire(import.meta.url)('../lib/uninstall-sweep.js');
+const npmGlobalAos = createRequire(import.meta.url)('../lib/npm-global-aos.js');
 // A2A MCP registrations (agy + Cursor) live inside harness configs that this
 // manifest-based uninstall otherwise leaves alone; the removal is done by the
 // installer's own removal code, which only ever touches AOS-owned entries and
@@ -72,6 +74,49 @@ const DATA_PATHS = [
   { path: h('.cache', 'deja'), what: 'deja-vu index — every indexed agent session' },
   { path: h('.config', 'deja'), what: 'deja-vu privacy config — exclusion list and tombstones' },
 ];
+
+// --purge also removes AOS's own state files, each only while it is provably AOS's (see aosStateEntries).
+// Backups and the uninstall's own safety copies are never in this list: they are named under "Kept".
+const readJsonSafe = (f) => { try { return JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
+const aosStateEntries = (home) => {
+  const j = (...p) => path.join(home, ...p);
+  const shippedPipeline = new URL('../assets/pipeline.default.json', import.meta.url);
+  return [
+    { path: j('.aos', 'hub'), what: 'AOS hub state and logs' },
+    { path: j('.aos', 'logs'), what: 'AOS update and service logs' },
+    { path: j('.aos', 'codex-hooks.json'), what: 'Codex hook trust snapshot' },
+    { path: j('.aos', 'status.json'), what: 'hub watcher status' },
+    { path: j('.agents', 'gateway'), what: 'MCP gateway state' },
+    // Editable by the user after install: removed only while it is still byte-identical to the shipped default.
+    { path: j('.aos', 'pipeline.json'), what: 'default helper-agent model suggestions (unedited)',
+      owned: (f) => { try { return readFileSync(f).equals(readFileSync(shippedPipeline)); } catch { return false; } } },
+    // Antigravity hook and MCP files: AOS's only when every entry in them is an AOS entry.
+    { path: j('.gemini', 'config', 'hooks.json'), what: 'Antigravity hooks (AOS entries only)',
+      owned: (f) => { const c = readJsonSafe(f); return !!c && typeof c === 'object' && Object.keys(c).every((k) => k.startsWith('aos-')); } },
+    { path: j('.gemini', 'config', 'mcp_config.json'), what: 'Antigravity MCP config (AOS servers only)',
+      owned: (f) => {
+        const c = readJsonSafe(f);
+        if (!c || typeof c !== 'object' || Object.keys(c).some((k) => k !== 'mcpServers')) return false;
+        const mine = new Set([...ur.aosMcpNames(), 'memb-mcp']);
+        return Object.keys(c.mcpServers || {}).every((n) => mine.has(n));
+      } },
+  ];
+};
+
+// Paths that stay on purpose, printed in the "Kept" list. Only existing ones are named.
+function keptPaths(home) {
+  const j = (...p) => path.join(home, ...p);
+  const out = [
+    [j('.aos', 'backups'), 'backups of harness configs (uninstall moved them here)'],
+    [j('.agents', 'backups'), 'installer backups of files AOS replaced'],
+    [j('.gemini', 'config', 'import_manifest.json'), 'written by Antigravity, not by AOS'],
+    [j('.gemini', 'GEMINI.md'), 'kept when it holds more than the AOS rule block'],
+    [j('.codex', '.tmp'), 'created by Codex'],
+    [j('.codex', 'tmp'), 'created by Codex'],
+  ].filter(([f]) => existsSync(f));
+  try { for (const f of readdirSync(j('.aos'))) if (f.startsWith('v5-settings.json.removed-')) out.push([j('.aos', f), 'your saved install options']); } catch { /* no ~/.aos */ }
+  return out;
+}
 
 const AGENTS = [
   'com.bdb.memb.webui', 'com.bdb.synapse', 'com.bdb.openwiki.daemon',
@@ -113,6 +158,20 @@ const MODULE_DIRS = [
   { dir: 'bdb-os-agent-workspace' },          // AO's archived predecessor, if still lying around
   { dir: 'bdb-dev-optimized-agent-skills' },  // AOS core payload cache from a "from source" or non-npx run
 ].map(({ dir, id }) => ({ path: h('.agents', dir), id }));
+
+// What a Startup .bat starts, read from the .bat before it is deleted. The .bat is `cmd /c`-ed by wscript, so the
+// service is a CHILD whose command line names neither the .bat nor its launcher: match the paths it runs under
+// ~/.agents and ~/.synapse, and for the OpenWiki visualizer the exact "visualize ... --port N" it was started with.
+// Never a bare name like "node". Other users' processes are excluded in the PowerShell filter (OWNED).
+function batStopSpecs(bat, home) {
+  let text;
+  try { text = readFileSync(bat, 'utf8'); } catch { return { paths: [], all: null }; }
+  const roots = ['.agents', '.synapse'].map((d) => winStartup.norm(path.join(home, d)) + '\\');
+  const paths = [...text.matchAll(/"([^"\r\n]+)"/g)].map((m) => m[1])
+    .filter((q) => /\.(mjs|js|exe)$/i.test(q) && roots.some((r) => winStartup.norm(q).startsWith(r)));
+  const port = /\bvisualize\b[^\r\n]*?--port\s+(\d+)/i.exec(text);
+  return { paths: [...new Set(paths)], all: port ? ['openwiki', 'visualize', `--port ${port[1]}`] : null };
+}
 
 // installer.js's detectInstallState() treats any of these as proof AOS is
 // still installed, independently of the manifest -- a leftover copy after
@@ -164,7 +223,7 @@ function plan(opts = {}) {
     for (const s of WIN_STARTUP) {
       const vbs = path.join(startupDir, s.vbsName);
       const bat = s.batName ? path.join(home, s.batDir, s.batName) : null;
-      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${bat}*`) });
+      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${bat}*`), stop: bat ? batStopSpecs(bat, home) : null });
     }
     // OpenWiki daemon fallback entry (install_daemon.ps1) when no scheduled task could be registered.
     const owCmd = path.join(startupDir, 'BDB_OpenWiki_Daemon.cmd');
@@ -183,12 +242,17 @@ function plan(opts = {}) {
     .map((m) => m.path);
   const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
+  const state = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && (!e.owned || e.owned(e.path))) : [];
+  const stateKept = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && e.owned && !e.owned(e.path)) : [];
+  // Everything AOS recorded writing: the folders above these are the only ones the empty-folder pass may remove.
+  const recorded = [...manifestPaths, ...ur.generatedMap(home).keys()];
+  const emptyDirs = sweep.pruneRecordedEmptyDirs({ home, files: recorded, dry: true, platform, alsoGone: [...ours, ...edited, ...gone] }).removed;
 
   const codenotch = cn.planCodenotchUninstall({ stateFile: cn.stateFilePath(HOME) });
 
   const mcpTrees = removeGeneratedMcpTrees({ home, appData: opts.appData, dry: true, owned: manifestPaths });
 
-  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, codenotch, keptCommands, mcpTrees };
+  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, state, stateKept, recorded, emptyDirs, codenotch, keptCommands, mcpTrees };
 }
 
 function describe(p) {
@@ -254,12 +318,14 @@ function describe(p) {
     for (const l of [...regLines, ...cxLines, ...agyLines]) console.log(`    ${l}`);
   }
 
-  console.log('\nKept:');
-  if (!PURGE) for (const d of DATA_PATHS.filter((d) => existsSync(d.path))) console.log(`    ${tilde(d.path).padEnd(18)} ${d.what}`);
-  console.log('    every file without a manifest entry — your own skills, foreign hooks, anything you wrote');
+  if (p.emptyDirs && p.emptyDirs.length) console.log(`\nFolders AOS created that are empty after the file pass (${p.emptyDirs.length}) are removed; rmdir only, a folder with any file stays.`);
+  for (const a of p.agents) if (a.stop && (a.stop.paths.length || a.stop.all)) console.log(`\n${a.label}: processes started by ${tilde(a.bat)} are stopped (${a.stop.all ? `command line with "${a.stop.all.join('" + "')}"` : a.stop.paths.map(tilde).join(', ')}); this user's only`);
 
-  if (data.length) {
+  printKept(PURGE ? p.stateKept : []);
+
+  if (data.length || (p.state && p.state.length)) {
     console.log('\n\x1b[31mWILL BE DELETED (--purge):\x1b[0m');
+    for (const d of p.state || []) console.log(`    \x1b[31m${tilde(d.path).padEnd(18)}\x1b[0m ${d.what}`);
     for (const d of data) {
       let size = '';
       try { size = ` (${(dirSize(d.path) / 1e6).toFixed(1)} MB)`; } catch { /* unreadable */ }
@@ -267,6 +333,16 @@ function describe(p) {
     }
   }
   return true;
+}
+
+// Every path that stays on purpose, named. extra: [{path, what}] AOS files kept because they are not (provably) AOS's.
+function printKept(extra = []) {
+  console.log('\nKept:');
+  if (!PURGE) for (const d of DATA_PATHS.filter((d) => existsSync(d.path))) console.log(`    ${tilde(d.path).padEnd(18)} ${d.what}`);
+  for (const [f, what] of keptPaths(HOME)) console.log(`    ${tilde(f).padEnd(18)} ${what}`);
+  for (const e of extra) console.log(`    ${tilde(e.path).padEnd(18)} edited since install, not AOS-only: ${e.what}`);
+  console.log('    <file>.<stamp>.bak copies next to every config the uninstall edited');
+  console.log('    every file without a manifest entry — your own skills, foreign hooks, anything you wrote');
 }
 
 function dirSize(p) {
@@ -321,7 +397,8 @@ function removeSyncedSkillCopies({ home = HOME } = {}) {
     try { names = readdirSync(realRoot); } catch { continue; }
     for (const name of names) {
       const copy = path.join(root, name);
-      if (real(copy) !== path.join(realRoot, name)) continue; // a symlink, or anything that resolves outside the root
+      const fold = (x) => (process.platform === 'win32' && x ? x.toLowerCase() : x); // Windows names differ only in case
+      if (fold(real(copy)) !== fold(path.join(realRoot, name))) continue; // a symlink, or anything that resolves outside the root
       try {
         if (!skillManifest.removeSyncedRecord(copy)) continue;
         try { pruneEmpty(copy); } catch { /* an unreadable folder inside keeps the copy */ }
@@ -423,6 +500,10 @@ async function execute(p) {
       try {
         execFileSync('powershell', winStartup.stopLikeArgs(a.match), { stdio: 'ignore', windowsHide: true });
       } catch { /* nothing running or powershell unavailable */ }
+      // The service is a child of that .bat and survives it (it holds ~/.openwiki open: --purge died with EPERM).
+      for (const args of [a.stop && a.stop.paths.length && winStartup.stopArgs(a.stop.paths), a.stop && a.stop.all && winStartup.stopAllArgs(a.stop.all)].filter(Boolean)) {
+        try { execFileSync('powershell', args, { stdio: 'ignore', windowsHide: true }); } catch { /* nothing running or powershell unavailable */ }
+      }
       if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
       return;
@@ -445,6 +526,7 @@ async function execute(p) {
     try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch (e) { unsaved.add(f); failures.push(`${tilde(f)} not removed: backup failed (${e.message})`); }
   }
   for (const f of [...ours, ...edited].filter((x) => !unsaved.has(x))) {
+    if (sweep.behindLink({ home: HOME, file: f })) { console.log(`  ${tilde(f)} kept: it sits behind a symlink or junction, which is never followed`); continue; }
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
@@ -658,9 +740,18 @@ async function execute(p) {
     } catch { failures.push('settings.json unreadable'); console.log('  settings.json unreadable — check by hand'); }
   }
 
-  for (const d of data) {
-    try { rmSync(d.path, { recursive: true, force: true }); console.log(`  \x1b[31mdeleted:\x1b[0m ${tilde(d.path)}`); }
-    catch (e) { failures.push(`${tilde(d.path)}: ${e.message}`); console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
+  // Folders AOS created (ancestors of recorded files) that the file passes left empty; rmdir only.
+  attempt('empty AOS folders', () => {
+    const { removed: dirs } = sweep.pruneRecordedEmptyDirs({ home: HOME, files: p.recorded || [] });
+    if (dirs.length) console.log(`  ${dirs.length} empty folders AOS created removed`);
+  });
+
+  for (const d of [...(p.state || []), ...data]) {
+    try {
+      const r = sweep.guardedRemove({ home: HOME, target: d.path });
+      if (r === 'refused') { failures.push(`${tilde(d.path)}: refused (outside AOS-owned paths or behind a link)`); continue; }
+      console.log(`  \x1b[31mdeleted:\x1b[0m ${tilde(d.path)}`);
+    } catch (e) { failures.push(`${tilde(d.path)}: ${e.message}`); console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
   }
 
   // With a failed step the manifest stays, so a rerun sees the install and finishes the job.
@@ -669,6 +760,7 @@ async function execute(p) {
   }
   if (!failures.length) pm.retireState(HOME);
   ur.retireRecords(HOME);
+  if (PURGE) for (const dir of [h('.aos'), h('.agents')]) { try { if (lstatSync(dir).isSymbolicLink()) continue; rmdirSync(dir); console.log(`  \x1b[31mdeleted:\x1b[0m ${tilde(dir)} (empty)`); } catch { /* has files: kept, named below */ } }
   if (failures.length) {
     console.log('\nThese steps failed; the rest ran. Fix the cause and run aos-uninstall again:');
     for (const f of failures) console.log(`    ${f}`);
@@ -679,7 +771,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer, removeSyncedSkillCopies };
+export { plan, batStopSpecs, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer, removeSyncedSkillCopies };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -731,5 +823,9 @@ async function main() {
   console.log('');
   const failures = await execute(p);
   if (failures.length) { process.exitCode = 1; return; }
+  printKept(PURGE ? plan().stateKept : []);
   console.log('\nDone. Reinstall with: npx -y @hybridlabor-api/aos@latest');
+  // The CLI package itself is not removed here (the running code lives in it).
+  const g = npmGlobalAos.detectGlobalAos();
+  if (!g.checked || g.found) console.log(`To remove the CLI too: ${npmGlobalAos.REMOVE_CMD}`);
 }
