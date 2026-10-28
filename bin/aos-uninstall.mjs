@@ -79,9 +79,13 @@ const DATA_PATHS = [
 // Backups and the uninstall's own safety copies are never in this list: they are named under "Kept".
 const readJsonSafe = (f) => { try { return JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
 const mcpSecretsLib = createRequire(import.meta.url)('../lib/mcp-secrets.js');
-// Same launch as the shipped entry: command (path and .exe/.cmd ignored), args and url. env is the user's.
-const cmdName = (c) => path.basename(String(c || '').replace(/\\/g, '/')).replace(/\.(exe|cmd|bat)$/i, '');
-const sameLaunch = (a, b) => !!a && !!b && cmdName(a.command) === cmdName(b.command) && JSON.stringify(a.args || []) === JSON.stringify(b.args || []) && (a.url || '') === (b.url || '');
+// A server is AOS's only when isAosOwned recognises it (placeholders, launcher wraps) AND it carries no env of its own:
+// an env block holds the user's tokens, so the file is theirs.
+const aosServer = (name, entry, shipped) => !!entry && typeof entry === 'object'
+  && !(entry.env && typeof entry.env === 'object' && Object.keys(entry.env).length)
+  && mcpSecretsLib.isAosOwned(name, entry, null, shipped);
+// Regular file only: a symlinked config is the user's wiring and goes to Kept.
+const isRegularFile = (f) => { try { return lstatSync(f).isFile(); } catch { return false; } };
 // Every handler command in a hooks file is exactly one AOS hook script (optionally "|| exit 0"), nothing chained.
 const onlyAosHandlers = (cfg) => {
   const cmds = [];
@@ -112,16 +116,17 @@ const aosStateEntries = (home) => {
     // Antigravity hook and MCP files: AOS's only when every handler / server entry equals what AOS writes (content,
     // never the name). They hold user config too, so they are moved to ~/.aos/backups, not deleted (backup: true).
     { path: j('.gemini', 'config', 'hooks.json'), what: 'Antigravity hooks (AOS handlers only)', backup: true,
-      owned: (f) => { const c = readJsonSafe(f); return !!c && typeof c === 'object' && onlyAosHandlers(c); } },
+      owned: (f) => { if (!isRegularFile(f)) return false; const c = readJsonSafe(f); return !!c && typeof c === 'object' && onlyAosHandlers(c); } },
     { path: j('.gemini', 'config', 'mcp_config.json'), what: 'Antigravity MCP config (entries equal to the shipped AOS ones)', backup: true,
       owned: (f) => {
+        if (!isRegularFile(f)) return false;
         const c = readJsonSafe(f);
         if (!c || typeof c !== 'object' || Object.keys(c).some((k) => k !== 'mcpServers')) return false;
         const names = Object.keys(c.mcpServers || {});
         if (!names.length) return false;
         let shipped = {};
         try { shipped = mcpSecretsLib.shippedAll(); } catch { /* none */ }
-        return names.every((n) => shipped[n] && sameLaunch(c.mcpServers[n], shipped[n]));
+        return names.every((n) => aosServer(n, c.mcpServers[n], shipped));
       } },
   ];
 };
@@ -279,7 +284,7 @@ function plan(opts = {}) {
 
   const mcpTrees = removeGeneratedMcpTrees({ home, appData: opts.appData, dry: true, owned: manifestPaths });
 
-  return { manifest, refused, ours, edited, gone, agents, winSvc, modules, legacy, data, state, stateKept, recorded, emptyDirs, codenotch, keptCommands, mcpTrees };
+  return { manifest, manifestPaths, refused, ours, edited, gone, agents, winSvc, modules, legacy, data, state, stateKept, recorded, emptyDirs, codenotch, keptCommands, mcpTrees };
 }
 
 function describe(p) {
@@ -551,12 +556,15 @@ async function execute(p) {
     try { execFileSync('schtasks', ['/Delete', '/TN', 'BDB_OpenWiki_Daemon', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { /* no such task */ }
   }
 
+  // A path behind a link is judged before anything is copied or deleted, so no .bak is written for it either.
   const unsaved = new Set();
-  for (const f of edited) {
+  for (const f of [...ours, ...edited]) {
+    if (sweep.behindLink({ home: HOME, file: f })) { unsaved.add(f); console.log(`  ${tilde(f)} kept: it sits behind a symlink or junction, which is never followed`); }
+  }
+  for (const f of edited.filter((x) => !unsaved.has(x))) {
     try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch (e) { unsaved.add(f); failures.push(`${tilde(f)} not removed: backup failed (${e.message})`); }
   }
   for (const f of [...ours, ...edited].filter((x) => !unsaved.has(x))) {
-    if (sweep.behindLink({ home: HOME, file: f })) { console.log(`  ${tilde(f)} kept: it sits behind a symlink or junction, which is never followed`); continue; }
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
@@ -570,7 +578,7 @@ async function execute(p) {
     console.log(`  ${copies.filter((c) => c.result === 'removed').length} synced skill copies removed with their AOS record`);
   });
   attempt('AOS-copied MCP server folders', () => {
-    const { removed: gone, hints } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
+    const { removed: gone, hints } = removeGeneratedMcpTrees({ owned: p.manifestPaths || [] });
     for (const t of gone) console.log(`  removed ${tilde(t)}`);
     for (const k of hints) console.log(`  kept ${k}`);
   });
