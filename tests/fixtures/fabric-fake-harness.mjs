@@ -18,8 +18,13 @@ if (name === 'agy') {
   // codex exec --sandbox <mode> -- <pointer prompt>
   answer(briefIn(args.at(-1)));
 } else if (name === 'ao') {
-  // ao spawn ... --prompt <pointer prompt>
-  answer(briefIn(args[args.indexOf('--prompt') + 1]));
+  // ao --version | ao spawn --help | ao spawn --workdir <dir> ... --prompt <pointer prompt> --json; AOS_FAKE_AO_OLD=1 is an ao without --workdir
+  if (args[0] === '--version') process.stdout.write('ao 0.0.0-fake\n');
+  else if (args.includes('--help')) process.stdout.write(`usage: ao spawn --project <id> --agent <h> --name <n> --prompt <t>${process.env.AOS_FAKE_AO_OLD ? '' : ' --workdir <path>'}\n`);
+  else {
+    answer(briefIn(args[args.indexOf('--prompt') + 1]));
+    process.stdout.write(`${JSON.stringify({ id: 'x1', status: 'running', displayName: 'x', workdir: args[args.indexOf('--workdir') + 1], claimedPr: null })}\n`);
+  }
 } else {
   // opencode acp / npx <acp adapter>: a minimal Agent Client Protocol agent over stdio
   const send = (id, result) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);

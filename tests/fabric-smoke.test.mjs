@@ -116,3 +116,17 @@ test('smoke: --executor ao with AO up hands the same brief and report path to an
     assert.equal(log(p).filter((e) => e.kind === 'note').length, 0, 'no fallback note when AO is used');
   } finally { server.close(); }
 }));
+
+test('smoke: --executor ao with an old ao (no --workdir) runs on aos-acp, never spawns ao, and says why', () => project(async (p, bin) => {
+  const server = http.createServer((req, res) => { res.statusCode = req.url === '/health' ? 200 : 404; res.end('ok'); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    fs.mkdirSync(path.join(p.home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(p.home, '.aos', 'endpoints.json'), JSON.stringify({ schema: 1, services: { ao: { url: `http://127.0.0.1:${server.address().port}`, port: server.address().port, status: 'up' } } }));
+    const r = await wholeRun(p, bin, 'claude', { AOS_FAKE_AO_OLD: '1' }, ['--executor', 'ao']);
+    assertWholeRun(p, r, 'claude', 'aos-acp');
+    const notes = log(p).filter((e) => e.kind === 'note');
+    assert.equal(notes.length, 1);
+    assert.match(notes[0].text, /ao ao 0\.0\.0-fake lacks --workdir; use --executor aos-acp or update AO/);
+  } finally { server.close(); }
+}));
