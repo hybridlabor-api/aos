@@ -1101,9 +1101,9 @@ function checkPlugins() {
     const cfgDir = h('.gemini', 'config', 'skills');
     const nCfg = existsSync(cfgDir) ? readdirSync(cfgDir).length : 0;
     const nAgents = existsSync(h('.agents', 'skills')) ? readdirSync(h('.agents', 'skills')).length : 0;
-    const ok = nBundled === 0 && nCfg <= 40;
-    add('plugins', 'agy skills: one source', ok,
-      ok
+    const oneSource = nBundled === 0 && nCfg <= 40;
+    add('plugins', 'agy skills: one source', oneSource,
+      oneSource
         ? `~/.agents/skills holds the ${nAgents} skills; ~/.gemini/config/skills only ${nCfg} routers for sessions outside your home directory (agy reads ~/.agents/skills as a workspace dir only when its cwd is under home)`
         : `${nBundled} skills bundled in the agy plugin, ${nCfg} in ${tilde(cfgDir)}: agy lists skills twice`,
       'Run `aos update`: the bundled plugin skills move to ~/.agents/backups/agy-plugin-skills-*', true);
