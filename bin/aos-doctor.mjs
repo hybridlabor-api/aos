@@ -1098,11 +1098,14 @@ function checkPlugins() {
       'Run the AOS installer (needs agy on PATH), or: agy plugin install <plugin dir>', true);
     const bundled = path.join(dir, 'skills');
     const nBundled = existsSync(bundled) ? readdirSync(bundled).length : 0;
+    const cfgDir = h('.gemini', 'config', 'skills');
+    const nCfg = existsSync(cfgDir) ? readdirSync(cfgDir).length : 0;
     const nAgents = existsSync(h('.agents', 'skills')) ? readdirSync(h('.agents', 'skills')).length : 0;
-    add('plugins', 'agy skills: one source', nBundled === 0,
-      nBundled === 0
-        ? `~/.gemini/config/skills is the only AOS skill source for agy. Remaining overlap: agy also reads ~/.agents/skills (${nAgents} dirs) as a workspace dir when its cwd is under your home directory, so skills may show twice there; that cannot be switched off from AOS`
-        : `${nBundled} skills are also bundled in ${tilde(bundled)} (agy lists every skill twice)`,
+    const ok = nBundled === 0 && nCfg <= 40;
+    add('plugins', 'agy skills: one source', ok,
+      ok
+        ? `~/.agents/skills holds the ${nAgents} skills; ~/.gemini/config/skills only ${nCfg} routers for sessions outside your home directory (agy reads ~/.agents/skills as a workspace dir only when its cwd is under home)`
+        : `${nBundled} skills bundled in the agy plugin, ${nCfg} in ${tilde(cfgDir)}: agy lists skills twice`,
       'Run `aos update`: the bundled plugin skills move to ~/.agents/backups/agy-plugin-skills-*', true);
   }
 }
