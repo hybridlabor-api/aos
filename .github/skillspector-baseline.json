@@ -1,1 +1,62 @@
-[]
+[
+  {
+    "skill": "global_config/ask-tim",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is a provenance HTML comment (upstream attribution and a note on why the route map differs) at the top of the file, with no instructions to the agent."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is the upstream-attribution HTML comment on line 14 and the Mermaid flowchart text, neither of which contains directives to the agent."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "AR1",
+    "file": "SKILL.md",
+    "reason": "The phrase 'Always respond in the canvas' is the reply-channel rule for aos-plan-canvas await and does not suppress the agent's ability to decline unsafe requests."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "AE1",
+    "file": "SKILL.md",
+    "reason": "Both AE1 hits are the scanner's static_parse_limit on referenced files (00_architecture.html and scripts/plan-canvas.js), not evidence of evasion; the inspected files contain no exec, fetch or network calls."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "P2",
+    "file": "scripts/lib/plan-builder/examples/showcase/builder/00_architecture.html",
+    "reason": "The P2 hits are HTML comments in the Archify showcase diagram that document toolbar layout and keyboard shortcuts, and the file contains no script that fetches or exfiltrates data."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "YR4",
+    "file": "scripts/lib/plan-builder/examples/showcase/builder/00_architecture.html",
+    "reason": "The YARA hit is a base64-embedded JetBrains Mono woff2 font inside an @font-face rule, which matches the random-looking payload but is not an offensive tool or tool-poisoning metadata."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "AR2",
+    "file": "scripts/lib/plan-builder/templates/recap-review/plan.mdx",
+    "reason": "The 'No warnings' hit is a sample cell value ('npm run lint | 0 | No warnings') in an example recap table that reports a passing lint run, not an instruction to suppress warnings."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "AR2",
+    "file": "scripts/lib/plan-builder/templates/recap-review/standard.md",
+    "reason": "The 'No warnings' hit is a sample cell value ('npm run lint | 0 | No warnings') in an example recap table that reports a passing lint run, not an instruction to suppress warnings."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "MP3",
+    "file": "scripts/lib/plan-canvas/sessions.js",
+    "reason": "The MP3 hit is the load() fallback that starts with an empty session state when the local sessions.json is missing or corrupt, which reads only the plan-canvas's own state file and does not feed untrusted content into agent memory."
+  },
+  {
+    "skill": "global_config/plan-canvas",
+    "id": "P6",
+    "file": "scripts/lib/plan-canvas/annotation/proxy.mjs",
+    "reason": "The P6 hit is the word 'directives' in the cspWithNonce() Content-Security-Policy transform, a pure header rewrite in a proxy that listens only on 127.0.0.1 and guards every request with checkRequest()."
+  }
+]

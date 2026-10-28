@@ -512,3 +512,24 @@ describe('registration', () => {
         for (const f of ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs']) assert.ok(HOOK_SCRIPTS.includes(f), f);
     });
 });
+
+describe('fabric worker marker (AOS_GATE_WORKER from the process env)', () => {
+    const runWorker = (command, marker) => spawnSync(process.execPath, [GATE], {
+        input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, transcript_path: t, session_id: 's1', cwd: repo }),
+        env: env({ AOS_GATE_WORKER: marker }), encoding: 'utf8',
+    });
+    const ARCHIFY = 'aos-archify validate architecture plan.mdx --quality showcase';
+    const PUSH = 'git push origin main';
+    const HARD = 'rm -rf ~';
+    test('no marker: a push still needs a GO', () => assert.equal(runWorker(PUSH, '').status, 2));
+    test('fabric marker: the architect validate and a push run without a GO', () => {
+        assert.equal(runWorker(ARCHIFY, 'fabric').status, 0);
+        assert.equal(runWorker(PUSH, 'fabric').status, 0);
+    });
+    test('fabric marker: a hard block still denies', () => {
+        const r = runWorker(HARD, 'fabric');
+        assert.equal(r.status, 2);
+        assert.match(`${r.stdout}${r.stderr}`, /HARD BLOCK/);
+    });
+    test('a command prefix cannot set the marker', () => assert.equal(runWorker(`AOS_GATE_WORKER=fabric ${PUSH}`, '').status, 2));
+});

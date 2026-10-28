@@ -1,6 +1,7 @@
 name: SkillSpector
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'skills/**'

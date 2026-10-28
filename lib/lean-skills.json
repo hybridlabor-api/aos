@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "routers": [
+    "find-skill", "ask-tim", "aos-store", "aos-setup", "aos-update", "bdb-updater",
+    "fabric", "plan-canvas", "agenttrail", "clear-context", "gogate", "advisor"
+  ],
+  "required": {
+    "hooks": ["bdb-aos", "aos-a2a", "fabric-graph", "codebase-memory", "master-session"],
+    "commands": [
+      "bdbrainstorm", "grill-me", "loop-templates", "ao-orchestrator", "aos-project-init",
+      "godmode-shipping", "bdb-shipping-skill", "pb-ship", "concise-planning", "memb-skill", "memb-ingest"
+    ]
+  }
+}

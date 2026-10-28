@@ -360,7 +360,7 @@ test('buildWorktreeItems derives stages from git output and pipeline state', asy
     },
   }
   const state = parsePipelineState(PIPELINE_FIXTURE)
-  const items = await buildWorktreeItems(fake as never, '/repo/main', state)
+  const items = await buildWorktreeItems(fake.process.run, '/repo/main', state)
   expect(items.map(i => [i.branch, i.stage, i.isAgentWorktree])).toEqual([
     ['main', 'merged', false],
     ['feat/ui', 'reviewed', true],
@@ -518,11 +518,11 @@ test('buildWorktreeItems runs git once per TTL window', async () => {
     },
   }
   const cache = createTtlCache(10_000)
-  await buildWorktreeItems(fake as never, '/repo/main', null, cache, 0)
+  await buildWorktreeItems(fake.process.run, '/repo/main', null, cache, 0)
   const first = calls
-  await buildWorktreeItems(fake as never, '/repo/main', null, cache, 5_000)
+  await buildWorktreeItems(fake.process.run, '/repo/main', null, cache, 5_000)
   expect(calls).toBe(first)
-  await buildWorktreeItems(fake as never, '/repo/main', null, cache, 11_000)
+  await buildWorktreeItems(fake.process.run, '/repo/main', null, cache, 11_000)
   expect(calls).toBe(first * 2)
 })
 
@@ -550,7 +550,7 @@ test('the band and the deck render in the mod', async ($, on) => {
   const pane = await $.ui.mount(CONTROL_MOUNT(80) as never)
   const json = JSON.stringify(await pane.drawn())
   expect(json).toContain('USAGE')
-  expect(json).toContain('resets 2h')
+  expect(json).toContain('2h12m')
   expect(json).toContain('CONTEXT')
   expect(json).toContain('Messages')
 })
@@ -628,7 +628,7 @@ test('redactSession validates progress numbers', () => {
 test('a git probe failure throws a redacted message', async () => {
   const fake = { process: { run: async () => ({ stdout: '', stderr: 'fatal: token=abc123 denied', exitCode: 128 }) } }
   let msg = ''
-  await buildWorktreeItems(fake as never, '/r', null).catch(e => (msg = e.message))
+  await buildWorktreeItems(fake.process.run, '/r', null).catch(e => (msg = e.message))
   expect(msg).toBe('git probe failed: fatal: token=[redacted]')
 })
 

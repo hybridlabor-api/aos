@@ -39,6 +39,7 @@ const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs, LEGACY_CODEX_DISPATCH } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
+const leanSkills = require('./lib/lean-skills');
 const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
@@ -215,6 +216,9 @@ let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
 // `skillSet` setting: "core" installs only lib/core-skills.json and leaves the rest to `aos store install`.
 let skillSet = coreSkills.DEFAULT_SKILL_SET;
+// `skillLibrary` setting (lib/lean-skills.js): "lean" installs only the router skills, the rest comes from ~/.aos/library on demand.
+let skillLibrary = leanSkills.DEFAULT_MODE;
+let skillLibraryOpts = {};
 // Pack selection: array of pack names from ~/.aos/v5-settings.json ("packs", next to skillSet).
 // null = no selection ever stored — everything is installed/kept, no silent removal.
 let packSelection = null;
@@ -1266,6 +1270,31 @@ function applySkillSet(manifest) {
     } catch (e) { log.warn(`Skill set "core" skipped: ${e.message}`); }
 }
 
+// "lean" skill library: retire installed AOS copies outside the router set (lib/lean-skills.js).
+function applyLeanLibrary(manifest) {
+    if (skillLibrary === 'full' || DRY_RUN) return;
+    try {
+        leanSkills.pruneLean({ root: srcDir, home: homeDir, manifest, roots: globalSkillDestRoots(), backupDir: path.join(homeDir, '.agents', 'backups', `lean-library-${timestamp}`), log, mode: skillLibrary, opts: skillLibraryOpts });
+    } catch (e) { log.warn(`Lean skill library prune skipped: ${e.message}`); }
+}
+
+// `aos skills lean|full`: lean retires, full reinstalls through the normal kernel update. Returns failed steps.
+function applySkillLibrary(mode) {
+    applyInstallOptions(homeDir);
+    const state = detectInstallState();
+    if (mode !== 'lean') {
+        const failures = quickUpdateKernel(state);
+        flushSessionManifest();
+        return failures;
+    }
+    initSessionManifest(state.installManifest, [path.join(srcDir, 'skills')]);
+    populateSkillLibrary();
+    applyLeanLibrary(_sessionManifest);
+    const agy = runAgyPluginStep();
+    flushSessionManifest();
+    return agy ? [`agy plugin: ${agy}`] : [];
+}
+
 // Populates the local library (~/.aos/library/skills) with every shipped skill and writes the
 // pack index. The library is AOS's own full copy that no harness reads directly: harness dirs
 // get base+packs, while `aos store install` copies single skills or whole packs from here, offline.
@@ -2180,7 +2209,7 @@ function cleanEmptySkillDirs(dir) {
 // backed up and removed, all-or-nothing (edited files stop the removal and are reported). Legacy module
 // skills (e.g. hardware-pcb) also present in ~/.agents/skills are backed up and retired when file
 // hashes match; edited copies stay and are reported.
-function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, rootDir = null, label = 'Codex', tag = 'codex-skills' } = {}) {
+function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, rootDir = null, label = 'Codex', tag = 'codex-skills', keep = null, onlyNames = null } = {}) {
     if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return { removed: [], leftover: [] };
     const targetHome = home || homeDir;
     const root = rootDir || path.join(targetHome, '.codex', 'skills');
@@ -2218,6 +2247,8 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
             if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
             const skillName = entry.name;
             if (leftoverSkills.has(skillName)) continue;
+            if (keep && keep.has(skillName)) continue;
+            if (onlyNames && !onlyNames.has(skillName)) continue;
             const codexSkillDir = path.join(root, skillName);
             const agentsSkillDir = path.join(agentsSkillsDir, skillName);
             let agentsStat;
@@ -2316,6 +2347,51 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
     return { removed: removedFiles, leftover: [...leftoverSkills].sort() };
 }
 
+
+// agy reads ~/.gemini/config/skills globally and ~/.agents/skills as a workspace dir whenever its cwd is
+// under $HOME (measured with agy 1.4.9), and exposes no setting to switch either off. AOS keeps only the
+// routers in the global dir: sessions outside $HOME still find the entry points (the rest comes via
+// `aos store search`), sessions inside $HOME see the full ~/.agents/skills once.
+// One router list for every mode and harness: lib/lean-skills.json.
+const isAgyRouter = (name) => leanSkills.isRouter(name);
+
+function agyLeafNames(skillsBase) {
+    const out = [];
+    const walk = (dir) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!e.isDirectory() || e.name === 'global_legacy' || e.name === 'workspace_agents') continue;
+            const full = path.join(dir, e.name);
+            if (fs.existsSync(path.join(full, 'SKILL.md'))) out.push(e.name); else walk(full);
+        }
+    };
+    try { walk(skillsBase); } catch (_) {}
+    return out;
+}
+
+// excludeSkills plus every non-router leaf name, for installs into the agy global dir.
+function agyExcludeList(skillsBase, excludeSkills = []) {
+    return [...new Set([...excludeSkills, ...agyLeafNames(skillsBase).filter((n) => !isAgyRouter(n))])];
+}
+
+function retireAgySkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+    const root = path.join(home, '.gemini', 'config', 'skills');
+    if (!manifest || !fs.existsSync(root)) return { removed: [], leftover: [] };
+    const agentsSkills = path.join(home, '.agents', 'skills');
+    const prefix = path.resolve(root) + path.sep;
+    // Only skills that ~/.agents/skills also holds are retired, so no skill ever disappears from agy entirely.
+    const owned = {};
+    for (const [f, v] of Object.entries(manifest)) {
+        if (typeof f !== 'string' || !path.resolve(f).startsWith(prefix)) continue;
+        const name = path.resolve(f).slice(prefix.length).split(path.sep)[0];
+        if (!isAgyRouter(name) && fs.existsSync(path.join(agentsSkills, name))) owned[f] = v;
+    }
+    const keep = new Set(fs.readdirSync(root).filter((n) => isAgyRouter(n)));
+    const sub = { ...owned };
+    const r = retireCodexSkillCopies(sub, { home, rootDir: root, label: 'Antigravity', tag: 'agy-skills', keep, onlyNames: new Set(Object.keys(owned).map((f) => path.resolve(f).slice(prefix.length).split(path.sep)[0])) });
+    for (const f of Object.keys(owned)) if (!(f in sub)) delete manifest[f];
+    return r;
+}
+
 // OpenCode reads ~/.agents/skills through skills.paths (installOpencodePlugin); a second AOS copy under
 // ~/.config/opencode/skills made every skill a "duplicate skill" in opencode.log (#187). The copy is only
 // dropped once skills.paths really lists the shared store, so OpenCode never ends up without AOS skills.
@@ -2380,6 +2456,10 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
             moveIfExists(t.targetWorkspaceDir, path.join(backupDir, `workspace_skills_backup_${t.value}`), `workspace skills (${t.value})`);
         }
 
+        const agyGlobal = t.targetSkillDir === globalConfigDir;
+        const tExclude = agyGlobal ? agyExcludeList(skillsBase, excludeSkills) : excludeSkills;
+        if (agyGlobal) retireAgySkillCopies(_sessionManifest);
+
         installStep(`create the skill target directories (${t.value})`, () => {
             if (!viaPlugin) {
                 fs.mkdirSync(t.targetSkillDir, { recursive: true });
@@ -2408,7 +2488,8 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
                     } else if (dir === 'workspace_agents') {
                         copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
                     } else {
-                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
+                        if (agyGlobal && fs.existsSync(path.join(fullPath, 'SKILL.md')) && !isAgyRouter(dir)) continue;
+                        syncSkillEntry(fullPath, dir, t.targetSkillDir, tExclude);
                     }
                 }
                 log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
@@ -2554,6 +2635,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
 
     retireCodexSkillCopies(_sessionManifest);
     retireOpencodeSkillCopies(_sessionManifest);
+    retireAgySkillCopies(_sessionManifest);
     retireStaleCodexPluginDir(_sessionManifest);
     for (const { dir: dest } of extraSkillDestinations) {
         try {
@@ -4623,7 +4705,7 @@ function getTierExcludeSkills(tier) {
     // A stored pack selection excludes every shipped skill outside base+packs; the Pro MEDIA
     // tier and installed modules imply their packs on top (additive). No stored selection
     // excludes nothing (existing users keep all skills).
-    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? skillPacks.BASIC_TIER_EXCLUDES : [])];
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...leanSkills.excluded(skillLibrary, srcDir, skillLibraryOpts), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? skillPacks.BASIC_TIER_EXCLUDES : [])];
 }
 
 // Merge the BDB MCP servers into a harness's *secondary* config store without
@@ -8212,13 +8294,15 @@ function quickUpdateKernel(installState) {
             } else if (dir === 'workspace_agents') {
                 copyDirRecursiveSync(fullPath, paths.targetWorkspaceDir, excludeSkills);
             } else {
-                syncSkillEntry(fullPath, dir, paths.targetSkillDir, excludeSkills);
+                if (paths.targetSkillDir === globalConfigDir && fs.existsSync(path.join(fullPath, 'SKILL.md')) && !isAgyRouter(dir)) continue;
+                syncSkillEntry(fullPath, dir, paths.targetSkillDir, paths.targetSkillDir === globalConfigDir ? agyExcludeList(skillsBase, excludeSkills) : excludeSkills);
             }
         }
     }
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyLeanLibrary(_sessionManifest);
     applyPackSelection(_sessionManifest);
     if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
         installRustauri();
@@ -8353,6 +8437,8 @@ function applyInstallOptions(home = homeDir) {
     activeProfile = r.profile;
     installExcluded = r.excluded;
     skillSet = r.skillSet;
+    skillLibrary = r.skillLibrary;
+    skillLibraryOpts = r.skillLibraryOpts;
     packSelection = r.packs;
     runImpliedPacks.length = 0;
     // An unattended --modules= request that names a pack (or the creator/hardware modules)
@@ -8531,6 +8617,10 @@ async function main() {
     applyInstallOptions();
     if (args[0] === 'memory') {
         process.exitCode = await require('./lib/memory-import').command(args.slice(1), { home: homeDir });
+        return;
+    }
+    if (args[0] === 'skills') {
+        process.exitCode = await leanSkills.command(args.slice(1), module.exports, { home: homeDir, dryRun: DRY_RUN });
         return;
     }
     if (args[0] === 'context') {
@@ -9041,6 +9131,7 @@ async function main() {
     // Pro MEDIA brings the live-show pack (additive; base pack is always in).
     skillPacks.tierPacks(tier).forEach(addImpliedPack);
     persistInstallOptions();
+    skillLibrary = leanSkills.seedFresh(homeDir, { dryRun: DRY_RUN });
     if (INSTALL_OPTS.router && !routerChoice) {
         const detected = detectRouterTargets().filter((t) => t.detected).map((t) => t.key);
         routerChoice = { preset: INSTALL_OPTS.router, mainHarness: 'claude', selectedTargets: [...new Set(['claude', ...detected])] };
@@ -9104,6 +9195,7 @@ async function main() {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyLeanLibrary(_sessionManifest);
     applyPackSelection(_sessionManifest);
     if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
         installRustauri();
@@ -9310,6 +9402,10 @@ module.exports = {
     addImpliedPack,
     populateSkillLibrary,
     applyPackSelection,
+    applyLeanLibrary,
+    applySkillLibrary,
+    skillRoots: () => globalSkillDestRoots(),
+    srcDir: () => srcDir,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,
@@ -9339,6 +9435,8 @@ module.exports = {
     runCodexPluginStep,
     retireCodexSkillCopies,
     retireOpencodeSkillCopies,
+    retireAgySkillCopies,
+    isAgyRouter,
     opencodeUsesAgentsSkills,
     syncSkillsToGlobalHarnesses,
     retireStaleCodexPluginDir,

@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { chooseHarness, currentHarness, decideCanvasVerdict, detectAO, executeStep, failReport, HARNESSES, lastJsonObject, runHumanStep, runProcess } from '../lib/fabric/executors.mjs';
 import { validateReport } from '../lib/fabric/schema.mjs';
 import { FabricError } from '../lib/fabric/store.mjs';
@@ -275,4 +277,68 @@ test('human step: how plan-canvas is called', withProject((p) => {
   const md = call(humanStep(p, { plan: 'production_artifacts/00_execution_plan.md' }), { CI: '1', AOS_PLAN_AWAIT_TIMEOUT_MS: '0' });
   assert.equal(md.args[4], 'standard');
   assert.equal(md.opts.timeout, 0, '0 means unbounded');
+}));
+
+// A verdict counts only for the step it was given to: same plan file and content, this plan's canvas session, after the step opened.
+const { sessionKeyFor, canonicalizeArtifactPath } = createRequire(import.meta.url)('../skills/global_config/plan-canvas/scripts/lib/plan-canvas/sessions.js');
+const OPENED = '2026-10-28T10:00:00.000Z';
+const at = (ms) => new Date(Date.parse(OPENED) + ms).toISOString();
+const planFile = (p) => path.join(p.dir, 'production_artifacts/plan/plan.mdx');
+function writeRecord(p, over = {}) {
+  const plan = planFile(p);
+  fs.mkdirSync(path.dirname(plan), { recursive: true });
+  if (!fs.existsSync(plan)) fs.writeFileSync(plan, '# plan\n');
+  const real = canonicalizeArtifactPath(plan);
+  const rec = { schema: 'aos.plan-approval/1', verdict: 'approve', contentHash: createHash('sha256').update(fs.readFileSync(real, 'utf8')).digest('hex'),
+    timestamp: at(60000), source: 'plan-canvas', plan: real, session: sessionKeyFor(real), items: [{ kind: 'verdict', verdict: 'approve' }], ...over };
+  fs.writeFileSync(path.join(path.dirname(real), 'plan.approval.json'), JSON.stringify(rec));
+}
+const noCall = () => assert.fail('plan-canvas must not be asked again');
+
+test('human step: an approve record written after the step opened is the verdict, no canvas call', withProject((p) => {
+  writeRecord(p);
+  assert.equal(runHumanStep(humanStep(p), { env: { CI: '1' }, openedAt: OPENED, run: noCall }).status, 'ok');
+}));
+
+test('human step: a reject record is a reject with its feedback, no canvas call', withProject((p) => {
+  writeRecord(p, { verdict: 'request-changes', items: [{ kind: 'verdict', verdict: 'request-changes', text: 'rename it' }, { kind: 'comment', text: 'and the logo' }] });
+  const r = runHumanStep(humanStep(p), { env: { CI: '1' }, openedAt: OPENED, run: noCall });
+  assert.equal(r.status, 'fail');
+  assert.match(r.findings[0].summary, /rename it[\s\S]*and the logo/);
+}));
+
+test('human step: a record from before the step, another plan, another session or an edited plan is ignored', withProject((p) => {
+  const asked = [];
+  const waitFor = () => runHumanStep(humanStep(p), { env: { CI: '1' }, openedAt: OPENED, run: canvas({ status: 'waiting', url: 'http://127.0.0.1:4519/s/x' })(asked) });
+  writeRecord(p, { timestamp: at(-60000) });
+  assert.equal(waitFor().waiting, true);
+  writeRecord(p, { plan: '/somewhere/else/plan.mdx' });
+  assert.equal(waitFor().waiting, true);
+  writeRecord(p, { session: '0123456789ab' });
+  assert.equal(waitFor().waiting, true);
+  writeRecord(p);
+  fs.appendFileSync(planFile(p), 'changed after the approval\n');
+  assert.equal(waitFor().waiting, true);
+  assert.equal(asked.length, 4, 'every stale record leads to a canvas wait, none to a verdict');
+}));
+
+test('human step: a record without the step time never counts', withProject((p) => {
+  writeRecord(p);
+  const r = runHumanStep(humanStep(p), { env: { CI: '1' }, run: canvas({ status: 'waiting' })([]) });
+  assert.equal(r.waiting, true);
+}));
+
+test('human step: feedback queued before the step opened is stale; a fresh approve is the verdict', withProject((p) => {
+  const stale = runHumanStep(humanStep(p), { env: { CI: '1' }, openedAt: OPENED, run: canvas({ status: 'feedback', items: [{ kind: 'verdict', verdict: 'approve', at: at(-1000) }] })([]) });
+  assert.equal(stale.waiting, true);
+  assert.equal(stale.status, 'escalate');
+  const fresh = runHumanStep(humanStep(p), { env: { CI: '1' }, openedAt: OPENED, run: canvas({ status: 'feedback', items: [{ kind: 'verdict', verdict: 'approve', at: at(1000) }] })([]) });
+  assert.equal(fresh.status, 'ok');
+}));
+
+test('human step: the waiting message names the url, also when the wait times out', withProject((p) => {
+  const stderr = '[plan-canvas] open: http://127.0.0.1:4519/s/abc\n[plan-canvas] waiting for human feedback...\n';
+  const r = runHumanStep(humanStep(p), { env: { CI: '1' }, run: () => ({ timedOut: true, stdout: '', stderr }) });
+  assert.equal(r.findings[0].summary, 'waiting for human approval: open http://127.0.0.1:4519/s/abc');
+  assert.equal(r.waiting, true);
 }));

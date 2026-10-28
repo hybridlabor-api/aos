@@ -48,7 +48,7 @@ Reach for `test-driven-development` on their own when you want one behaviour bui
 
 When no native AOS skill fits, search the markdown-only ECC store before starting a pipeline:
 
-- `aos store search <words>` finds any skill by name, description or category (every word must match, any order), including all shipped AOS skills and the `pb-*` playbooks that the catalogue below does not name. Use it first when nothing below fits.
+- `aos store search <words>` finds any skill by name, description or category (every word must match, any order), including all shipped AOS skills and the `pb-*` playbooks that the catalogue below does not name. Use it first when nothing below fits. Under a lean skill library most skills are not installed: when a skill you need is missing, run `aos store install <name>`, then read `~/.aos/library/skills/<name>/SKILL.md` right away so the current session can use it without a restart.
 - `aos-store install <name> --net` installs a verified item after explicit user action.
 - `aos-store list --type=skills` and `aos-store list --type=agents` show the catalogue.
 - The core remains the trusted AOS skill set; the store is a fallback, not a reason to bypass the fabric validation.

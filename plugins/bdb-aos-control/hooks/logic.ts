@@ -196,8 +196,11 @@ function stageForWorktree(dirty: number, ahead: number, merged: boolean, openFin
   return 'committed'
 }
 
+export type RunCommand = (argv: string[]) => Promise<{ exitCode: number; stdout: string; stderr: string }>
+
+// Takes a runner, not $: the engine follows $ only into functions of the same file.
 export async function buildWorktreeItems(
-  $: EngineInterface,
+  run: RunCommand,
   root: string,
   state: PipelineState | null,
   cache?: TtlCache,
@@ -206,7 +209,7 @@ export async function buildWorktreeItems(
   // TTL cache: 1 + 2 subprocesses per worktree otherwise run on every 5 s tick
   const cached = <T,>(key: string, load: () => Promise<T>) => (cache ? cache.get(key, now, load) : load())
   const probeFailed = (why: string) => new Error(`git probe failed: ${redact(why).slice(0, 100)}`)
-  const r = await cached(`list:${root}`, () => $.process.run(['git', '-C', root, 'worktree', 'list', '--porcelain'])).catch(err => {
+  const r = await cached(`list:${root}`, () => run(['git', '-C', root, 'worktree', 'list', '--porcelain'])).catch(err => {
     throw probeFailed(err instanceof Error ? err.message : String(err))
   })
   if (r.exitCode !== 0) throw probeFailed(r.stderr || `exit ${r.exitCode}`)
@@ -217,9 +220,9 @@ export async function buildWorktreeItems(
   for (const w of worktrees) {
     if (w.bare) continue
     const probe = await cached(`wt:${w.path}`, async () => {
-      const status = await $.process.run(['git', '-C', w.path, 'status', '--porcelain=v1', '-b']).catch(() => null)
+      const status = await run(['git', '-C', w.path, 'status', '--porcelain=v1', '-b']).catch(() => null)
       const sb = status && status.exitCode === 0 ? parseStatusBranch(status.stdout) : { branch: w.branch, ahead: 0, behind: 0, dirty: 0 }
-      const mergedR = await $.process.run(['git', '-C', w.path, 'branch', '--merged', 'origin/main', '--format=%(refname:short)']).catch(() => null)
+      const mergedR = await run(['git', '-C', w.path, 'branch', '--merged', 'origin/main', '--format=%(refname:short)']).catch(() => null)
       const merged = mergedR && mergedR.exitCode === 0 ? mergedR.stdout.split('\n').some(b => b.trim() === sb.branch) : false
       return { sb, merged }
     })
