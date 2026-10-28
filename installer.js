@@ -1270,12 +1270,6 @@ function applySkillSet(manifest) {
     } catch (e) { log.warn(`Skill set "core" skipped: ${e.message}`); }
 }
 
-// Names the agy plugin may stage under a non-full skill library.
-function skillSetNames() {
-    const ex = new Set(leanSkills.excluded(skillLibrary, srcDir, skillLibraryOpts));
-    return coreSkills.shippedSkills(srcDir).filter((n) => !ex.has(n));
-}
-
 // "lean" skill library: retire installed AOS copies outside the router set (lib/lean-skills.js).
 function applyLeanLibrary(manifest) {
     if (skillLibrary === 'full' || DRY_RUN) return;
@@ -2154,7 +2148,7 @@ function printClaudePluginFix() {
 // update path installs the same plugins. Order: Claude (runPluginMigration), agy, Codex.
 function runAgyPluginStep() {
     if (!activeHarnessKeys().has('antigravity')) { log.step('Antigravity not found: agy plugin skipped.'); return null; }
-    try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log, only: skillLibrary === 'full' ? null : new Set(skillSetNames()) }); return null; }
+    try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log }); return null; }
     catch (e) { log.warn(`agy plugin skipped: ${e.message}`); return e.message; }
 }
 function runCodexPluginStep() {
