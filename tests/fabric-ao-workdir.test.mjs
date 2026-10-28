@@ -16,6 +16,7 @@ esac
 if [ "$2" = "--help" ]; then
   echo "usage: ao spawn --project <id> --agent <h> --name <n> --prompt <t>"
   [ "$FAKE_AO_WORKDIR" = 1 ] && echo "  --workdir <path>"
+  [ "$FAKE_AO_ROLE" = 1 ] && echo "  --role <role>"
   exit 0
 fi
 printf '%s\\n' "$@" > "$FAKE_AO_LOG"
@@ -25,22 +26,23 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ \${#name} -gt 20 ] && { echo "name too long" >&2; exit 2; }
+[ "$FAKE_AO_NOID" = 1 ] && { printf '{"status":"running","workdir":"%s"}\\n' "\${FAKE_AO_REPORT_WORKDIR:-$wd}"; exit 0; }
 printf '{"id":"x1","status":"running","displayName":"%s","workdir":"%s","claimedPr":null}\\n' "$name" "\${FAKE_AO_REPORT_WORKDIR:-$wd}"
 `;
 
-function setup(p, { workdir, reportWorkdir } = {}) {
+function setup(p, { workdir, role, noId, reportWorkdir } = {}) {
   const bin = path.join(p.dir, '.fakebin');
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'ao'), FAKE, { mode: 0o755 });
   const log = path.join(p.dir, 'ao-args.log');
-  const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, FAKE_AO_LOG: log, ...(workdir && { FAKE_AO_WORKDIR: '1' }), ...(reportWorkdir && { FAKE_AO_REPORT_WORKDIR: reportWorkdir }) };
+  const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, FAKE_AO_LOG: log, ...(workdir && { FAKE_AO_WORKDIR: '1' }), ...(role && { FAKE_AO_ROLE: '1' }), ...(noId && { FAKE_AO_NOID: '1' }), ...(reportWorkdir && { FAKE_AO_REPORT_WORKDIR: reportWorkdir }) };
   const step = {
     run: 'a-very-long-run-name-for-the-fabric', step_id: '0-architect-1', node: 'architect', attempt: 1, kind: 'plan', cwd: p.dir, brief: path.join(p.dir, 'brief.md'),
     expected_report: path.join(p.dir, 'reports', '0-architect-1.json'), timeout_s: 20, scope: 'read-only', allowed_writes: [], model_hint: {},
   };
   fs.mkdirSync(path.dirname(step.expected_report));
   fs.writeFileSync(step.expected_report, JSON.stringify(reportFor(step, p.dir)));
-  const run = (mode, onPath = (h) => h === 'claude') => executeStep(step, { mode, env, onPath, detect: async () => ({ present: true, healthy: true }) });
+  const run = (mode, onPath = (h) => h === 'claude', onStart) => executeStep(step, { mode, env, onPath, onStart, detect: async () => ({ present: true, healthy: true }) });
   return { step, log, run };
 }
 const withProject = (fn) => async () => { const p = tmpProject({ git: false }); try { await fn(p); } finally { p.cleanup(); } };
@@ -64,6 +66,25 @@ test('with --workdir: realpath workdir, short name, --json, no --project', { ski
   assert.ok(a[a.indexOf('--name') + 1].length <= 20);
   assert.ok(a.includes('--json'));
   assert.ok(!a.includes('--project') && !a.includes('--branch'));
+  assert.ok(!a.includes('--role'), '--role is not advertised, so it is not passed');
+  assert.equal(r.ao_session_id, 'x1');
+}));
+
+test('--role <node> is passed only when ao spawn --help lists it; the session id reaches onStart', { skip }, withProject(async (p) => {
+  const t = setup(p, { workdir: true, role: true });
+  const started = [];
+  await t.run('ao', undefined, (extra = {}) => started.push(extra));
+  const a = argsOf(t.log);
+  assert.equal(a[a.indexOf('--role') + 1], 'architect');
+  assert.deepEqual(started, [{ ao_session_id: 'x1' }]);
+}));
+
+test('a spawn without an id leaves ao_session_id out', { skip }, withProject(async (p) => {
+  const t = setup(p, { workdir: true, noId: true });
+  const started = [];
+  const r = await t.run('ao', undefined, (extra = {}) => started.push(extra));
+  assert.ok(!('ao_session_id' in r));
+  assert.deepEqual(started, [{}]);
 }));
 
 test('with --workdir: a returned workdir that differs escalates and is not done', { skip }, withProject(async (p) => {
@@ -82,9 +103,9 @@ test('without --workdir: unsupported, cached per run, and auto/ao go on to aos-a
   const cache = new Map();
   const env = { PATH: `${path.join(p.dir, '.fakebin')}${path.delimiter}${process.env.PATH}` };
   const sup = aoWorkdirSupport(env, cache);
-  assert.deepEqual(sup, { ok: false, version: 'ao 0.0.0-fake' });
+  assert.deepEqual(sup, { workdir: false, role: false, version: 'ao 0.0.0-fake' });
   assert.equal(aoWorkdirSupport({ PATH: '/nonexistent' }, cache), sup, 'second call is served from the cache');
-  assert.equal(aoWorkdirSupport({ PATH: '/nonexistent' }).ok, false, 'no ao at all: unsupported');
+  assert.equal(aoWorkdirSupport({ PATH: '/nonexistent' }).workdir, false, 'no ao at all: unsupported');
   // No harness on PATH: the only thing left after ao is skipped is the aos-acp branch, which then reports it. ao itself never ran.
   for (const mode of ['auto', 'ao']) {
     await assert.rejects(t.run(mode, () => false), /no harness found/);
