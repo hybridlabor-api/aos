@@ -83,6 +83,8 @@ export const GATE_WIDEN = new RegExp(String.raw`(?:^|[\s\/\\'"=;&|(\x60])aos-gat
 // A command no profile and no global grant may free: only a typed GO (or a human-typed gogate grant) opens it.
 export const neverGrantable = (command) => typeof command === "string" && [command, unIFS(command), unIFS(commandView(command).text)].some((t) => GATE_WIDEN.test(t));
 
+export const fabricWorker = (env = process.env) => env.AOS_GATE_WORKER === "fabric";
+
 // PowerShell: running a string as code, or a state-changing web request, is a plain GO (a plain GET stays free, see psReadOnly).
 const PS_GUARDED = [
   re(String.raw`(?:^|[\s;|({"'])(?:iex|Invoke-Expression)(?=[\s;|)}'"]|$)`),
@@ -3760,6 +3762,12 @@ function main(rawInput) {
 
     if (!codexOpaque && !isGuardedCommand(command)) {
       respond(isAgy, true);
+      return;
+    }
+
+    // Fabric workers run hard-only: the marker comes from this hook's process env (set by lib/fabric/executors.mjs), never from the command.
+    if (!codexOpaque && fabricWorker() && !neverGrantable(command)) {
+      respond(isAgy, true, "", command);
       return;
     }
   }
