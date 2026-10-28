@@ -1,5 +1,36 @@
 # Changelog
 
+## [5.4.2](https://github.com/hybridlabor-api/aos/compare/v5.4.2-beta.1...v5.4.2) (2026-10-28)
+
+
+### Features
+
+* **skills:** lean skill library with lean, smart, groups and full modes ([6b971b6](https://github.com/hybridlabor-api/aos/commit/6b971b6d3966c2dd4f520922b1c837eddb02d510))
+
+
+### Bug Fixes
+
+* **a2a:** pass the resolved harness pid to the Windows finisher ([216471b](https://github.com/hybridlabor-api/aos/commit/216471b41ae83f143edf12ea25b66fcb38e2b982))
+* **a2a:** prune peers whose heartbeat lapsed past the idle window ([53e5ca5](https://github.com/hybridlabor-api/aos/commit/53e5ca59f1d4ded4787547d5c7657379d7919821))
+* **agy:** keep only router skills in ~/.gemini/config/skills ([bd4ffc1](https://github.com/hybridlabor-api/aos/commit/bd4ffc1acc425f0a99fd459c43bb561f4b7c8702))
+* **agy:** stop bundling skills in the agy plugin, retire old bundled copies ([833512c](https://github.com/hybridlabor-api/aos/commit/833512c8cbf0cc562ac221a5e8b94f4c0657f6af))
+* **control-mod:** pass a runner instead of the engine across the logic import ([fa71400](https://github.com/hybridlabor-api/aos/commit/fa71400c680dd15d05fae2fd345b4c7735c91674))
+* **doctor:** agy one-source row variable clash ([ef7c110](https://github.com/hybridlabor-api/aos/commit/ef7c110cfc5ddb8c0f921cd0be43fed993064a5f))
+* **doctor:** read the gateway token with the imported readFileSync ([6ebb63c](https://github.com/hybridlabor-api/aos/commit/6ebb63ca6b08b4e197d0e573608c90a6a7f4bf63))
+* **fabric:** resume a human step from the verdict record and name the url when waiting ([ba8ca8e](https://github.com/hybridlabor-api/aos/commit/ba8ca8e5b1795497ba006fe33ffc9e1f50ac8958))
+* **gate:** fabric workers run hard-only ([f41d556](https://github.com/hybridlabor-api/aos/commit/f41d55624b39a8c3003aca30b5d8b5e88dbdcb7c))
+* **harnesses:** OpenCode config is ~/.config/opencode on Windows too ([3d3b95b](https://github.com/hybridlabor-api/aos/commit/3d3b95bc45941fb15d088e9199ffe71499944a72))
+* **hub:** allow same-site iframe navigation to /canvas when embedding is enabled ([2eae326](https://github.com/hybridlabor-api/aos/commit/2eae3262169642f1b59b6d4a1bed27e5c85d0301))
+* **hub:** Windows service control is Startup/ScheduledTask, probe both loopbacks ([0caedbf](https://github.com/hybridlabor-api/aos/commit/0caedbf2fe9547ca7e325560a3882e7dc4121085))
+* **plan-canvas:** explicit port beats server.json; private state dir skips endpoints announce/retire ([c42a117](https://github.com/hybridlabor-api/aos/commit/c42a117404c0a300ba413bdb714f216cae53ec91))
+* **plan-canvas:** keep the verdict record for approve and request-changes, print the url before the wait ([374181b](https://github.com/hybridlabor-api/aos/commit/374181b71293bbd0e2db3f948c22a550eb227e8e))
+* **v5:** run claude --version through cli-spawn on Windows ([20f8565](https://github.com/hybridlabor-api/aos/commit/20f8565f784312c37e72ffb9517d96ccc7e1583f))
+
+
+### Miscellaneous Chores
+
+* release 5.4.2 ([2ef0467](https://github.com/hybridlabor-api/aos/commit/2ef0467ef1944886328563341357d5e5e6be4d34))
+
 ## [5.4.2-beta.1](https://github.com/hybridlabor-api/aos/compare/v5.4.0-beta.1...v5.4.2-beta.1) (2026-10-28)
 
 
