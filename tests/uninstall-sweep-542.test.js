@@ -92,7 +92,7 @@ test('--purge removes AOS state only while it is AOS-owned and names everything 
         write(j('.aos', 'backups', 'uninstall-1', 'b.json'));
         write(j('.aos', 'v5-settings.json.removed-20260101'));
         write(j('.agents', 'gateway', 'g.json')); write(j('.agents', 'backups', 'plugin-x', 'f'));
-        write(j('.gemini', 'config', 'hooks.json'), JSON.stringify({ 'aos-go-gate': {} }));
+        write(j('.gemini', 'config', 'hooks.json'), JSON.stringify({ 'aos-go-gate': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "/h/.gemini/config/hooks/go-gate.mjs" || exit 0' }] }] } }));
         write(j('.gemini', 'config', 'mcp_config.json'), JSON.stringify({ mcpServers: { mine: { command: 'x' } } })); // user server: stays
         write(j('.gemini', 'config', 'import_manifest.json'));
         write(j('.openwiki', 'cred')); write(j('.MemBDB', 'm.db'));
