@@ -4,7 +4,7 @@
 
 **Language / Sprache / Idioma**: **English** · [Deutsch](README.de.md) · [Português](README.pt.md)
 
-# AOS² — 5.4.0 “Ouroboros”
+# AOS² — 5.4.2 “Ouroboros”
 
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![NPM Downloads](https://img.shields.io/npm/dw/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
@@ -86,7 +86,7 @@ The loop has six steps:
 5. **Gate.** The go-gate blocks every release command until you type GO.
 6. **You merge.** You read the pull request and merge it. AOS never merges a change to itself without you.
 
-**In 5.4.0** only the capture, status, enable and disable commands exist. Steps 3 to 6 are the target of the next release. Evolve stays off until a person enables it. Kill switch: `AOS_EVOLVE=off`.
+**Today** only step 2 and the kill switch exist: `aos-evolve capture`, `status`, `enable` and `disable`. Steps 3 to 6 are the target; no command proposes, probes or merges a fix yet. Evolve stays off until a person runs `aos-evolve enable`. Kill switch: `aos-evolve disable` or `AOS_EVOLVE=off`.
 
 ## The five layers
 
@@ -153,7 +153,7 @@ See [Playbooks](#playbooks) for guided workflows across these domains.
 | Refresh only the gates and hooks | `npx -y @hybridlabor-api/aos@latest --hooks-only` |
 | See what would change first | `npx -y @hybridlabor-api/aos@latest --dry-run` |
 | Check a broken setup | `aos doctor` |
-| Open the local control page (services, catalog, store, plans) | `aos hub` |
+| Open the local control page (services, catalog, store, plans, router) | `aos hub` |
 | Browse and add skills and agents | `aos store ui` |
 | Add the code knowledge graph | `npx -y @hybridlabor-api/aos@latest -y --modules=codebase-memory` |
 | Plan a feature, then build it | `/plan`, then `/fabric-graph` |
@@ -166,12 +166,12 @@ See [Playbooks](#playbooks) for guided workflows across these domains.
 |---|---|---|
 | Start of day | `aos doctor` | Checks the install, hooks, gateway and memory before you work. |
 | New idea or task | `ask-tim` → `/bdbrainstorm` → `/fabric` | ask-tim picks the route. bdbrainstorm plans and grills the idea. fabric builds it. |
-| Missing know-how | `aos store search <topic>` | Installs one skill instead of loading all of them. |
+| Missing know-how | `find-skill`, or `aos store search <topic>` | find-skill searches the library and reads only the best match. The store installs one skill instead of loading all of them. |
 | Full job | `/playbooks` | Runs a known job in fixed steps, with GO points. |
 | Context is full | `/clear-context save` → `/clear` → `/clear-context` | Keeps the work and loses only the chat. |
-| Before a risky step | `gogate status` | Shows the gate mode and your active grants. |
-| End of day | `/playbooks` → `pb-ship` | Reviews and merges the day's work after your GO. |
-| New version | `aos update` | Updates skills, hooks and MCP entries in every harness. |
+| Before a risky step | `gogate status` (typed in the chat) or `aos-gogate status` | Shows the gate mode and your active grants. |
+| End of day | `/playbooks` → `pb-ship` | Triages issues, reviews open PRs and merges after your GO. |
+| New version | `aos update` | Updates the installed AOS. On a terminal it asks once how to handle updates: notify, auto or off. |
 
 **Why the clear cycle.** A long chat fills the context window. The agent then works slower and forgets details. `/clear` empties the window, but it also removes everything that exists only in the chat. So `save` first writes a handoff file and stores the decisions in memB. After `/clear`, `/clear-context` reads the handoff, asks deja what the last session did, checks git again and waits for you.
 
@@ -268,16 +268,16 @@ Full catalogs (every skill, subagent, playbook and MCP server) are in the collap
 
 ---
 
-## What's new in 5.4.0 “Ouroboros”
+## What's new in 5.4 “Ouroboros”
 
 | Area | What changed |
 |---|---|
-| **Self-improvement** | The AOS² loop (see “What AOS² means” above). 5.4.0 ships capture, status, enable and disable only. Evolve stays off until enabled. |
+| **Self-improvement** | The AOS² loop (see “What AOS² means” above). Capture, status, enable and disable only. Evolve stays off until enabled. |
 | **Skill store** | A few router skills find the rest in the store. The session installs only what the task needs. See [Skill store](#skill-store). |
 | **MCP gateway** | Creator and show-control servers sit behind one entry with lazy loading. See [Creator and event tools](#creator-and-event-tools-behind-the-gateway). |
 | **go-gate** | Modes `hard`, `soft`, `off`, time-limited grants and `GO #<pr>`. See [Modes, grants and GO](#modes-grants-and-go). |
 | **Coordination** | Five patterns, each mapped to an AOS mode. See [Five ways to coordinate](#five-ways-to-coordinate). |
-| **Planned for 5.4.1** | `fabric-swarm` and `fabric-loop`; one hook process per event instead of one per hook; factory runs without the go-gate, with only hard blocks left. |
+| **Since 5.4.0** | `fabric-swarm` and `fabric-loop`. One hook process per Claude event instead of one per hook. Factory runs with the go-gate off and only hard blocks left; `aos-factory --unattended` runs it in a container. The `aos-fabric` CLI (`start`, `next`, `report`, `status`, `cancel`, `drive`) runs a fabric pipeline in any harness. `aos-gateway status` names the root cause of a server that never connected. The hub has a Router tab. `aos update` asks the update mode once. `aos-uninstall` lists everything it keeps. |
 
 ## What's new in v5
 
@@ -290,11 +290,11 @@ v5 changes how AOS gets onto a machine and how its parts talk to each other.
 | **A2A** | Live Claude Code, OpenCode, agy and Codex sessions message each other with `aos-a2a`. An inbound message is never a GO. Any MCP-capable harness can join through the `aos-a2a` MCP server. [docs/a2a.md](docs/a2a.md). |
 | **Native agents** | Subagents are compiled into the formats and paths each harness really reads, including OpenCode and agy. No model is pinned unless you set one: [docs/agent-models.md](docs/agent-models.md). |
 | **Fleet mod** | A band in Claude Code: gate mode, token-weather (context percent as a weather word plus a sparkline), and which sessions work or wait for you with their GO counts. `aos-gogate` shows gate state read-only. |
-| **AOS Hub** | One local page for everything AOS runs on demand, on `127.0.0.1:7900`: Services, Catalog, Store and Plans. `aos hub`, `aos services`, `aos restart`. It replaces the old Launchpad (page and login item); `aos-dashboard` is now a thin alias. [docs/hub.md](docs/hub.md). |
+| **AOS Hub** | One local page for everything AOS runs on demand, on `127.0.0.1:7900`: Services, Catalog, Store, Plans and Router. `aos hub`, `aos services`, `aos restart`. It replaces the old Launchpad (page and login item); `aos-dashboard` is now a thin alias. [docs/hub.md](docs/hub.md). |
 | **agenttrail** | One live map per repo, started automatically, with a link in your session. A v2 control room is **in progress**. |
 | **Plan Canvas** | Plans open in a local canvas; annotations are dispatched back to the agent. |
 | **go-gate** | Read, test and build commands with no write or network effect pass without a GO; deny logs mask credentials; hooks in four harnesses; a machine-wide gate profile (`strict`, `work`, `off`) narrows or widens it. |
-| **Playbooks and Factory** | 36 `pb-*` playbooks, the nine `factory-*` skills and `plan-arbiter`. |
+| **Playbooks and Factory** | 37 `pb-*` playbooks, the nine `factory-*` skills and `plan-arbiter`. |
 | **Orchestrator chain** | master session, project orchestrator, package orchestrator, mapped to real mechanisms. |
 
 **In progress, not claimed as shipped.** agenttrail v2 control room, A2A intercom and a2abook, A2A `spawn` mode, `skill-create` and `instinct-*`.
@@ -611,6 +611,8 @@ Each pattern maps to an AOS mode. Agents never call each other. A dispatcher, th
 | **Handoff** | `/clear-context`, `aos-acp` | The context or the limit is reached, or another model is stronger for the task. | Lost detail, or a wrong route. |
 | **Planning manager** | master session (`master-session`, `pb-master`) | Steps are unknown up front. One session supervises several others. | Planning calls and stalls. |
 
+**Headless runs.** `aos-fabric start --goal <text>` creates a run; `aos-fabric drive --run <id>` loops next, execute, report until the run is done, escalated or `ready_to_ship`. The executor is `--executor aos-acp|ao|auto` (default `aos-acp`). `ao` is optional: it runs each step with `ao spawn --workdir <step dir>` and falls back to `aos-acp` when AO is absent or does not list `--workdir`; `auto` uses AO only when it is clearly up. AOS works without AO. See [docs/fabric.md](docs/fabric.md).
+
 ## Modes, grants and GO
 
 The go-gate asks for a literal GO by default. Three settings change that. Type each one as a full message.
@@ -619,7 +621,7 @@ The go-gate asks for a literal GO by default. Three settings change that. Type e
 
 - **hard:** a literal GO for every guarded command. It also cancels your grants.
 - **soft** (default): like hard, but your active grants also allow commands.
-- **off:** the gate only logs and blocks nothing. This session only, max 24 hours.
+- **off:** the gate only logs. This session only, max 24 hours. Hard blocks (deleting the home directory, changing the gate config) stay.
 
 **Grants:** `gogate grant <scope[,scope]> <15m | 2h | 1d | session>`, for example `gogate grant merge,push-feature 2h`.
 
@@ -629,13 +631,14 @@ The go-gate asks for a literal GO by default. Three settings change that. Type e
 - **publish:** npm publish, npm version, releases and tags.
 - **destructive:** reset --hard, clean -f, rm -r, branch -D, worktree remove.
 - **github-write:** PR and issue comments, edits and `gh api` writes.
+- **container-test** and **workspace:** narrower scopes for sandbox test runs and workspace paths.
 
 A grant lasts at most 24 hours. Only you can type a grant. An agent, a peer or a file cannot.
 
-**GO:** type `GO` as the full message. `GO #117` allows only merge, edit, close, review or comment on PR 117.
+**GO:** type `GO` as the full message. `GO #117` (also `GO PR 117`) covers only `gh pr` merge, edit, close, review and comment on the named PRs.
 
 - A GO is never passed to a worker.
-- After a block, the agent waits 10 minutes. It does not try another form of the command.
+- After a hard block the agent stops and reports. It does not rephrase the command or try another route.
 
 The gate profiles below are a separate, machine-wide setting.
 
@@ -677,7 +680,7 @@ aos-gate profile strict               # no confirmation needed
 
 ## Playbooks
 
-A playbook is a skill with `kind: playbook` that turns a recurring job into a guided run with a fixed contract. The 36 `pb-*` playbooks ship with the skills; list and start them with `/playbooks` (it runs `list-playbooks.mjs` and prints name, time, difficulty and requirements for each). There is no per-playbook command: you name the playbook.
+A playbook is a skill with `kind: playbook` that turns a recurring job into a guided run with a fixed contract. The 37 `pb-*` playbooks ship with the skills; list and start them with `/playbooks` (it runs `list-playbooks.mjs` and prints name, time, difficulty and requirements for each). There is no per-playbook command: you name the playbook.
 
 **What a playbook declares.** Its frontmatter names trigger phrases, `inputs`, `requires` (skills, subagents, MCP servers, store items), `go_points`, `outputs`, a `verify` check, `difficulty` and `est_time`. The body is a numbered step list. Each step names the skill or agent it uses, its input, the artifact it writes and the check that says it is done.
 
@@ -782,22 +785,24 @@ flowchart LR
 
 ## Factory
 
-**What it is.** Nine experimental skills adapted from [BuilderIO/skills](https://github.com/BuilderIO/skills) that turn feedback, telemetry, errors, issues and pull requests into a repeatable review loop: `factory` (the schedule and policy that hosts the others), `factory-collect`, `factory-lookback`, `factory-review-prs`, `factory-human-digest`, plus the delivery-side `factory-ship`, `factory-babysit-pr`, `factory-watchdog` and `factory-recover`. In AOS they report and draft; every external write waits for your GO. `plan-arbiter` ships alongside them for comparing competing plans.
+**What it is.** Nine experimental skills adapted from [BuilderIO/skills](https://github.com/BuilderIO/skills) that turn feedback, telemetry, errors, issues and pull requests into a repeatable review loop: `factory` (the schedule and policy that hosts the others), `factory-collect`, `factory-lookback`, `factory-review-prs`, `factory-human-digest`, plus the delivery-side `factory-ship`, `factory-babysit-pr`, `factory-watchdog` and `factory-recover`. `plan-arbiter` ships alongside them for comparing competing plans. Factory runs are meant to run with the go-gate off; external writes then follow the action policies in `.agent-factory/config.yaml` instead of a literal GO.
 
 **The review loop.**
 
-| Skill | Reads | Writes | Needs GO? |
+| Skill | Reads | Writes | External writes |
 | --- | --- | --- | --- |
-| `factory-collect` | the sources in `workflows.collect.sources` | triage report, draft replies, proposed close wording; optional local fix | Reply, close, push, merge, publish |
-| `factory-lookback` | configured sources over a bounded period, prior fixes | pattern report; optional local systemic fix | Reply, close, publish, merge |
-| `factory-review-prs` | PRs matching the configured filters | per-PR findings, draft comments, approval and merge readiness | Reply, approve, merge |
+| `factory-collect` | the sources in `workflows.collect.sources` | triage report, draft replies, proposed close wording; optional local fix | Policy-gated: reply, close, push, merge, publish |
+| `factory-lookback` | configured sources over a bounded period, prior fixes | pattern report; optional local systemic fix | Policy-gated: reply, close, publish, merge |
+| `factory-review-prs` | PRs matching the configured filters | per-PR findings, draft comments, approval and merge readiness | Policy-gated: reply, approve, merge |
 | `factory-human-digest` | configured repositories and sources (default last 7 days) | decision queue, nothing else | Read-only |
 
 ### How to run
 
 - **Invoke by name.** Ask the agent to run the skill, for example `factory-collect`; each `SKILL.md` carries a "Use when" trigger. Start by hand and read the report before enabling anything scheduled.
 - **Configure.** `.agent-factory/config.yaml`, read by all of them. Keys named in the skills: `workflows.collect.sources`, `workflows.collect.implement`, `workflows.lookback`, `workflows.lookback.implement`, `workflows.human-digest`, and an optional `skill_prompts.<skill-name>` per skill. If the file is missing the skill stops and asks; it never creates it.
-- **The GO rule.** Nothing in the config opens the go-gate. `git push`, `gh pr merge`, `gh release create` and every reply, comment, approval, close or status change need your literal GO for that exact action. Scheduled or unattended runs are read-only.
+- **Gate and policies.** Before a run, you type `gogate off` as a plain message in the session that runs the factory (an agent never types it). With the gate off, each external write follows its action policy (`never`, `manual`, `criteria`, `after-fix`, `after-merge`): `never` always blocks, `manual` still stops and asks you. Hard blocks always stay: deleting the home directory or a top-level folder of it, and changes to the gate config. With the gate on, every external write waits for your literal GO. Releases (`npm publish`, `npm version`) default to `manual`.
+- **Build runs.** When a module has to build a change, the build is an `aos-fabric` run (`aos-fabric start --goal-file …`, then `aos-fabric drive --run <id>`). `drive` ends at `ready_to_ship` or when a human is needed; it never pushes. The plan verdict is a human step; in a run nobody watches, `AOS_PLAN_APPROVAL=auto` skips it and prints a warning.
+- **Unattended.** `node bin/aos-factory.mjs --unattended [--image <image>] [--env NAME]... -- <command>` runs the command in a Docker or Podman container on a fresh clone of the current branch. The clone has no remotes, and the host gate is not changed.
 
 Vendored from [BuilderIO/skills](https://github.com/BuilderIO/skills) (MIT) with AOS safety changes, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); upstream docs: https://github.com/BuilderIO/skills/blob/main/docs/factory/README.md.
 
@@ -864,10 +869,10 @@ Inbound per harness: Claude Code drains the inbox in a hook, OpenCode gets a plu
 | agenttrail | `aos-trail` (skill `agenttrail`, port 5330) | Live board of a multi-agent build: which component, which agent or harness, what is done, what is stuck. Fed by the trail-relay hooks, `mcsc` and `aos-acp`. |
 | archify | `aos-archify` (skill `archify`) | Validated architecture, sequence, data-flow and state diagrams as standalone HTML with SVG export; accepts Mermaid. |
 | AOS Store | `aos store list \| search <q> \| install <name> [--project]`, `aos store ui` (also `aos-store`, slash command `/aos-store`) | Browse and install AOS Core, ECC and Scenario (scenario-labs/skills, MIT) skills and agents; required skills are installed together and every file is SHA-256 verified. Both UIs lay the items out as a card grid (installed vs missing, name, category, tier) instead of a table: the standalone web UI on `http://127.0.0.1:4322` and the Store tab of the AOS Hub, where a slide-over previews the exact target paths and installs or rolls back only after you type the name. `list` and `search` read a pinned offline index: 287 ECC skills (library 174, bdb-core 46, engineering-method 38, design-ui-ux 19, media-eventtech 10), 53 ECC subagents and 13 Scenario skills (third-party, MIT, [scenario-labs/skills](https://github.com/scenario-labs/skills)). Items the installer already places are excluded from the list. |
-| AOS Hub | `aos hub [--port 7900] [--tab id] [--no-open]`, `aos hub status [--json]`, `aos hub stop`, slash command `/hub` | The one local page for everything AOS runs on demand, on `127.0.0.1:7900`, with four tabs: **Services** (status, start/stop/restart, log tails), **Catalog** (every skill, agent, command and MCP with what is installed where), **Store** (the card grid) and **Plans** (plan-kit sessions linked to their agenttrail map). Loopback only, per-process token in `~/.aos/hub/hub.json` (0600), typed confirm on anything destructive. It replaces the old Launchpad HTTP server; `aos-dashboard` is now a thin alias that starts the hub. A fresh install registers it as a login service (launchd, systemd user unit or Task Scheduler); `--without=hub` skips that. |
+| AOS Hub | `aos hub [--port 7900] [--tab id] [--no-open]`, `aos hub status [--json]`, `aos hub stop`, slash command `/hub` | The one local page for everything AOS runs on demand, on `127.0.0.1:7900`, with five tabs: **Services** (status, start/stop/restart, log tails), **Catalog** (every skill, agent, command and MCP with what is installed where), **Store** (the card grid), **Plans** (plan-kit sessions linked to their agenttrail map) and **Router** (which agent takes which role). Loopback only, per-process token in `~/.aos/hub/hub.json` (0600), typed confirm on anything destructive. It replaces the old Launchpad HTTP server; `aos-dashboard` is now a thin alias that starts the hub. A fresh install registers it as a login service (launchd, systemd user unit or Task Scheduler); `--without=hub` skips that. |
 | Dashboard | `aos-dashboard [--port 7900] [--no-open]` | Thin alias for the AOS Hub on the same port. Superseded by `aos hub`. |
 | Sessions | `aos-sessions [--json]`, Claude Code mod `bdb-aos-sessions` (`/aos-sessions`) | Read-only overview of every live session across harnesses plus the ACP workers, in four groups: NEEDS YOU, WORKING, IDLE, ACP WORKERS. Feeds the fleet band and the hub Plans tab. The installer enables the mod when Claude Code is found. |
-| Doctor | `aos doctor [--json] [--net]` (also `aos-doctor`) | Verifies dependencies, skill placement per harness, daemons, hooks, modules and the MCP gateway; exits 1 when something needs attention. The first thing to run when anything misbehaves. |
+| Doctor | `aos doctor [--json] [--net]` (also `aos-doctor`) | Verifies dependencies, skill placement per harness, daemons, hooks, modules and the MCP gateway; prints one row per check with a passed/total count (the total depends on the installed modules and harnesses); exits 1 when a critical check fails. `--resources` shows a process census. The first thing to run when anything misbehaves. |
 | Workers | `aos-acp <claude\|codex\|opencode\|agy> --name <worker> [--sandbox coop\|wsl2]` | Start a worker whose guarded commands need a GO token for its name. `--sandbox` wraps the launch in an optional per-run sandbox (off by default): `coop` on macOS/Linux, `wsl2` on Windows. |
 | Fleet band | Claude Code mod `plugins/bdb-aos-fleet` | Two-line band: gate mode (click it for the gate pane), token-weather, sessions that work or wait with GO counts, and the active projects. Needs Claude Code >= 2.1.287; enabled by the installer, opt out with `AOS_NO_FLEET=1` or `--without=fleet`. |
 | Alert bar | Claude Code mod `plugins/bdb-aos-alert` (`/aos-alert test`, `/aos-alert off`) | A red blinking bar around the prompt when a go-gate block, permission request or question stops the session. Like the sessions mod it is read-only and grants no GO. Enabled by the installer like the fleet and sessions mods (`--without=alert` to skip). |
@@ -880,7 +885,7 @@ Inbound per harness: Claude Code drains the inbox in a hook, OpenCode gets a plu
 
 ### AOS Hub and the sandbox
 
-**Hub tabs.** Services, Catalog, Store and Plans. The Catalog tab is strictly read-only: it reads `skills/`, `agents/`, `commands/`, `mcp_config.json`, `mcp_picks.json` and the gateway allow list, and cross-checks the command list against `plugin.json`. No request value ever reaches the filesystem and nothing is written. The same CLI works without a browser: `aos services status [--json]`, `aos services start <id>`, `aos services stop <id> --confirm <id>`, `aos restart <id> --confirm <id>`. Details: [docs/hub.md](docs/hub.md).
+**Hub tabs.** Services, Catalog, Store, Plans and Router. The Catalog tab is strictly read-only: it reads `skills/`, `agents/`, `commands/`, `mcp_config.json`, `mcp_picks.json` and the gateway allow list, and cross-checks the command list against `plugin.json`. No request value ever reaches the filesystem and nothing is written. The same CLI works without a browser: `aos services status [--json]`, `aos services start <id>`, `aos services stop <id> --confirm <id>`, `aos restart <id> --confirm <id>`. Details: [docs/hub.md](docs/hub.md).
 
 **Worker sandbox.** `aos-acp --sandbox <provider>` wraps one worker launch, and only that launch. It is off by default and the provider is checked before anything starts:
 
@@ -899,11 +904,12 @@ An unknown provider, or one unavailable on this platform, fails with the reason 
 
 ## Skill store
 
-The session starts with a small set of skills. Router skills know the rest. A router searches the store, which holds 287 skills and 53 subagents. The session installs only what the task needs, then uses it at once.
+The session starts with a small set of skills. Router skills know the rest. A router (`find-skill`, `ask-tim`) searches the store, which holds 300 skills and 53 subagents across the AOS, ECC and Scenario sources. The session installs only what the task needs, then uses it at once.
 
-- `aos store search <query>`
+- `aos store search <query>` (every word must match name, description or category)
 - `aos store install <name> [--project]`
-- `aos store install --pack <name>`
+- `aos store install --pack <name>`; `aos store packs` lists the packs.
+- `aos store rollback <name>` restores the previous copy.
 - `/fabric … --skill=<name>` makes one skill required. If it is missing, the run shows the install command.
 
 Each installed skill adds its description to every session. Fewer skills mean a smaller context and better skill choice.
@@ -912,13 +918,13 @@ Each installed skill adds its description to every session. Fewer skills mean a 
 
 Creator tools (Blender, DaVinci Resolve, After Effects, Unreal) and show-control tools (grandMA3, Resolume, TouchDesigner) run behind the MCP gateway.
 
-- `aos install` and `aos update` start the gateway as a service and point every harness at it.
-- Run `aos-gateway status` first. Run `aos-gateway enable` only when the gateway was not running during the install.
+- A fresh install with the default profile installs the gateway and points every harness at it.
+- Run `aos-gateway status` first. It exits 1 when the gateway is down, and for a server that never connected it prints the root-cause line from the upstream log. Fix that cause, then `aos-gateway restart`. Run `aos-gateway enable` only when the harness configs do not point at the gateway.
 - `aos-gateway add <server>` adds one server. `aos-gateway inspect <server>` shows its tools.
 - `aos-gateway run <server>/<tool> --args '{…}'` calls one tool.
 - `aos-gateway adopt` moves your own local MCP servers behind the gateway. `aos-gateway direct` puts them back.
 - Lazy loading is on. The agent sees three tools: `tool_list`, `tool_schema` and `tool_invoke`. It loads a schema only when it needs the tool.
-- `aos context worker` removes the media servers for code workers.
+- `aos context worker` removes the media servers for code workers (`aos context full|orchestrator|worker|small`).
 
 A light desk or a media server is live equipment. The live-media-operator agent asks before each show-critical action. memB and deja stay direct in every harness.
 
@@ -1127,7 +1133,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 | `aos-plan-canvas` | Open plans and HTML artifacts in the annotation canvas (port 4519). |
 | `aos-trail` | agenttrail live map (port 5330). |
 | `aos-archify` | Architecture and sequence diagrams as standalone HTML. |
-| `aos-hub` | The AOS Hub on port 7900: Services, Catalog, Store, Plans. `aos-dashboard` is a thin alias. |
+| `aos-hub` | The AOS Hub on port 7900: Services, Catalog, Store, Plans, Router. `aos-dashboard` is a thin alias. |
 | `aos-services` (via `aos services`) | Status, start, stop and restart for every local service. |
 | `aos-a2a` | List, send to and reply to live harness peers. |
 | `aos-acp` | Start workers whose guarded commands need a GO token; `--sandbox coop\|wsl2` wraps one launch. |
@@ -1608,7 +1614,7 @@ npx skills add hybridlabor-api/aos
 
 ### Playbooks
 
-36 `pb-*` playbooks turn recurring jobs into guided runs with declared GO points. See [Playbooks](#playbooks) for how a run works and the full table by domain.
+37 `pb-*` playbooks turn recurring jobs into guided runs with declared GO points. See [Playbooks](#playbooks) for how a run works and the full table by domain.
 
 ---
 
@@ -1735,7 +1741,7 @@ flowchart LR
 npx -y @hybridlabor-api/aos@latest
 ```
 
-**`aos update`.** The installer puts an `aos` launcher in `~/.local/bin` that runs `npx -y @hybridlabor-api/aos@<channel>` (`latest`, or `beta` when you installed a beta), so `aos update`, `aos status` and `aos repair` always run the newest release of your channel. If you once ran `npm i -g @hybridlabor-api/aos`, whichever `aos` comes first on your PATH wins: a global npm copy stays frozen at its version, so update it (`npm i -g @hybridlabor-api/aos@latest`) or remove it. The installer prints the update command itself whenever a newer version exists; the `bdb-updater` skill wraps the same check for use from inside a session.
+**`aos update`.** The installer puts an `aos` launcher in `~/.local/bin` that runs `npx -y @hybridlabor-api/aos@<channel>` (`latest`, or `beta` when you installed a beta), so `aos update`, `aos status` and `aos repair` always run the newest release of your channel. If you once ran `npm i -g @hybridlabor-api/aos`, whichever `aos` comes first on your PATH wins: a global npm copy stays frozen at its version, so update it (`npm i -g @hybridlabor-api/aos@latest`) or remove it. The installer prints the update command itself whenever a newer version exists; the `aos-update` skill (alias `bdb-updater`) wraps the same check for use from inside a session. On a terminal, `aos update` asks once how to handle updates (notify, auto or off) and remembers the answer; it never asks unattended. An older package than the install changes nothing unless you pass `--force`.
 
 **Update notifications & opt-in auto-update.** AOS checks for newer releases during CLI operations and caches registry results for 24 h. Notifications appear in `aos status`, `aos doctor`, the Claude Code session start hint, and the AOS Hub status:
 ```bash
@@ -1754,11 +1760,13 @@ You can also set `AOS_NO_UPDATE_CHECK=1` in your environment to disable all upda
 
 ```bash
 aos-uninstall              # removes what AOS installed; memory, wikis and credentials stay
-aos-uninstall --purge      # also removes ~/.MemBDB, ~/.openwiki, ~/.synapse, ~/.memb and AOS state files (~/.aos hub/logs/status, ~/.agents/gateway)
+aos-uninstall --purge      # also removes memory, wikis, credentials and AOS state (asks you to type PURGE)
 aos-uninstall --dry-run    # list everything, delete nothing
 ```
 
-**How it works.** The uninstaller works from the install manifest: a file that still matches the hash AOS wrote is removed, a file you edited is backed up instead, a file AOS never wrote is not touched. The same action is in the installer menu. `aos-uninstall --restore-plugin-backup` restores the loose skill copies the installer removed when it registered the plugin; see [docs/plugin-migration.md](docs/plugin-migration.md). Uninstall also moves your saved install options to `~/.aos/v5-settings.json.removed-<timestamp>` instead of deleting them. It stops the background processes AOS started for this user (matched by command line, never by name alone), removes empty folders AOS created, and lists everything it keeps; backups (`~/.aos/backups`, `~/.agents/backups`, `*.bak`) always stay, even with `--purge`. The global npm package is not removed: run `npm uninstall -g @hybridlabor-api/aos` last.
+**What `--purge` adds.** `~/.MemBDB` (memB), `~/.openwiki`, `~/.synapse`, `~/.memb`, `~/.ao`, the deja index and privacy config, and AOS state: `~/.aos` hub, logs, status and hook-trust files, `~/.agents/gateway`, and `~/.aos/pipeline.json` only while it is still the shipped default. Antigravity hook and MCP files are removed only when every entry is AOS's own, and they are moved to `~/.aos/backups` first.
+
+**How it works.** The uninstaller works from the install manifest: a file that still matches the hash AOS wrote is removed, a file you edited is backed up instead, a file AOS never wrote is not touched. The same action is in the installer menu. `aos-uninstall --restore-plugin-backup` restores the loose skill copies the installer removed when it registered the plugin; see [docs/plugin-migration.md](docs/plugin-migration.md). Uninstall also moves your saved install options to `~/.aos/v5-settings.json.removed-<timestamp>` instead of deleting them. It stops the background processes AOS started for this user (matched by command line, never by name alone), removes empty folders AOS created, and prints a **Kept** list with everything it leaves in place; backups (`~/.aos/backups`, `~/.agents/backups`, `*.bak`) always stay, even with `--purge`. The global npm package is not removed: run `npm uninstall -g @hybridlabor-api/aos` last.
 
 ---
 

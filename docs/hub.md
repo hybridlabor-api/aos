@@ -36,6 +36,8 @@ token. Nothing runs at login; the hub exists only while it is needed.
 - **Plans** — plan-kit sessions and the linked agenttrail map (linked, not embedded).
 - **Services** — status of every local service with start/stop/restart and log tails.
 - **Store** — the AOS store (browse, preview, install, rollback).
+- **Catalog** — read-only list of every skill, agent, command and MCP.
+- **Router** — which agent takes which role.
 
 ## Services from the CLI
 
