@@ -5147,9 +5147,7 @@ async function installMcpsForTarget(paths, ctx) {
         // a shell (EINVAL since the CVE-2024-27980 fix) -- wrap the command in
         // cmd /c here so every generated config, the Codex TOML block and the
         // ~/.claude.json mirror get the launchable form.
-        if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
-            parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
-        }
+        parsedMcpConfig.mcpServers = require('./lib/gateway/migrate-memory').absoluteCommands(parsedMcpConfig.mcpServers);
         // Direct mode spawns ONE plugin per harness session; the UXP plugins (Photoshop / Premiere)
         // hard-code ws://localhost:8080 (mcps/adobe_uxp_mcp/plugins/*/index.js:3), so a free-port
         // pick would leave them disconnected: direct mode therefore pins the FIXED default port
@@ -5181,7 +5179,7 @@ async function installMcpsForTarget(paths, ctx) {
         // MCP names, so a fifth dist-based entry added later is covered too.
         if (!DRY_RUN) {
             for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
-                if (val.command !== 'node' || !Array.isArray(val.args) || !val.args[0]) continue;
+                if (!['node', process.execPath].includes(val.command) || !Array.isArray(val.args) || !val.args[0]) continue;
                 const entryArg = val.args[0];
                 if (!entryArg.startsWith('__MCPS_DIR__/')) continue;
                 const relPath = entryArg.slice('__MCPS_DIR__/'.length);
@@ -8028,7 +8026,7 @@ function migrateMcpSecrets() {
 function resolveShippedMcpServers() {
     const mcpsDir = path.join(resolveTargetPaths(defaultPlatformValue(), null).targetMcpDir, 'mcps');
     let servers = { ...mcpPicks().servers };
-    if (process.platform === 'win32' && servers.deja) servers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+    servers = require('./lib/gateway/migrate-memory').absoluteCommands(servers);
     servers = v5Profile.filterMcpServers(servers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS)).servers;
     if (!memoryOn) servers = v5Profile.filterMcpServers(servers, v5Profile.MEMORY_MCPS).servers;
     const esc = (p) => String(p).replace(/\\/g, '\\\\');
@@ -8040,7 +8038,7 @@ function resolveShippedMcpServers() {
         const dirs = [...raw.matchAll(/__MCPS_DIR__\/([^/"\\]+)/g)].map((m) => m[1]);
         if (dirs.some((d) => !fs.existsSync(path.join(mcpsDir, d)))) continue;
         // A dist-based server whose build never produced its entry script would fail at launch (#185); fresh installs check this too.
-        const entry = def.command === 'node' && Array.isArray(def.args) && typeof def.args[0] === 'string' && def.args[0].startsWith('__MCPS_DIR__/') ? def.args[0].slice('__MCPS_DIR__/'.length) : null;
+        const entry = ['node', process.execPath].includes(def.command) && Array.isArray(def.args) && typeof def.args[0] === 'string' && def.args[0].startsWith('__MCPS_DIR__/') ? def.args[0].slice('__MCPS_DIR__/'.length) : null;
         if (entry && !fs.existsSync(path.join(mcpsDir, entry))) {
             log.warn(`${name}: ${entry} is missing (the build did not finish) -- not registering it. Run "npm run build" in ${path.join(mcpsDir, entry.split('/')[0])}; the failure is in the update log under ${path.join(homeDir, '.aos', 'logs')}.`);
             continue;

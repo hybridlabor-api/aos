@@ -699,19 +699,23 @@ async function checkGateway() {
     // Per-harness exposure: live tool counts (estimate) when the gateway answers; server list always.
     try {
         let toolCounts = undefined;
+        let countError = null;
         const profile = req('../lib/v5/profile.js');
         const st = profile.readSettings(home, () => {});
         const selection = (st.gateway && st.gateway.servers) || undefined;
         const aosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
         const presets = req('../lib/v5/pkg-gateway.js').shippedPresets(aosRoot);
         if (status && status.running) {
-            const { gatewayToolCounts } = req('../lib/gateway/doctor.js');
-            try { toolCounts = await gatewayToolCounts({ token: fs.readFileSync(path.join(gatewayDir(home), 'token'), 'utf8').trim() }); } catch { /* estimate unavailable */ }
+            const { gatewaySizeMetrics } = req('../lib/gateway/doctor.js');
+            try {
+                const m = await gatewaySizeMetrics({ token: fs.readFileSync(path.join(gatewayDir(home), 'token'), 'utf8').trim() });
+                if (m.ok) toolCounts = m.counts; else countError = m.error;
+            } catch (e) { countError = e.message; }
         }
         const { gatewayExposureRows } = req('../lib/gateway/doctor.js');
         const rows = gatewayExposureRows({ files: harnessMcpFiles(home, process.env, process.platform, home), toolCounts: toolCounts || {}, selection, presets: {} });
         for (const r of rows) {
-            const counts = r.tools === null ? 'tool count unavailable (gateway not running or did not answer)' : `~${r.tools} tools (estimate)`;
+            const counts = r.tools === null ? `tool count unavailable (${countError || 'gateway not running'})` : `~${r.tools} tools (estimate)`;
             add('gateway', `gateway exposure in ${path.basename(r.file)}`, r.servers.length > 0,
                 `${r.servers.length} gateway server(s): ${r.servers.join(', ')}; ${counts}${r.estimatedTokens !== null ? ` => ~${r.estimatedTokens.toLocaleString()} tokens (estimate: ${r.tools} tools x 85 tokens/tool)` : ''}`, r.servers.length ? '' : 'aos-gateway add <server>', true);
         }
@@ -853,7 +857,7 @@ async function checkDaemonsAndModules() {
     const reaEnabled = process.env.AOS_REA_MCP === 'on';
     if (!reaEnabled) {
       add('daemons', 'REA MCP', true,
-        'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+        'off — dual-use research tool; opt-in MCP pick via AOS_REA_MCP=on (rea_mcp in mcp_picks.json), or use the reverse-engineer-anything skill',
         'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.', true);
     } else {
       let reaPath = which('rea');
@@ -878,7 +882,7 @@ async function checkDaemonsAndModules() {
       } else {
         add('daemons', 'REA MCP', false,
           'AOS_REA_MCP=on but the REA CLI is not reachable',
-          'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+          'Run: npm install -g rea-agents@latest (or use the reverse-engineer-anything skill)');
       }
     }
   }
