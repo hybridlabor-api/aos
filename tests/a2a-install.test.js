@@ -211,7 +211,7 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     fs.mkdirSync(path.dirname(hookCopy), { recursive: true });
     fs.mkdirSync(path.join(proj, 'lib'), { recursive: true });
     fs.copyFileSync(path.join(REPO, '.claude', 'hooks', 'a2a-inbox.mjs'), hookCopy);
-    for (const f of ['a2a-inbox.mjs', 'a2a-registry.mjs']) fs.copyFileSync(path.join(REPO, 'lib', f), path.join(proj, 'lib', f));
+    for (const f of ['a2a-inbox.mjs', 'a2a-registry.mjs', 'a2a-liveness.mjs']) fs.copyFileSync(path.join(REPO, 'lib', f), path.join(proj, 'lib', f));
     const bus = path.join(proj, 'bus');
     fs.mkdirSync(path.join(bus, 'a2a', 'sess2'), { recursive: true });
     fs.writeFileSync(path.join(bus, 'a2a', 'sess2', '1-t2.json'), JSON.stringify({ taskId: 't2', from: 'peer', text: 'hi', ts: 1 }));
