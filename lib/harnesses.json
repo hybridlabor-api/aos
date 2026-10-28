@@ -125,7 +125,7 @@
    "format":"jsonc",
    "root":"mcp",
    "hint":"opencode",
-   "mcp":{"global":["$CONFIG/opencode/opencode.jsonc","$CONFIG/opencode/opencode.json"],"workspace":[]},
+   "mcp":{"global":["~/.config/opencode/opencode.jsonc","~/.config/opencode/opencode.json"],"workspace":[]},
    "match":[],
    "entry":{"remote":{"type":"remote","url":"URL","headers":{"X-AOS-Token":"TOKEN"},"enabled":true}},
    "rules":null,

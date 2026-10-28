@@ -247,15 +247,10 @@ function checkOpencodeMcpNames() {
 // $XDG_CONFIG_HOME/opencode or ~/.config/opencode on every platform; %APPDATA%\\opencode is never read (#188).
 // Copies elsewhere never take effect, and an entry written there is lost on the machine.
 function checkOpencodeConfigCopies() {
-  const loadedDir = path.join(process.env.XDG_CONFIG_HOME || h('.config'), 'opencode');
-  const names = ['config.json', 'opencode.json', 'opencode.jsonc'];
-  const loaded = names.map((n) => path.join(loadedDir, n)).filter((f) => existsSync(f));
-  const others = [h('.opencode'), ...(process.env.APPDATA ? [path.join(process.env.APPDATA, 'opencode')] : [])]
-    .filter((d) => path.resolve(d) !== path.resolve(loadedDir))
-    .flatMap((d) => names.map((n) => path.join(d, n))).filter((f) => existsSync(f));
+  const { loaded, others, loadedDir } = req('../lib/opencode-verify.js').opencodeConfigCopies({ home: HOME, platform: process.platform, env: process.env });
   if (!loaded.length && !others.length) return;
   add('harnesses', 'OpenCode config copies', others.length === 0,
-    others.length ? `loaded: ${loaded.map(tilde).join(', ') || 'none'}; not loaded (duplicates): ${others.map(tilde).join(', ')}`
+    others.length ? `loaded: ${loaded.map(tilde).join(', ') || 'none'}; NOT loaded by OpenCode (ignored): ${others.map(tilde).join(', ')}`
       : `${loaded.length} config file(s) loaded from ${tilde(loadedDir)}`,
     `Edit only ${tilde(loadedDir)}. Move anything you still need from ${others.map(tilde).join(', ')} into it and delete the copy; AOS does not touch them.`, true);
 }
@@ -1084,8 +1079,8 @@ function checkPlugins() {
     const MODS = ['fleet', 'sessions', 'alert', 'control'];
     const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
     const off = MODS.filter((m) => !enabled.includes(m));
-    let ver = null;
-    try { ver = /(\d+\.\d+\.\d+)/.exec(execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }))?.[1] || null; } catch { /* version unknown */ }
+    // runCli, not execFileSync: on Windows the claude.cmd shim cannot be spawned directly.
+    const ver = /(\d+\.\d+\.\d+)/.exec(runCli(claudeBin, ['--version'], { timeout: 5000 }).stdout)?.[1] || null;
     add('plugins', 'Claude Code mods', off.length === 0,
       `enabled: ${enabled.join(', ') || 'none'}; not enabled: ${off.join(', ') || 'none'}; Claude Code in PATH is ${ver || 'of unknown version'}`,
       `Mods need Claude Code >= 2.1.287 (the doctor checks the CLI in PATH). Run \`claude update\`, then \`aos package install ${off.join('|')}\`.`, true);
