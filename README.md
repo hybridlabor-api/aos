@@ -13,7 +13,7 @@
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue.svg)](package.json)
-[![skills](https://img.shields.io/badge/skills-270%20curated-brightgreen.svg)](#skills)
+[![skills](https://img.shields.io/badge/skills-262%20shipped-brightgreen.svg)](#skills)
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#mcp-servers)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#supported-harnesses)
 [![SkillSpector](https://github.com/hybridlabor-api/aos/actions/workflows/skillspector.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions/workflows/skillspector.yml)
@@ -64,7 +64,7 @@ npx -y @hybridlabor-api/aos@latest
 <sub>Skills use the open <a href="https://agentskills.io">Agent Skills</a> format (<code>SKILL.md</code>). AOS installs them for <b>Claude Code, Google Antigravity, Codex CLI, OpenCode, Cursor, Windsurf, Roo Code / Cline, Aider and the AOS CLI</b>, so all of them behave the same way.</sub>
 
 <p align="center">
-  <img src="docs/assets/readme/architecture-hero.svg" alt="How AOS fits together: nine harnesses feed one kernel of 270 skills, 46 subagents, gate hooks and 21 MCP servers, which drives three pipelines, session-to-session messaging and local tools, with the GO gate in front of every release command" width="100%">
+  <img src="docs/assets/readme/architecture-hero.svg" alt="How AOS fits together: nine harnesses feed one kernel of 262 skills, 46 subagents, gate hooks and 21 MCP servers, which drives three pipelines, session-to-session messaging and local tools, with the GO gate in front of every release command" width="100%">
 </p>
 
 </div>
@@ -100,13 +100,13 @@ AOS writes five layers into each harness it finds. The layers work the same way 
 | 4. Subagents and delegation | Workers with their own context. They return only the result. | `architect`, `reviewer`, `aos-acp` |
 | 5. Plugins and distribution | Packages the four layers above for each harness | npm installer, plugin manifests |
 
-AOS knows 15 harness config targets. It is optimised for four: Claude Code, Codex, Antigravity and OpenCode. Claude is not required. Other harnesses receive rules and MCP entries. See [Supported harnesses](#supported-harnesses).
+AOS knows 15 harness config targets (nine harnesses in the table below). It is optimised for four: Claude Code, Codex, Antigravity and OpenCode. Claude is not required. Other harnesses receive rules and MCP entries. See [Supported harnesses](#supported-harnesses).
 
 ## Why AOS
 
 | | Harness default | With AOS |
 |---|---|---|
-| **Skills** | Each harness has its own skill folder and its own copies. | <!-- count:skills -->270<!-- /count --> skills in eight categories, written as `<name>/SKILL.md` into every harness you have. One source tree. |
+| **Skills** | Each harness has its own skill folder and its own copies. | <!-- count:skills -->262<!-- /count --> skills in eight categories, written as `<name>/SKILL.md` into every harness you have. One source tree. |
 | **Subagents** | Agent files written by hand, per harness, in that harness's format. | <!-- count:agents -->46<!-- /count --> subagents compiled into each harness's native agent format (Claude Code, Antigravity, Codex, OpenCode only; others use rules in AGENTS.md). |
 | **Release safety** | A rule in a prompt that the agent is asked to respect. | A `PreToolUse` hook (Claude Code, Antigravity, Codex, OpenCode) or rules in AGENTS.md (others) that blocks `git push`, `npm publish`, `npm version` and recursive `rm` until your own message is the literal word **GO**. |
 | **Multi-agent builds** | Agents that call agents, with the routing inside their prompts. | A dispatcher graph: nodes never invoke each other, state is durable, a repair loop has a no-progress guard, escalation goes to you. |
@@ -119,7 +119,7 @@ AOS knows 15 harness config targets. It is optimised for four: Claude Code, Code
 
 <table>
 <tr>
-<td width="33%" valign="top">🎯 <b>Skills</b><br/>270 curated skills in eight categories, discoverable by every harness as <code>&lt;name&gt;/SKILL.md</code>.<br/>→ <a href="#skills-at-a-glance">Skills at a glance</a></td>
+<td width="33%" valign="top">🎯 <b>Skills</b><br/>262 shipped skills in eight categories, discoverable by every harness as <code>&lt;name&gt;/SKILL.md</code>.<br/>→ <a href="#skills-at-a-glance">Skills at a glance</a></td>
 <td width="33%" valign="top">👥 <b>Subagents</b><br/>46 subagents: Architect, TechLead, Reviewer, Godmodes and specialist reviewers.<br/>→ <a href="#the-dispatcher-graph">The dispatcher graph</a></td>
 <td width="33%" valign="top">🔌 <b>MCP servers</b><br/>21 servers for creative software, OS control, memory and cross-harness delegation.<br/>→ <a href="#mcp-servers">MCP servers</a></td>
 </tr>
@@ -408,7 +408,7 @@ cd your-project && npx -y @hybridlabor-api/aos@latest --project-harness -y
 
 ## Supported harnesses
 
-AOS knows 15 harness config targets. It is optimised for four: Claude Code, Codex, Antigravity and OpenCode. The other targets get rules and MCP entries. Claude is not required: each harness works on its own with the same skills. Pick a harness below to see what the installer writes there.
+AOS knows 15 harness config targets (`lib/harnesses.json`). The table below groups them into nine harnesses, plus the Codenotch app. It is optimised for four: Claude Code, Codex, Antigravity and OpenCode. The other targets get rules and MCP entries. Claude is not required: each harness works on its own with the same skills. Pick a harness below to see what the installer writes there.
 
 **What gets written.** The installer writes the following for each target. Paths are the defaults; the installer only writes to harnesses it actually detects.
 
@@ -904,7 +904,7 @@ An unknown provider, or one unavailable on this platform, fails with the reason 
 
 ## Skill store
 
-The session starts with a small set of skills. Router skills know the rest. A router (`find-skill`, `ask-tim`) searches the store, which holds 300 skills and 53 subagents across the AOS, ECC and Scenario sources. The session installs only what the task needs, then uses it at once.
+The session starts with a small set of skills. Router skills know the rest. A router (`find-skill`, `ask-tim`) searches the store, which holds 300 store skills and 53 store subagents across the AOS, ECC and Scenario sources. This is the store count; the kernel ships 262 skills and 46 subagents. The session installs only what the task needs, then uses it at once.
 
 - `aos store search <query>` (every word must match name, description or category)
 - `aos store install <name> [--project]`
@@ -1036,7 +1036,7 @@ The Claude marketplace `bdb-marketplace` offers four plugins: `bdb-aos` (skills 
 npx skills add hybridlabor-api/aos
 ```
 
-This discovers all <!-- count:skills -->270<!-- /count --> curated skills and installs them into the universal `~/.agents/skills` directory (used by all harnesses and the AOS CLI).
+This discovers all <!-- count:skills -->262<!-- /count --> shipped skills and installs them into the universal `~/.agents/skills` directory (used by all harnesses and the AOS CLI).
 
 ---
 
@@ -1088,7 +1088,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 
 ### Skills by category
 
-**Categories.** <!-- count:skills -->270<!-- /count --> curated skills, discoverable by every harness (the full generated catalog is in the next section). Eight categories, enforced by `npm run validate`:
+**Categories.** <!-- count:skills -->262<!-- /count --> shipped skills, discoverable by every harness (the full generated catalog is in the next section). Eight categories, enforced by `npm run validate`:
 
 - **bdb-core**: Core AOS infrastructure, pipelines, tools, and utilities: `fabric`, `fabric-graph`, `fabric-multigraph`, `fabric-teamwork`, `fabric-swarm`, `fabric-loop`, `agenttrail`, `plan-canvas`, `aos-a2a`, `aos-gateway`, `aos-store`, `master-session`, `codebase-memory`, and more.
 - **design-ui-ux**: Frontend, UI design, accessibility, tokens, motion, anti-slop: `senior-frontend`, `ui-ux-pro-max`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns`, and more.
@@ -1580,7 +1580,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 
 ## Skills
 
-<!-- count:skills -->270<!-- /count --> skills, curated from open-source and proprietary collections, covering the full software development and creative pipeline. Every skill is a directory with a `SKILL.md` frontmatter declaring `name`, `description`, and one `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`, `saas-ops`, `business-ops`.
+<!-- count:skills -->262<!-- /count --> skills, curated from open-source and proprietary collections, covering the full software development and creative pipeline. Every skill is a directory with a `SKILL.md` frontmatter declaring `name`, `description`, and one `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`, `saas-ops`, `business-ops`.
 
 **Persona layer.** The **Godmode** skills are specialized personas that directly map to the build and ship nodes of the dispatcher graph.
 
