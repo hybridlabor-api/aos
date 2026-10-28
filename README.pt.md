@@ -4,6 +4,8 @@
 
 **Language / Sprache / Idioma**: [English](README.md) · [Deutsch](README.de.md) · **Português**
 
+> **Aviso:** Esta tradução está desatualizada e ainda não corresponde ao README em inglês do AOS² 5.4.2. A versão de referência é [README.md](README.md).
+
 # AOS — BDB Agent OS
 
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 980" width="1600" height="980" role="img" aria-labelledby="t d">
   <title id="t">AOS architecture: one install, nine harnesses, one kernel of skills, subagents, hooks and MCP servers</title>
-  <desc id="d">Nine coding-agent harnesses on top feed into the AOS kernel (264 skills, 21 subagents, gate hooks, 21 MCP servers), which drives three pipelines, session-to-session messaging and local tools. The GO gate sits in front of every release command.</desc>
+  <desc id="d">Nine coding-agent harnesses on top feed into the AOS kernel (262 skills, 46 subagents, gate hooks, 21 MCP servers), which drives three pipelines, session-to-session messaging and local tools. The GO gate sits in front of every release command.</desc>
   <defs>
     <style>
       .bg { fill: #F7F4EC; }
@@ -62,7 +62,7 @@
   <g class="sans">
     <!-- Skills -->
     <rect class="panelSoft" x="88" y="330" width="340" height="176" rx="12"/>
-    <text class="h2 ink" x="108" y="368">264 skills</text>
+    <text class="h2 ink" x="108" y="368">262 skills</text>
     <text class="li muted" x="108" y="396">seven categories, each a &lt;name&gt;/SKILL.md</text>
     <text class="li ink mono" x="108" y="424" font-size="12">bdb-core · design-ui-ux</text>
     <text class="li ink mono" x="108" y="446" font-size="12">engineering-method · library</text>
@@ -71,7 +71,7 @@
 
     <!-- Agents -->
     <rect class="panelSoft" x="448" y="330" width="340" height="176" rx="12"/>
-    <text class="h2 ink" x="468" y="368">21 subagents</text>
+    <text class="h2 ink" x="468" y="368">46 subagents</text>
     <text class="li muted" x="468" y="396">native agent files per harness</text>
     <text class="li ink mono" x="468" y="424" font-size="12">architect · techlead · reviewer</text>
     <text class="li ink mono" x="468" y="446" font-size="12">godmode-ui-ux · -engineering</text>
