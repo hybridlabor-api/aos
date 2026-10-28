@@ -6663,6 +6663,12 @@ function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
             copyDirRecursiveSync(path.join(srcDir, 'mcp_picks.json'), path.join(targetHome, '.agents', 'mcp_picks.json'));
         }
         mcpSecrets.migrateLegacyAgyWorkspaceMcp(targetHome, srcDir, { log });
+        // lib/router/table.js resolves the shipped table at <root>/config/router.json; under ~/.agents it must exist.
+        const routerSrc = path.join(srcDir, 'config', 'router.json');
+        if (fs.existsSync(routerSrc)) {
+            fs.mkdirSync(path.join(targetHome, '.agents', 'config'), { recursive: true });
+            copyDirRecursiveSync(routerSrc, path.join(targetHome, '.agents', 'config', 'router.json'));
+        }
         // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
         const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
         if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(targetHome, '.agents', 'lib', 'gate-profile.mjs'));
