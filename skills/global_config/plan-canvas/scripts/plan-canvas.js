@@ -112,6 +112,13 @@ function serverInfoPath(stateDir) {
   return path.join(stateDir, 'server.json');
 }
 
+// A private instance (own state dir) must not own the global services.plan-canvas entry.
+function isPrivateInstance(env = process.env) {
+  const override = env.AOS_PLAN_CANVAS_STATE_DIR;
+  if (!override || !String(override).trim()) return false;
+  return resolveStateDir(env) !== path.join(os.homedir(), '.claude', 'aos-plan-canvas');
+}
+
 function readServerInfo(stateDir) {
   try {
     return JSON.parse(fs.readFileSync(serverInfoPath(stateDir), 'utf8'));
@@ -760,7 +767,7 @@ async function cmdServer(args, { stateDir, port }) {
     if (shuttingDown) return;
     shuttingDown = true;
     fs.rmSync(serverInfoPath(stateDir), { force: true });
-    endpoints.retire('plan-canvas');
+    if (!isPrivateInstance()) endpoints.retire('plan-canvas');
     await canvas.close().catch(() => {});
     process.exit(code);
   };
@@ -774,7 +781,7 @@ async function cmdServer(args, { stateDir, port }) {
     log: line => process.stderr.write(`${line}\n`)
   });
   const bound = await canvas.listen(listenPort);
-  endpoints.announce('plan-canvas', { port: bound.port, version: VERSION });
+  if (!isPrivateInstance()) endpoints.announce('plan-canvas', { port: bound.port, version: VERSION });
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(
     serverInfoPath(stateDir),
@@ -848,7 +855,8 @@ async function main(argv = process.argv.slice(2)) {
   const stateDir = resolveStateDir();
   // A running server may sit on a non-default port; trust its recorded info only while it answers
   // (a server killed hard, as SIGTERM is on Windows, never removes server.json).
-  const recorded = readServerInfo(stateDir);
+  const explicitPort = Boolean((process.env.AOS_PLAN_CANVAS_PORT || '').trim());
+  const recorded = explicitPort ? null : readServerInfo(stateDir);
   const recordedLive = recorded && recorded.port && (await healthCheck(recorded.port));
   const context = { stateDir, port: recordedLive ? recorded.port : resolvePort() };
   try {
