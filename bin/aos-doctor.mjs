@@ -247,15 +247,10 @@ function checkOpencodeMcpNames() {
 // $XDG_CONFIG_HOME/opencode or ~/.config/opencode on every platform; %APPDATA%\\opencode is never read (#188).
 // Copies elsewhere never take effect, and an entry written there is lost on the machine.
 function checkOpencodeConfigCopies() {
-  const loadedDir = path.join(process.env.XDG_CONFIG_HOME || h('.config'), 'opencode');
-  const names = ['config.json', 'opencode.json', 'opencode.jsonc'];
-  const loaded = names.map((n) => path.join(loadedDir, n)).filter((f) => existsSync(f));
-  const others = [h('.opencode'), ...(process.env.APPDATA ? [path.join(process.env.APPDATA, 'opencode')] : [])]
-    .filter((d) => path.resolve(d) !== path.resolve(loadedDir))
-    .flatMap((d) => names.map((n) => path.join(d, n))).filter((f) => existsSync(f));
+  const { loaded, others, loadedDir } = req('../lib/opencode-verify.js').opencodeConfigCopies({ home: HOME, platform: process.platform, env: process.env });
   if (!loaded.length && !others.length) return;
   add('harnesses', 'OpenCode config copies', others.length === 0,
-    others.length ? `loaded: ${loaded.map(tilde).join(', ') || 'none'}; not loaded (duplicates): ${others.map(tilde).join(', ')}`
+    others.length ? `loaded: ${loaded.map(tilde).join(', ') || 'none'}; NOT loaded by OpenCode (ignored): ${others.map(tilde).join(', ')}`
       : `${loaded.length} config file(s) loaded from ${tilde(loadedDir)}`,
     `Edit only ${tilde(loadedDir)}. Move anything you still need from ${others.map(tilde).join(', ')} into it and delete the copy; AOS does not touch them.`, true);
 }
