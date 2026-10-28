@@ -114,6 +114,9 @@ test('smoke: --executor ao with AO up hands the same brief and report path to an
     const r = await wholeRun(p, bin, 'claude', {}, ['--executor', 'ao']);
     assertWholeRun(p, r, 'claude', 'ao');
     assert.equal(log(p).filter((e) => e.kind === 'note').length, 0, 'no fallback note when AO is used');
+    const mine = r.lines.filter((l) => ['step_start', 'step_end'].includes(l.event) && l.step_id !== undefined && l.node !== 'human');
+    assert.ok(mine.some((l) => l.event === 'step_start' && l.ao_session_id === 'x1'), 'step_start carries the AO session id');
+    assert.ok(mine.some((l) => l.event === 'step_end' && l.ao_session_id === 'x1'), 'step_end carries the AO session id');
   } finally { server.close(); }
 }));
 
