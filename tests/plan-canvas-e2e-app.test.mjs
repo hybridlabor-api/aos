@@ -21,8 +21,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { sessionKeyFor: sessionKey } = createRequire(import.meta.url)(path.join(root, 'skills/global_config/plan-canvas/scripts/lib/plan-canvas/sessions.js'));
 const CLI = path.join(root, 'skills/global_config/plan-canvas/scripts/plan-canvas.js');
 const LOCATE = path.join(root, 'skills/global_config/bdb-visual-edit/scripts/locate-source.mjs');
 const FIXTURE = path.join(root, 'tests/fixtures/vite-react-app');
@@ -230,7 +232,18 @@ describe('canvas dispatcher e2e (app annotation)', () => {
     const sidecar = JSON.parse(fs.readFileSync(path.join(repo, 'docs', 'plan.approval.json'), 'utf8'));
     assert.equal(sidecar.verdict, 'approve');
     assert.equal(sidecar.contentHash, createHash('sha256').update(fs.readFileSync(plan)).digest('hex'), 'the approval record binds to the plan content');
+    assert.equal(sidecar.plan, fs.realpathSync(plan), 'the approval record binds to the plan file');
+    assert.equal(sidecar.session, sessionKey(fs.realpathSync(plan)), 'and to the canvas session of that file');
     assert.equal(git('status', '--porcelain', '--', '.', ':!*.approval.json'), '', 'locate + approve never edits by itself; only the approval record is added');
+  });
+
+  test('request-changes replaces the verdict record, so a resumed run never reads an older approve', async () => {
+    const rejected = await canvasPost(key, [{ kind: 'verdict', verdict: 'request-changes', text: 'split the scope' }]);
+    assert.equal(rejected.status, 200, rejected.text);
+    awaitPlan();
+    const sidecar = JSON.parse(fs.readFileSync(path.join(repo, 'docs', 'plan.approval.json'), 'utf8'));
+    assert.equal(sidecar.verdict, 'request-changes');
+    assert.equal(sidecar.items.find(i => i.kind === 'verdict').text, 'split the scope');
   });
 
   test('approve of a plan with {#id} components calls the ensure spawner with the fake binary only', async () => {

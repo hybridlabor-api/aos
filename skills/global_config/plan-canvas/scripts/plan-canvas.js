@@ -349,6 +349,8 @@ async function cmdOpen(file, args, context) {
   // open --await: one call opens the session AND keeps listening, so the turn
   // can never end without a listener. Same output contract as await.
   if (!result.error && args.includes('--await')) {
+    // The JSON with the url only comes after the wait; a caller that times out or is killed still needs the url.
+    process.stderr.write(`[plan-canvas] open: ${result.url}\n`);
     const waited = await cmdAwait(file, args.filter(a => a !== '--await'), context);
     return waited.url ? waited : { ...waited, url: result.url };
   }
@@ -608,6 +610,44 @@ function resolveArtifactArg(file) {
   return file;
 }
 
+// Feedback is handed to one await only, so the verdict is also kept as <name>.approval.json next to the plan: a
+// resumed run reads it instead of waiting for a verdict that was already delivered. Binds the plan by path, content
+// hash and canvas session; the latest verdict wins.
+function writeVerdictRecord(file, items) {
+  if (!Array.isArray(items)) return;
+  const verdicts = items.filter(item => item && item.kind === 'verdict').map(item => item.verdict);
+  const verdict = verdicts.includes('approve') ? 'approve' : verdicts.includes('request-changes') ? 'request-changes' : null;
+  if (!verdict) return;
+  try {
+    const crypto = require('crypto');
+    let sourceFile = file;
+    if (path.basename(file) === 'plan.builder.html' && fs.existsSync(path.join(path.dirname(file), 'plan.mdx'))) {
+      sourceFile = path.join(path.dirname(file), 'plan.mdx');
+    }
+    const plan = canonicalizeArtifactPath(sourceFile);
+    const parsed = path.parse(plan);
+    const approvalPath = path.join(parsed.dir, `${parsed.name}.approval.json`);
+    const record = {
+      schema: 'aos.plan-approval/1',
+      verdict,
+      contentHash: crypto.createHash('sha256').update(fs.readFileSync(plan, 'utf8')).digest('hex'),
+      timestamp: new Date().toISOString(),
+      source: 'plan-canvas',
+      plan,
+      session: sessionKeyFor(canonicalizeArtifactPath(file)),
+      items: items.filter(item => item && typeof item === 'object').map(item => ({
+        kind: item.kind,
+        ...(item.verdict && { verdict: item.verdict }),
+        text: String(item.text || '').slice(0, 4000)
+      }))
+    };
+    fs.writeFileSync(approvalPath, JSON.stringify(record, null, 2) + '\n');
+    process.stderr.write(`[plan-canvas] verdict record written to ${approvalPath}\n`);
+  } catch (e) {
+    process.stderr.write(`[plan-canvas] warning: could not write verdict record: ${e.message}\n`);
+  }
+}
+
 function addRoutes(result, file, trail) {
   if (!Array.isArray(result.items)) return;
   const { routeFor } = require('./lib/plan-canvas/route');
@@ -619,35 +659,8 @@ function addRoutes(result, file, trail) {
     } catch {
       planHasComponents = false;
     }
-    // Write approval.json sidecar when plan is approved
-    try {
-      const crypto = require('crypto');
-      // Find the source plan.mdx file: if file is plan.builder.html, look for plan.mdx in same dir
-      let sourceFile = file;
-      if (path.basename(file) === 'plan.builder.html') {
-        const dir = path.dirname(file);
-        const mdxFile = path.join(dir, 'plan.mdx');
-        if (fs.existsSync(mdxFile)) {
-          sourceFile = mdxFile;
-        }
-      }
-      const fileContent = fs.readFileSync(sourceFile, 'utf8');
-      const contentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
-      const parsed = path.parse(sourceFile);
-      const approvalPath = path.join(parsed.dir, `${parsed.name}.approval.json`);
-      const approval = {
-        schema: 'aos.plan-approval/1',
-        verdict: 'approve',
-        contentHash: contentHash,
-        timestamp: new Date().toISOString(),
-        source: 'plan-canvas'
-      };
-      fs.writeFileSync(approvalPath, JSON.stringify(approval, null, 2) + '\n');
-      process.stderr.write(`[plan-canvas] approval record written to ${approvalPath}\n`);
-    } catch (e) {
-      process.stderr.write(`[plan-canvas] warning: could not write approval record: ${e.message}\n`);
-    }
   }
+  writeVerdictRecord(file, result.items);
   let appItems = 0;
   for (const item of result.items) {
     if (!item || typeof item !== 'object') continue;
