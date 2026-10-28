@@ -14,6 +14,10 @@ const homes = [];
 const mk = () => { const h = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'aos-lean-'))); homes.push(h); return h; };
 process.on('exit', () => { for (const h of homes) fs.rmSync(h, { recursive: true, force: true }); });
 const HOME = mk();
+// Antigravity is detected by an `agy` binary on PATH; CI has none, so put a stub first on PATH.
+const FAKE_BIN = mk();
+fs.writeFileSync(path.join(FAKE_BIN, 'agy'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+process.env.PATH = `${FAKE_BIN}${path.delimiter}${process.env.PATH}`;
 process.env.HOME = HOME;
 for (const d of ['.claude', '.gemini/config', '.codex', '.config/opencode']) fs.mkdirSync(path.join(HOME, d), { recursive: true });
 
