@@ -41,3 +41,29 @@ if (!/redact\(/.test(src)) fail('fleet/pipeline text must pass through redact')
 if (!/probeCache/.test(src)) fail('git probes must use the TTL cache')
 
 console.log('source-guard: ok')
+
+// every mod: `$` must never be handed to a function imported from another file (claude plugin validate rejects it)
+import { readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+const pluginsDir = new URL('../../', import.meta.url).pathname
+const mods = readdirSync(pluginsDir).filter(d => d.startsWith('bdb-aos-') && statSync(join(pluginsDir, d, 'hooks'), { throwIfNoEntry: false })?.isDirectory())
+for (const mod of ['bdb-aos-control', 'bdb-aos-fleet', 'bdb-aos-sessions', 'bdb-aos-alert']) {
+  if (!mods.includes(mod)) fail(`mod ${mod} has no hooks dir`)
+}
+for (const mod of mods) {
+  const dir = join(pluginsDir, mod, 'hooks')
+  for (const f of readdirSync(dir).filter(n => /\.tsx?$/.test(n))) {
+    const text = readFileSync(join(dir, f), 'utf8')
+    const names = new Set()
+    for (const m of text.matchAll(/import\s+(?!type\b)([^;'"]*?)\s+from\s+['"]\.{1,2}\/[^'"]*['"]/gs)) {
+      for (const n of m[1].replace(/[{}]/g, ',').split(',')) {
+        const id = n.trim().split(/\s+as\s+/).pop().replace(/^\*\s+as\s+/, '')
+        if (/^[A-Za-z_]\w*$/.test(id)) names.add(id)
+      }
+    }
+    for (const n of names) {
+      if (new RegExp(`\\b${n}\\s*\\((?:[^()]*,)?\\s*\\$(?![\\w$])`).test(text)) fail(`${mod}/hooks/${f}: $ passed to imported ${n}()`)
+    }
+  }
+}
+console.log('source-guard: $ import guard ok')

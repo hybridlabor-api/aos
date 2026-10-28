@@ -160,7 +160,7 @@ test('buildWorktreeItems derives stages from git output and pipeline state', asy
       },
     },
   }
-  const items = await buildWorktreeItems(fake, '/repo/main', parsePipelineState(PIPELINE_FIXTURE))
+  const items = await buildWorktreeItems(fake.process.run, '/repo/main', parsePipelineState(PIPELINE_FIXTURE))
   assert.deepEqual(items.map(i => [i.branch, i.stage, i.isAgentWorktree]), [
     ['main', 'merged', false],
     ['feat/ui', 'reviewed', true],
@@ -182,18 +182,18 @@ test('buildWorktreeItems runs git once per TTL window', async () => {
     },
   }
   const cache = createTtlCache(10_000)
-  await buildWorktreeItems(fake, '/repo/main', null, cache, 0)
+  await buildWorktreeItems(fake.process.run, '/repo/main', null, cache, 0)
   const first = calls
-  await buildWorktreeItems(fake, '/repo/main', null, cache, 5_000)
+  await buildWorktreeItems(fake.process.run, '/repo/main', null, cache, 5_000)
   assert.equal(calls, first)
-  await buildWorktreeItems(fake, '/repo/main', null, cache, 11_000)
+  await buildWorktreeItems(fake.process.run, '/repo/main', null, cache, 11_000)
   assert.equal(calls, first * 2)
 })
 
 test('a git probe failure throws a redacted message', async () => {
   const fake = { process: { run: async () => ({ stdout: '', stderr: 'fatal: token=abc123 denied', exitCode: 128 }) } }
   let msg = ''
-  await buildWorktreeItems(fake, '/r', null).catch(e => (msg = e.message))
+  await buildWorktreeItems(fake.process.run, '/r', null).catch(e => (msg = e.message))
   assert.equal(msg, 'git probe failed: fatal: token=[redacted]')
 })
 
