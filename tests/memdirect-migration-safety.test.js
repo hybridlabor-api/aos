@@ -5,6 +5,8 @@ const os = require('os');
 const path = require('path');
 const cfg = require('../lib/gateway/config.js');
 const { migrateMemoryDirect, codexHas } = require('../lib/gateway/migrate-memory.js');
+const { parseJsonc } = require('../lib/jsonc.js');
+const { reverseMemoryDirect } = require('../lib/uninstall-records.js');
 const { resolveHarnessPath, HARNESS_ROWS } = require('../lib/mcp-secrets.js');
 const { fakeComponents } = require('./helpers/memdirect-env.js');
 
@@ -74,20 +76,28 @@ test('item 2: a project .cursor/mcp.json in the working directory is untouched',
     assert.equal(fs.readFileSync(projectCursor, 'utf8'), before);
 });
 
-// Item 3: JSONC with comments is never rewritten, and the skip is visible.
-test('item 3: opencode.jsonc with comments is not rewritten, is reported, and keeps the gateway copy', () => {
+// Item 3 (#188): JSONC with comments and trailing commas gets the entries as a text patch; comments and user entries stay.
+test('item 3: opencode.jsonc with comments takes memb_mcp and deja as a text patch; a rerun and the uninstall leave comments intact', () => {
     const home = tmp();
     seedGateway(home);
     const jsonc = path.join(home, '.config', 'opencode', 'opencode.jsonc');
     fs.mkdirSync(path.dirname(jsonc), { recursive: true });
-    const text = '{\n  // my servers\n  "mcp": {}\n}\n';
+    const text = '// top\n{\n  /* plugins */\n  "plugin": ["a",],\n  "mcp": {\n    // my servers\n    "mine": { "type": "local", "command": ["m"], }, // keep\n  },\n}\n';
     fs.writeFileSync(jsonc, text);
-    const said = [];
-    const rep = migrateMemoryDirect({ home, aosRoot: ROOT, now: 1, env: fakeComponents(home), log: (m) => said.push(m) });
-    assert.equal(fs.readFileSync(jsonc, 'utf8'), text);
-    assert.ok(rep.failed.some((f) => f.file === jsonc && /JSONC with comments/.test(f.error)));
-    assert.ok(said.some((m) => /JSONC with comments/.test(m)), 'skip is logged');
-    assert.equal(rep.gatewayCleaned, false);
+    const rep = migrateMemoryDirect({ home, aosRoot: ROOT, now: 1, env: fakeComponents(home), log: quiet });
+    assert.deepStrictEqual(rep.failed, []);
+    const after = fs.readFileSync(jsonc, 'utf8');
+    for (const c of ['// top', '/* plugins */', '// my servers', '// keep']) assert.ok(after.includes(c), c);
+    const j = parseJsonc(after);
+    assert.ok(j.mcp.memb_mcp && j.mcp.deja && j.mcp.mine);
+    assert.equal(rep.gatewayCleaned, true);
+    assert.ok(fs.readdirSync(path.dirname(jsonc)).some((n) => n.startsWith('opencode.jsonc.aos-memdirect-bak-')));
+
+    migrateMemoryDirect({ home, aosRoot: ROOT, now: 2, env: fakeComponents(home), log: quiet });
+    assert.equal(fs.readFileSync(jsonc, 'utf8'), after, 'rerun changes nothing');
+
+    reverseMemoryDirect({ home });
+    assert.equal(fs.readFileSync(jsonc, 'utf8'), text, 'uninstall restores the original file');
 });
 
 // Item 4: Codex config keeps mode and symlink, and a dotted entry is not duplicated.
