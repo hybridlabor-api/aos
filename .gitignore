@@ -45,3 +45,4 @@ production_artifacts/state.json
 
 # shipped-hashes.json — pack-time build output (scripts/build-shipped-hashes.mjs)
 lib/shipped-hashes.json
+production_artifacts/runs/
