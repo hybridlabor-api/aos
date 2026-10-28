@@ -66,3 +66,11 @@ describe('rea_mcp secrets hint', () => {
         assert.equal(secrets.reaDoctorHint({ AOS_REA_MCP: 'on' }), null);
     });
 });
+
+describe('doctor REA hint', () => {
+    test('points at the opt-in pick or the skill, not a package that does not exist', () => {
+        const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'bin', 'aos-doctor.mjs'), 'utf8');
+        assert.ok(!/package install rea/.test(src));
+        assert.ok(src.includes('reverse-engineer-anything'));
+    });
+});

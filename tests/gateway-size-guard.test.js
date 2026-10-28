@@ -131,3 +131,33 @@ test('gatewaySizeMetrics handles offline / unreachable gateway safely without th
     assert.ok(res.error.includes('ECONNREFUSED'));
     assert.ok(!res.error.includes('token'));
 });
+
+test('gatewaySizeMetrics does the session handshake against a stub gateway that rejects sessionless tools/list', async () => {
+    const http = require('http');
+    const seen = [];
+    const srv = http.createServer((req, res) => {
+        let b = '';
+        req.on('data', (c) => { b += c; });
+        req.on('end', () => {
+            const m = JSON.parse(b);
+            seen.push(m.method);
+            if (m.method === 'initialize') { res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 'sid1' }); return res.end('{"jsonrpc":"2.0","id":2,"result":{}}'); }
+            if (req.headers['mcp-session-id'] !== 'sid1') { res.writeHead(400); return res.end('no session'); }
+            if (m.method === 'tools/list') { res.writeHead(200, { 'content-type': 'text/event-stream' }); return res.end(`data: ${JSON.stringify({ result: { tools: [{ name: 'a_1mcp_x' }, { name: 'a_1mcp_y' }] } })}\n\n`); }
+            res.writeHead(202); res.end();
+        });
+    });
+    await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+    try {
+        const res = await gatewaySizeMetrics({ port: srv.address().port, token: 'tok' });
+        assert.strictEqual(res.ok, true);
+        assert.deepStrictEqual(res.counts, { a: 2 });
+        assert.deepStrictEqual(seen, ['tools/list', 'initialize', 'notifications/initialized', 'tools/list']);
+    } finally { srv.close(); }
+});
+
+test('gatewaySizeMetrics reports the real failure, not a generic one', async () => {
+    const res = await gatewaySizeMetrics({ port: 7790, token: 'tok', fetchFn: async () => ({ status: 401, text: async () => 'unauthorized' }) });
+    assert.strictEqual(res.ok, false);
+    assert.match(res.error, /HTTP 401/);
+});
