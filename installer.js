@@ -144,19 +144,23 @@ const VALID_PLATFORMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '10'];
 const platformsArgRaw = process.argv.find(a => a === '--platforms' || a.startsWith('--platforms='));
 let PLATFORMS_ARG = null;
 if (platformsArgRaw) {
-    const rawValue = platformsArgRaw.startsWith('--platforms=')
-        ? platformsArgRaw.slice('--platforms='.length)
-        : null;
-    if (rawValue === null || rawValue.trim() === '') {
+    // PowerShell splits an unquoted --platforms=1,2,5 at the commas, so the value may arrive as
+    // "--platforms=1 2 5" or as "--platforms=1" "2" "5"; "--platforms 1,2,5" is accepted too.
+    const argv = process.argv;
+    const at = argv.indexOf(platformsArgRaw);
+    const tail = [];
+    for (let i = at + 1; i < argv.length && /^[\d,]+$/.test(argv[i]); i++) tail.push(argv[i]);
+    const rawValue = [platformsArgRaw.startsWith('--platforms=') ? platformsArgRaw.slice('--platforms='.length) : '', ...tail].join(',');
+    if (rawValue.replace(/,/g, '').trim() === '') {
         console.warn(`${colors.yellow} -> Ignoring '--platforms' without a value. Use --platforms=<n[,n]>, e.g. --platforms=2 for Claude.${colors.reset}`);
     } else {
-        const requested = rawValue.split(',').map(v => v.trim()).filter(Boolean);
+        const requested = rawValue.split(/[,\s]+/).map(v => v.trim()).filter(Boolean);
         const unknown = requested.filter(v => !VALID_PLATFORMS.includes(v));
         if (unknown.length > 0) {
             // Refuse rather than silently installing somewhere unintended: an
             // unrecognised value would otherwise fall through resolveTargetPaths
             // to the Antigravity default.
-            console.error(`${colors.red} -> Unknown --platforms value(s): ${unknown.join(', ')}. Valid: ${VALID_PLATFORMS.join(', ')} (4 = custom paths needs the interactive menu).${colors.reset}`);
+            console.error(`${colors.red} -> Unknown --platforms value(s): ${unknown.join(', ')}. Valid: ${VALID_PLATFORMS.join(', ')} (4 = custom paths needs the interactive menu). In PowerShell quote the list: --platforms="1,2,5".${colors.reset}`);
             process.exit(1);
         }
         if (requested.includes('4')) {
@@ -5100,7 +5104,8 @@ async function installMcpsForTarget(paths, ctx) {
                 log.step(`[dry-run] would pre-warm Python deps for ${mcp.folder}`);
                 continue;
             }
-            const result = spawnSync(uvBin(), prewarmArgs, { cwd: targetFolder, stdio: 'ignore', windowsHide: true });
+            // cli-spawn resolves uv through PATH x PATHEXT and the standard folders; a bare spawnSync fails with ENOENT on Windows.
+            const result = require('./lib/cli-spawn.js').run(uvBin(), prewarmArgs, { cwd: targetFolder, timeout: 600000 });
             if (result.error) {
                 // uv itself is missing or unrunnable. That is one machine-level
                 // fact, not six per-MCP failures — say it once and stop trying.
