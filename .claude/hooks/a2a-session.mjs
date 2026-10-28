@@ -121,14 +121,16 @@ export async function hook(input, { harness = "claude", finish = false, ppid = p
           let payload = JSON.stringify(input);
           if (payload.length > 16000) payload = JSON.stringify({ session_id: sessionId });
           const self = fileURLToPath(import.meta.url);
+          // The shell wrapper that ran this hook exits right after it: the finisher must get the harness pid resolved now.
+          const harnessPid = lib.resolveHarnessPid ? lib.resolveHarnessPid(ppid, { harness, until: Date.now() + 2500 }) : ppid;
           // WMI-started processes get no env: the payload and parent pid travel as arguments (small payload only).
           const b64 = Buffer.from(payload).toString("base64");
           const viaWmi = process.platform === "win32" && harness === "codex" && b64.length <= 4000 && !process.env.AOS_A2A_NO_WMI
-            && await startOutsideJob([self, "--harness", harness, "--finish", "--hook-ppid", String(ppid), "--input-b64", b64]);
+            && await startOutsideJob([self, "--harness", harness, "--finish", "--hook-ppid", String(harnessPid), "--input-b64", b64]);
           if (!viaWmi) {
             const child = spawn(process.execPath, [self, "--harness", harness, "--finish"], {
               detached: true, stdio: "ignore", windowsHide: true,
-              env: { ...process.env, AOS_A2A_HOOK_INPUT: payload, AOS_A2A_HOOK_PPID: String(ppid) },
+              env: { ...process.env, AOS_A2A_HOOK_INPUT: payload, AOS_A2A_HOOK_PPID: String(harnessPid) },
             });
             child.on("error", (e) => log(`cannot start the finisher: ${e.message}`));
             child.unref();
@@ -143,7 +145,7 @@ export async function hook(input, { harness = "claude", finish = false, ppid = p
           : undefined;
         // The `ps` walks below block the event loop, so they end at a deadline that leaves the budget timer its margin.
         const until = finish ? undefined : Date.now() + 1200;
-        const harnessPid = lib.resolveHarnessPid ? lib.resolveHarnessPid(hookPpid, { until }) : hookPpid;
+        const harnessPid = lib.resolveHarnessPid ? lib.resolveHarnessPid(hookPpid, { until, harness }) : hookPpid;
         if (harness === "codex") {
           // Documented codex fallback: with no workspace name the thread id (the session id) labels it.
           const r = lib.ensureSidecar({ harness, sessionId, parentPid: harnessPid, mode: "codex", thread: sessionId, title: title || sessionId });
@@ -175,7 +177,7 @@ if (isMain()) {
   // Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude 5 s, Codex 10 s). The only exit
   // call: by then the identity line (if any) left long ago. The detached finisher has no harness timeout and no budget.
   // Windows+codex also waits for the WMI launch (PowerShell cold start), still under the 10 s hook timeout.
-  const budgetMs = process.platform === "win32" && harness === "codex" ? 7000 : 3500;
+  const budgetMs = process.platform === "win32" && harness === "codex" ? 8000 : 3500;
   if (!finish) setTimeout(() => { logErr(harness, finish, "hook budget exceeded"); process.exit(0); }, budgetMs - process.uptime() * 1000).unref();
 
   let input = {};

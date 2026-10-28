@@ -46,3 +46,11 @@ test('reply does not mkdir/chmod an existing per-peer dir (sandboxed Codex can o
     assert.equal(statSync(d).mode & 0o777, process.platform === 'win32' ? statSync(d).mode & 0o777 : 0o755);
   } finally { delete process.env.AOS_A2A_INBOX; rmSync(root, { recursive: true, force: true }); }
 });
+
+test('the Windows codex hook resolves the harness pid before the wrapper exits and hands that pid to the finisher', () => {
+  assert.match(SRC, /const harnessPid = lib\.resolveHarnessPid \? lib\.resolveHarnessPid\(ppid, \{ harness, until: Date\.now\(\) \+ 2500 \}\) : ppid;/);
+  assert.match(SRC, /"--hook-ppid", String\(harnessPid\)/);
+  assert.match(SRC, /AOS_A2A_HOOK_PPID: String\(harnessPid\)/);
+  assert.doesNotMatch(SRC, /"--hook-ppid", String\(ppid\)/);
+  assert.ok(SRC.indexOf('lib.resolveHarnessPid(ppid') < SRC.indexOf('startOutsideJob([self'), 'resolution must precede the WMI start');
+});

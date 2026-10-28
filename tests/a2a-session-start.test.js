@@ -190,3 +190,21 @@ test("resolveHarnessPid: POSIX skips a shell wrapper (sh, zsh, login -zsh) and r
   assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,-zsh\n300,node\n" }), 300);
   assert.equal(resolveHarnessPid(400, { platform: "darwin", chain: () => "400,node\n" }), 400, "a non-shell ppid is already the harness");
 });
+
+// Windows codex tree as CIM rows (pid,name), walking up from the hook's ppid (the cmd.exe wrapper).
+const winTree = (rows) => () => rows.map(([pid, name]) => `${pid},${name}`).join("\r\n") + "\r\n";
+
+test("resolveHarnessPid: Windows codex.exe -> cmd.exe -> node hook picks codex.exe, not the wrapper", () => {
+  const chain = winTree([[1155796, "cmd.exe"], [1154616, "codex.exe"], [1100, "explorer.exe"]]);
+  assert.equal(resolveHarnessPid(1155796, { platform: "win32", harness: "codex", chain }), 1154616);
+});
+
+test("resolveHarnessPid: a node shim between the wrapper and codex.exe is skipped when the harness image is known", () => {
+  const chain = winTree([[1155796, "cmd.exe"], [1155000, "node.exe"], [1154616, "codex.exe"]]);
+  assert.equal(resolveHarnessPid(1155796, { platform: "win32", harness: "codex", chain }), 1154616);
+  assert.equal(resolveHarnessPid(1155796, { platform: "win32", chain }), 1155000, "without a harness name the first non-shell wins");
+});
+
+test("resolveHarnessPid: a wrapper that already exited yields no rows, so the dead pid comes back (why the hook resolves early)", () => {
+  assert.equal(resolveHarnessPid(1155796, { platform: "win32", harness: "codex", chain: () => "" }), 1155796);
+});
