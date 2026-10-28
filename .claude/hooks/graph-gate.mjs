@@ -41,8 +41,9 @@
 //      again would just burn turns until the platform cap force-overrides us
 //      with a warning. In that case: allow the stop and let the human see it.
 
-import { readFileSync, existsSync, writeFileSync, fstatSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, realpathSync, fstatSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Bounded stdin read, same as rules-inject.mjs readStdinBounded: an open stdin pipe (Codex on Windows) must not hang
 // the hook. Stops on end, first complete JSON, byte cap or timeout; null = nothing read before a timeout or an error.
@@ -77,39 +78,28 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
   });
 }
 
-function allow() {
-  process.exit(0);
-}
+const ALLOW = { code: 0, stdout: "", stderr: "" };
 
-function block(reason) {
-  process.stderr.write(`Blocked by graph-gate hook: ${reason}\n`);
-  process.exit(2);
-}
-
-async function main() {
+// Decision as { code, stdout, stderr }: shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+export function hook(rawInput, defaultCwd = process.cwd()) {
   let input;
   try {
-    input = JSON.parse((await readStdinBounded(2000)) ?? "");
+    input = JSON.parse(rawInput);
   } catch {
-    allow(); // can't read hook input -- fail open, this hook has no opinion without it
-    return;
+    return ALLOW; // can't read hook input -- fail open, this hook has no opinion without it
   }
 
-  const cwd = input?.cwd || process.cwd();
+  const cwd = input?.cwd || defaultCwd;
   const statePath = join(cwd, "production_artifacts", "state.json");
   const markerPath = join(cwd, "production_artifacts", ".graph-gate-last-block");
 
-  if (!existsSync(statePath)) {
-    allow(); // no active /fabric-graph run in this cwd -- most sessions, most of the time
-    return;
-  }
+  if (!existsSync(statePath)) return ALLOW; // no active /fabric-graph run in this cwd -- most sessions, most of the time
 
   let state;
   try {
     state = JSON.parse(readFileSync(statePath, "utf8"));
   } catch {
-    allow(); // malformed state -- fail open, see file header
-    return;
+    return ALLOW; // malformed state -- fail open, see file header
   }
 
   const iteration = Number.isInteger(state.iteration) ? state.iteration : 0;
@@ -120,8 +110,7 @@ async function main() {
     // phase: "escalated" and needs_human: true per .agents/graph.md's edge
     // table. The hook does not loop past this -- it only enforces "don't
     // stop with a known-failing gate," never "keep going forever."
-    allow();
-    return;
+    return ALLOW;
   }
 
   const gate = state.gate && typeof state.gate === "object" ? state.gate : {};
@@ -129,10 +118,7 @@ async function main() {
     .filter(([, v]) => v === "fail")
     .map(([k]) => k);
 
-  if (failing.length === 0) {
-    allow();
-    return;
-  }
+  if (failing.length === 0) return ALLOW;
 
   // Progress check (see file header). Only relevant once we've already
   // blocked at least once this run -- stop_hook_active tells us that.
@@ -151,13 +137,13 @@ async function main() {
       // just burn turns until the platform's consecutive-block cap
       // force-overrides us with a warning the user has to decipher. Let the
       // stop through so the failing gate surfaces plainly instead.
-      process.stderr.write(
-        `graph-gate: gate still failing (${failing.join(", ")}) but iteration has not advanced ` +
+      return {
+        code: 0,
+        stdout: "",
+        stderr: `graph-gate: gate still failing (${failing.join(", ")}) but iteration has not advanced ` +
           `past ${iteration} since the last block -- the repair loop is not progressing. ` +
-          `Allowing this turn to end so it surfaces instead of looping.\n`
-      );
-      allow();
-      return;
+          `Allowing this turn to end so it surfaces instead of looping.\n`,
+      };
     }
   }
 
@@ -168,11 +154,23 @@ async function main() {
     // write it, the platform's own consecutive-block cap still bounds us.
   }
 
-  block(
-    `production_artifacts/state.json shows failing gate check(s): ${failing.join(", ")} ` +
-    `(iteration ${iteration}/${maxIterations}). Per .agents/graph.md, the dispatcher should ` +
-    `invoke the owning build node for a repair pass before this run stops.`
-  );
+  return {
+    code: 2,
+    stdout: "",
+    stderr: `Blocked by graph-gate hook: production_artifacts/state.json shows failing gate check(s): ${failing.join(", ")} ` +
+      `(iteration ${iteration}/${maxIterations}). Per .agents/graph.md, the dispatcher should ` +
+      `invoke the owning build node for a repair pass before this run stops.\n`,
+  };
 }
 
-await main();
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+
+if (isMain()) {
+  // Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (Claude and agy 10 s). Past it the
+  // stop is allowed, exactly like unreadable hook input (fail open, see the header).
+  setTimeout(() => process.exit(0), 7000 - process.uptime() * 1000).unref();
+  // Unreadable stdin or a timeout (null) fails open, as before.
+  const r = hook((await readStdinBounded(2000)) ?? "");
+  if (r.stderr) process.stderr.write(r.stderr);
+  process.exit(r.code);
+}

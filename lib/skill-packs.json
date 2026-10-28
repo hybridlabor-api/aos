@@ -2,6 +2,7 @@
   "base": [
     "bdb-aos",
     "ask-tim",
+    "find-skill",
     "bdbrainstorm",
     "grill-me",
     "plan-canvas",
@@ -15,6 +16,7 @@
     "fabric-teamwork",
     "fabric-swarm",
     "fabric-loop",
+    "advisor",
     "agent-pipeline",
     "orchestrator-chain",
     "ao-orchestrator",
@@ -34,6 +36,7 @@
     "aos-gateway",
     "gogate",
     "mcsc",
+    "aos-update",
     "bdb-updater",
     "skill-create",
     "memb-skill",

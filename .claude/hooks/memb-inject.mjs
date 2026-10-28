@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// aos-hook-version: 8
+// aos-hook-version: 9
 /**
  * memB ambient memory hook for Claude Code, Google Antigravity, and OpenAI Codex.
  *
@@ -23,6 +23,13 @@
  * identity on the first invocation of a conversation (cached per
  * conversationId); later invocations recall FTS hits only.
  *
+ * Per-prompt semantic recall (memory.promptRecall = "semantic", opt-in; the
+ * default is "fulltext"): each non-trivial prompt also asks memB's own vector +
+ * BM25 search through memb-recall.py, under a 400 ms budget, keeps scoped hits
+ * above a relevance threshold, and adds at most 5 lines / ~600 tokens. It needs
+ * a warm memB process; a cold ONNX start exceeds the budget and is skipped.
+ * "fulltext" keeps only the keyword recall; "off" disables per-prompt recall.
+ *
  * Fails open: any error exits 0 silently.
  */
 
@@ -30,23 +37,163 @@ import { readFileSync, existsSync, realpathSync, mkdirSync, writeFileSync, fstat
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const COLLECTION = 'bdb_agent_memory';
 const DEFAULT_GROUP_IDS = 'bdb_developer';
 const PROJECT_ROW_CAP = 5;
 const ROW_CHARS = 180;
+// Hard wall-clock budget: ~70 % of the shortest timeout this hook is wired with (agy 8 s, Claude 10 s, Codex 30 s).
+const BUDGET_MS = 5500;
 const failOpen = () => process.exit(0);
+
+// Per-prompt semantic recall limits. memB's search_memory (memB run.py:178, :184)
+// returns dense cosine-style scores in ~0..1, and BM25 scores boosted x1.25 and capped
+// at 1.0 when both legs match. 0.45 is a starting point; no measured calibration exists yet.
+export const PROMPT_RECALL_MODES = ['semantic', 'fulltext', 'off'];
+export const SEMANTIC_BUDGET_MS = 400;
+export const SEMANTIC_MIN_SCORE = 0.45;
+export const SEMANTIC_MAX_HITS = 5;
+export const SEMANTIC_TOKEN_CHARS = 2400; // ~600 tokens at ~4 chars per token
+const SEMANTIC_LINE_CHARS = 240;
+
+// Standing rule, injected once at SessionStart next to the write hint (shared by every harness that reuses this block).
+export const MEMB_RECALL_RULE = '- For questions about projects, people, the company, earlier decisions or preferences: query memB first (memb search / the memB MCP tool), then answer.';
+
+// memory.promptRecall from ~/.aos/v5-settings.json; anything unknown means the default "fulltext".
+export function promptRecallMode(home = os.homedir()) {
+  try {
+    const v = JSON.parse(readFileSync(path.join(home, '.aos', 'v5-settings.json'), 'utf8'))?.memory?.promptRecall;
+    if (PROMPT_RECALL_MODES.includes(v)) return v;
+  } catch {}
+  return 'fulltext';
+}
+
+// Prompts too short or too structural to recall anything useful for (slash commands included).
+export const isTrivialPrompt = (prompt) => {
+  const t = String(prompt || '').trim();
+  return t.length < 15 || t.startsWith('/');
+};
+
+// Where memb-recall.py and the memB engine live: the first candidate with a venv python and run.py.
+// Null when memB is not installed; the caller then skips semantic recall silently.
+export function membSearchTarget({ home = os.homedir(), env = process.env, exists = existsSync, hookDir = path.dirname(fileURLToPath(import.meta.url)) } = {}) {
+  const win = process.platform === 'win32';
+  const helper = path.join(hookDir, 'memb-recall.py');
+  if (!exists(helper)) return null;
+  const dirs = [env.MEMB_MCP_DIR, path.join(home, '.gemini', 'config', 'mcps', 'memb-mcp'), path.join(home, '.agents', 'mcps', 'memb-mcp'), path.join(home, '.agents', 'memB')];
+  for (const d of dirs.filter(Boolean)) {
+    const py = path.join(d, '.venv', win ? 'Scripts' : 'bin', win ? 'python.exe' : 'python');
+    if (exists(py) && exists(path.join(d, 'run.py'))) return { python: py, helper, memb: d };
+  }
+  return null;
+}
+
+// Runs the helper as a child in its own process group (POSIX) and resolves
+// after `budgetMs` even if a grandchild keeps stdout open: the whole group is
+// killed on the timer (POSIX) or the tree via taskkill /T (Windows).
+export function runBounded(cmd, args, { input = '', budgetMs = SEMANTIC_BUDGET_MS, env = process.env } = {}) {
+  return new Promise((resolve) => {
+    const win = process.platform === 'win32';
+    let out = '';
+    let settled = false;
+    let timer = null;
+    let child;
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    try {
+      child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true, detached: !win, env });
+    } catch {
+      return finish({ status: null });
+    }
+    const killTree = () => {
+      try {
+        if (win) {
+          spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true }).on('error', () => {});
+        } else {
+          process.kill(-child.pid, 'SIGKILL');
+        }
+      } catch {
+        try { child.kill('SIGKILL'); } catch {}
+      }
+    };
+    timer = setTimeout(() => { killTree(); finish({ status: null, timedOut: true }); }, budgetMs);
+    child.stdout.on('data', (d) => { out += d; });
+    child.stdin.on('error', () => {});
+    child.on('error', () => finish({ status: null }));
+    child.on('close', (code) => finish({ status: code, stdout: out }));
+    child.stdin.end(input);
+  });
+}
+
+// Keeps only semantic hits this user and project may see. A hit without a user is dropped
+// (no scope metadata). A project hit must name one of this project's ids; a global hit must
+// pass the same globalRowRelevant gate as the full-text path.
+export function scopeSemanticHits(hits, { userIds = [], projectIds = [], terms = [] } = {}) {
+  return hits.filter((h) => {
+    if (!h.user_id || !userIds.includes(h.user_id)) return false;
+    if (h.project_id) return projectIds.includes(h.project_id);
+    return globalRowRelevant({ cat: h.category || '', text: h.memory, ids: projectIds, terms });
+  });
+}
+
+// memB semantic hits for one prompt: [{ memory, score, user_id, project_id, category }] above minScore.
+// A timeout, a missing engine, a non-zero exit or unparsable output all yield [] (no error, no injection).
+export async function semanticRecall({ prompt, python, helper, memb, user = '', run = runBounded, budgetMs = SEMANTIC_BUDGET_MS, minScore = SEMANTIC_MIN_SCORE } = {}) {
+  if (!python || !helper || !memb) return [];
+  try {
+    const args = [helper, String(SEMANTIC_MAX_HITS), memb, ...(user ? [user] : [])];
+    const r = await run(python, args, { input: String(prompt).slice(0, 500), budgetMs });
+    if (!r || r.status !== 0 || !r.stdout) return [];
+    const list = JSON.parse(String(r.stdout));
+    if (!Array.isArray(list)) return [];
+    return list.filter((h) => h && typeof h.memory === 'string' && h.memory && Number(h.score) >= minScore);
+  } catch {
+    return [];
+  }
+}
+
+// Children still running. On a timeout the whole tree goes: on Windows the cmd.exe that runs npm's deja.cmd shim
+// leaves node and deja.exe behind, so only taskkill /T reaches them; on POSIX the child leads its own process group.
+const children = new Set();
+function killChildTree(child) {
+  try {
+    if (process.platform === 'win32') spawnSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true, timeout: 2000 });
+    else process.kill(-child.pid, 'SIGKILL');
+  } catch { try { child.kill('SIGKILL'); } catch {} }
+}
+
+// Async execFileSync stand-in: stdout, or '' on a spawn error, a non-zero exit or the timeout. The event loop stays
+// free, so the hook budget can still fire while a child hangs.
+export function runTimed(cmd, args, { timeout = 3000, ...opts } = {}) {
+  return new Promise((resolve) => {
+    let child;
+    let out = '';
+    const done = (v) => { clearTimeout(timer); children.delete(child); resolve(v); };
+    const timer = setTimeout(() => { if (child?.pid) killChildTree(child); done(''); }, timeout);
+    try {
+      // A shell gets one command line (an args array with shell:true is DEP0190); callers pass only shell-inert words.
+      const [file, argv] = opts.shell ? [[cmd, ...args].join(' '), []] : [cmd, args];
+      child = spawn(file, argv, { ...opts, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, detached: process.platform !== 'win32' });
+    } catch { return done(''); }
+    children.add(child);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('error', () => done(''));
+    child.on('close', (code) => done(code === 0 ? out : ''));
+  });
+}
 
 // `deja wip --json` run in the project root, rendered as context lines.
 // Best-effort: deja missing, slow, or silent yields []. Windows needs a shell
 // to spawn npm's deja.cmd shim; the arguments are fixed, so nothing is injected.
-export function dejaWip(cwd, run = execFileSync, timeout = 3000) {
+export async function dejaWip(cwd, run = runTimed, timeout = 3000) {
   try {
-    const out = run('deja', ['wip', '--json'], {
-      cwd, encoding: 'utf8', timeout,
-      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
-    });
+    const out = await run('deja', ['wip', '--json'], { cwd, timeout, shell: process.platform === 'win32' });
     const wip = JSON.parse(out);
     const lines = (Array.isArray(wip?.lines) ? wip.lines : [])
       .map((l) => String(l).trim().replace(/\s+/g, ' '))
@@ -68,12 +215,9 @@ export function dejaContextOn(env = process.env, home = os.homedir()) {
 }
 
 // `deja hook-context --plain --once`: deja's own session digest, capped. [] when deja is missing or silent.
-export function dejaContext(cwd, run = execFileSync, timeout = 3000) {
+export async function dejaContext(cwd, run = runTimed, timeout = 3000) {
   try {
-    const out = String(run('deja', ['hook-context', '--plain', '--once'], {
-      cwd, encoding: 'utf8', timeout,
-      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
-    })).trim();
+    const out = String(await run('deja', ['hook-context', '--plain', '--once'], { cwd, timeout, shell: process.platform === 'win32' })).trim();
     return out ? [out.slice(0, 1200)] : [];
   } catch {
     return [];
@@ -82,13 +226,10 @@ export function dejaContext(cwd, run = execFileSync, timeout = 3000) {
 
 // `deja last 1 --json` for this project: { title, updated } of the newest session, or null.
 // The project name reaches a win32 shell (npm's deja.cmd shim), so only shell-inert names are passed.
-export function dejaLast(project, cwd, run = execFileSync, timeout = 2500) {
+export async function dejaLast(project, cwd, run = runTimed, timeout = 2500) {
   if (project && !/^[\w.-]+$/.test(project)) return null;
   try {
-    const out = run('deja', ['last', '1', '--json', ...(project ? ['--project', project] : [])], {
-      cwd, encoding: 'utf8', timeout,
-      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
-    });
+    const out = await run('deja', ['last', '1', '--json', ...(project ? ['--project', project] : [])], { cwd, timeout, shell: process.platform === 'win32' });
     const s = JSON.parse(out)?.sessions?.[0];
     return s?.title ? { title: String(s.title), updated: s.updated || s.started || '' } : null;
   } catch {
@@ -262,7 +403,11 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
 
   const contextItems = [];
   let statusCount = 0;
-  if (sessionStart) contextItems.push(MEMB_WRITE_HINT);
+  const recallMode = promptRecallMode();
+  if (sessionStart) {
+    contextItems.push(MEMB_WRITE_HINT);
+    if (recallMode !== 'off') contextItems.push(MEMB_RECALL_RULE);
+  }
 
   // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
   //    they were already injected at SessionStart.
@@ -284,7 +429,8 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
   try { ({ DatabaseSync } = await import('node:sqlite')); } catch {}
   const db = DatabaseSync && existsSync(dbPath) ? new DatabaseSync(dbPath, { readOnly: true }) : null;
   try {
-    try { db?.exec('PRAGMA busy_timeout = 5000;'); } catch {}
+    // Each query blocks the event loop while it waits on a lock, so the wait stays far inside the hook budget.
+    try { db?.exec('PRAGMA busy_timeout = 500;'); } catch {}
     const textOf = (payload) => {
       const p = JSON.parse(payload);
       return (p.memory || p.data || '').trim().replace(/\s+/g, ' ');
@@ -387,7 +533,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     //    single common word can no longer drag in unrelated documents. Hits
     //    are scoped to the current project (or global memories), and raw
     //    imported file chunks (`[repo | file | path]` prefix) are skipped.
-    if (!sessionStart && prompt.length > 5) {
+    if (!sessionStart && recallMode !== 'off' && prompt.length > 5) {
       try {
         const terms = pickTerms(prompt);
         if (terms.length >= 2) {
@@ -429,6 +575,26 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
       } catch { /* FTS table may not exist on an empty store */ }
     }
 
+    // 4b. Semantic recall: memB's vector + BM25 search for this prompt, under a
+    //     hard time budget. Deduped against the FTS hits above; capped at
+    //     SEMANTIC_MAX_HITS lines and SEMANTIC_TOKEN_CHARS characters.
+    if (promptSubmit && recallMode === 'semantic' && !isTrivialPrompt(prompt)) {
+      const target = membSearchTarget();
+      const found = target ? await semanticRecall({ prompt, user: candidateUsers[0], ...target }) : [];
+      const hits = scopeSemanticHits(found, { userIds: candidateUsers, projectIds: candidateProjectIds, terms: pickTerms(prompt) });
+      let chars = 0;
+      let taken = 0;
+      for (const h of hits) {
+        if (taken >= SEMANTIC_MAX_HITS) break;
+        const text = h.memory.slice(0, SEMANTIC_LINE_CHARS);
+        if (chars + text.length > SEMANTIC_TOKEN_CHARS) break;
+        if (contextItems.some((e) => e.includes(text.slice(0, 50)))) continue;
+        contextItems.push(`- Relevant memory: ${text}`);
+        chars += text.length;
+        taken++;
+      }
+    }
+
     // 5. deja: what the last session in this project was doing. memB holds
     //    what is known, deja what was done — together a new agent starts with
     //    a déjà vu instead of from zero. Once per session, like identity.
@@ -436,15 +602,15 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     const deadline = Date.now() + 3000;
     const left = () => Math.max(0, deadline - Date.now());
     if (!promptSubmit) {
-      const digest = sessionStart && dejaContextOn() && left() > 100 ? dejaContext(projectRoot, execFileSync, left()) : [];
+      const digest = sessionStart && dejaContextOn() && left() > 100 ? await dejaContext(projectRoot, runTimed, left()) : [];
       if (digest.length) contextItems.push(...digest);
-      else if (left() > 100) contextItems.push(...dejaWip(projectRoot, execFileSync, left()));
+      else if (left() > 100) contextItems.push(...(await dejaWip(projectRoot, runTimed, left())));
     }
 
     if (sessionStart && onStatus && Number(process.env.AOS_DELEGATE_DEPTH || 0) === 0 && process.env.AOS_SESSION_HINT !== 'off') {
       try {
         const project = candidateProjectIds[0] || '';
-        const last = left() > 100 ? dejaLast(project, projectRoot, execFileSync, left()) : null;
+        const last = left() > 100 ? await dejaLast(project, projectRoot, runTimed, left()) : null;
         if (statusCount || last) onStatus(visibleMemoryLine({ count: statusCount, project, last }));
       } catch {}
     }
@@ -508,17 +674,11 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
   });
 }
 
-// Main logic runs only when the file is executed directly as a hook; importing
-// the module (e.g. from tests) must stay side-effect free.
-async function main() {
+// Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+// Fails open: any error answers an empty result. stderr carries the one human-visible status line.
+export async function hook(eventData) {
   try {
-    let inputRaw = '';
-    inputRaw = (await readStdinBounded(1500)) ?? '';
-    if (!inputRaw || !inputRaw.trim()) failOpen();
-
-    let eventData = {};
-    try { eventData = JSON.parse(inputRaw); } catch { failOpen(); }
-
+    if (!eventData || typeof eventData !== 'object') return { code: 0, stdout: '', stderr: '' };
     // Discover candidate directory across harnesses:
     // Claude / Codex: eventData.cwd; Antigravity: eventData.workspacePaths[0] or eventData.cwd
     const isAgy = !eventData.hook_event_name && (Array.isArray(eventData.workspacePaths) || !!eventData.conversationId);
@@ -528,37 +688,53 @@ async function main() {
       : (eventData.hook_event_name || '');
 
     if (process.env.AOS_SESSION_START_CONTEXT === 'off' && (event === 'SessionStart' || eventData.hook_event_name === 'SessionStart' || (isAgy && event === ''))) {
-      failOpen();
+      return { code: 0, stdout: '', stderr: '' };
     }
 
+    let stderr = '';
     const memoryBlock = await buildMemoryBlock({
       event,
       prompt: eventData.prompt || eventData.userPrompt || '',
       cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
       userId: eventData.user_id || eventData.userId,
       isAgy,
-      onStatus: (line) => process.stderr.write(`${line}\n`),
+      onStatus: (line) => { stderr += `${line}\n`; },
     });
 
-    if (memoryBlock) {
-      if (isAgy && !agyAlreadySent) {
-        stampAgyIdentity(eventData.conversationId);
-      }
-      const { capText } = await import('./session-cap.mjs');
-      const capped = capText(memoryBlock);
-      process.stdout.write(JSON.stringify(isAgy
-        ? { injectSteps: [{ ephemeralMessage: capped }] }
-        : {
-          hookSpecificOutput: {
-            hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
-            additionalContext: capped,
-          },
-        }) + '\n');
+    if (!memoryBlock) return { code: 0, stdout: '', stderr };
+    if (isAgy && !agyAlreadySent) {
+      stampAgyIdentity(eventData.conversationId);
     }
-    process.exit(0);
+    const { capText } = await import('./session-cap.mjs');
+    const capped = capText(memoryBlock);
+    const stdout = JSON.stringify(isAgy
+      ? { injectSteps: [{ ephemeralMessage: capped }] }
+      : {
+        hookSpecificOutput: {
+          hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
+          additionalContext: capped,
+        },
+      }) + '\n';
+    return { code: 0, stdout, stderr };
   } catch {
-    failOpen();
+    return { code: 0, stdout: '', stderr: '' };
   }
+}
+
+// Main logic runs only when the file is executed directly as a hook; importing
+// the module (e.g. from tests) must stay side-effect free.
+async function main() {
+  // Past the budget: kill what still runs and exit 0 with nothing on stdout, before the harness timeout fires.
+  setTimeout(() => { for (const c of children) killChildTree(c); failOpen(); }, BUDGET_MS - process.uptime() * 1000).unref();
+  let inputRaw = '';
+  inputRaw = (await readStdinBounded(1500)) ?? '';
+  if (!inputRaw || !inputRaw.trim()) failOpen();
+  let eventData = {};
+  try { eventData = JSON.parse(inputRaw); } catch { failOpen(); }
+  const r = await hook(eventData);
+  if (r.stderr) process.stderr.write(r.stderr);
+  if (r.stdout) process.stdout.write(r.stdout);
+  process.exit(0);
 }
 
 // Compare resolved paths: a hook reached through a symlink must still run.

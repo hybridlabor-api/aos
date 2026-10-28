@@ -42,6 +42,6 @@ if (!projects.length) { say(`no projects with .openwiki or AGENTS.md under ${cfg
 
 for (const p of projects) {
   if (dry) { say(`would ingest ${p}`); continue; }
-  const r = spawnSync(py(dir), [path.join(dir, 'memb_ingest.py'), p, '--project', path.basename(p)], { cwd: dir, stdio: 'inherit', timeout: 20 * 60 * 1000 });
+  const r = spawnSync(py(dir), [path.join(dir, 'memb_ingest.py'), p, '--project', path.basename(p)], { cwd: dir, stdio: 'inherit', timeout: 20 * 60 * 1000, windowsHide: true });
   say(`${path.basename(p)}: ${r.status === 0 ? 'ok' : `exit ${r.status ?? r.signal}`}`);
 }

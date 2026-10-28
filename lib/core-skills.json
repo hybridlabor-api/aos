@@ -2,6 +2,7 @@
   "version": 1,
   "status": "proposed: from docs/skill-audit-5.4.md, not approved by the owner. Inert while skillSet is \"all\" (default).",
   "skills": [
+    "advisor",
     "agent-pipeline",
     "agenttrail",
     "ao-orchestrator",
@@ -14,6 +15,7 @@
     "archify",
     "architect-review",
     "ask-tim",
+    "find-skill",
     "bdb-aos",
     "bdb-security-audit",
     "bdb-shipping-skill",

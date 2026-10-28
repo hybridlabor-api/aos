@@ -1162,12 +1162,14 @@ describe('harness enable/disable', () => {
         assert.ok(!fs.readFileSync(harness.migrationPath(fx.home), 'utf8').includes('sk-realvalue'));
     });
 
-    test('opencode jsonc with comments is not rewritten', () => {
+    test('opencode jsonc with comments gets the aos entry as a text patch; comments stay (#188)', () => {
         const fx = fixture();
         fs.writeFileSync(fx.f.oc, '{\n  // keep me\n  "mcp": {}\n}\n');
         const rep = run(fx);
-        assert.equal(fs.readFileSync(fx.f.oc, 'utf8'), '{\n  // keep me\n  "mcp": {}\n}\n');
-        assert.match(rep.find((r) => r.file === fx.f.oc).skipped, /not plain JSON/);
+        const text = fs.readFileSync(fx.f.oc, 'utf8');
+        assert.ok(text.includes('// keep me'));
+        assert.ok(rep.find((r) => r.file === fx.f.oc).added);
+        assert.ok(JSON.parse(text.replace('// keep me', '')).mcp.aos);
     });
 
     test('invalid token is refused before anything is written', () => {

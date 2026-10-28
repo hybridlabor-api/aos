@@ -46,6 +46,9 @@ const CASES = [
   ["aos-session-hint.mjs", [], { hook_event_name: "SessionStart", session_id: "pipe-test" }],
   ["trail-autostart.mjs", [], { tool_name: "Read", session_id: "pipe-test" }],
   ["memb-session-save.mjs", [], (home) => ({ session_id: "pipe-test", transcript_path: join(home, "missing.jsonl") })],
+  // The Claude Code dispatcher reads stdin once for every module it runs in-process.
+  ["aos-hooks.mjs", ["PreToolUse", "go-gate.mjs", "conventional-commits.mjs"], { tool_name: "Bash", tool_input: { command: "ls" }, session_id: "pipe-test" }],
+  ["aos-hooks.mjs", ["UserPromptSubmit", "go-token.mjs", "go-grant.mjs"], { hook_event_name: "UserPromptSubmit", prompt: "hello", session_id: "pipe-test" }],
   // Repo-relative: the Codex UserPromptSubmit workflow and the agy PreInvocation hook read stdin the same way.
   [".claude/workflows/fabric-dispatch.mjs", [], { hook_event_name: "UserPromptSubmit", prompt: "hello", session_id: "pipe-test" }],
   ["agy-hooks/a2a-inbox.mjs", [], { invocationNum: 1, conversationId: "pipe-test" }],

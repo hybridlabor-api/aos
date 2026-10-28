@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "skill-create-001",
+  "skill": "skill-create",
+  "task": "Verify generated skill adheres to naming, description token budget, and structure constraints.",
+  "harness": "agy",
+  "role": "builder",
+  "seed": 1337,
+  "repeats": 3,
+  "timeout_s": 60,
+  "max_tokens": 10000,
+  "checker": "check.mjs",
+  "expected": "expected.json",
+  "origin": {
+    "kind": "handwritten"
+  },
+  "tags": [
+    "target",
+    "validation"
+  ]
+}

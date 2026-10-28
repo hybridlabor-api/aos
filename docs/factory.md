@@ -17,27 +17,29 @@ project (see [configuration reference upstream](https://github.com/BuilderIO/ski
 | `factory-review-prs` | Review a filtered PR queue with separate reply/approve/merge gates. |
 | `factory-babysit-pr` | Follow one explicitly authorized PR through its delivery lifecycle. |
 | `factory-ship` | Publish and complete a delivery lifecycle under the project's policy. |
-| `factory-watchdog` | Report stalled, authorized delivery work with a verified next step; sending a reminder needs GO. |
-| `factory-recover` | Report resume candidates for interrupted runs; resuming needs GO. |
+| `factory-watchdog` | Report stalled, authorized delivery work with a verified next step; sending a reminder follows the GO gating rules below. |
+| `factory-recover` | Report resume candidates for interrupted runs; resuming follows the GO gating rules below. |
 
 ## Flow
 
 ```
 sources (feedback / telemetry / issues / errors)
-  -> factory-collect (current intake)     -> fix policy?  -> worktree -> PR (GO)
-  -> factory-lookback (recurring patterns) -> systemic fix -> PR (GO)
+  -> factory-collect (current intake)     -> fix policy?  -> worktree -> PR (policy)
+  -> factory-lookback (recurring patterns) -> systemic fix -> PR (policy)
   (work held for a person at any point) -> factory-human-digest
 PR -> factory-review-prs (queue) or factory-babysit-pr (one authorized PR)
-  -> approval gates (GO) -> merge (GO) -> factory-ship (publish, merge, verify) (GO)
+  -> approval gates (policy) -> merge (policy) -> factory-ship (publish, merge, verify) (policy)
 factory-watchdog / factory-recover watch for stalled or interrupted runs
-  (report only; any resume or notify step is (GO))
+  (report only; any resume or notify step is (policy))
 ```
 
-Every `(GO)` marks a write arrow: it happens only after the user's literal GO
-for that exact action. The diagram shows possible handoffs, not automatic
-permissions: every action
-policy (implement, reply, close, review, approve, publish, merge, deploy,
-recover, notify) is independent.
+(policy) = allowed by the action policy when the gate is off; otherwise a literal GO.
+
+Every `(policy)` marks a write arrow. With the gate off, it happens when the
+action policy allows it; with the gate on, it happens only after the user's
+literal GO for that exact action. The diagram shows possible handoffs, not
+automatic permissions: every action policy (implement, reply, close, review,
+approve, publish, merge, deploy, recover, notify) is independent.
 
 ## Config model
 
@@ -52,8 +54,125 @@ configuration reference linked above.
 
 ## GO gating (AOS)
 
-Nothing in the config opens the AOS GO gate. Every external write — push,
-merge, release, reply, close, approve, deploy, notify — happens only after the
-user's literal GO for that exact action. In queue and scheduled runs the agent
-prepares a draft or readiness report and stops; the user grants GO in an
-interactive session. An agent never grants itself GO.
+Factory runs are meant to run with the go-gate off. Before a run, the human
+types `gogate off` as a plain message in the session that runs the factory (or
+the run starts from a session where it is already off). The agent never types
+`gogate`, never grants itself GO, and never changes the gate mode. `off` only
+logs; it lasts for that session, for at most 24 hours.
+
+- **Gate off:** external writes (push, merge, reply, close, approve, deploy,
+  notify) follow the project's action policies in `.agent-factory/config.yaml`
+  (`never`, `manual`, `criteria`, `after-fix` / `after-merge`). `manual` still
+  means: stop and ask the human.
+- **Hard blocks always stay:** deleting or moving the home directory, the
+  filesystem root, or a top-level home directory; and the never-grantable
+  gate-config writes (`aos-gate grant|work|profile`). No mode lifts these hard blocks.
+- **`never` always wins:** a `never` policy blocks the action. No GO and no
+  gate mode overrides it.
+- **Gate on (hard or soft):** the skills fall back to the old behaviour: every
+  external write waits for the user's literal GO.
+- **Releases stay manual:** `npm publish`, `npm version`, and releases use the
+  policy `manual` by default, so they always stop for a human unless the project
+  changes that policy.
+
+## Build runs (aos-fabric)
+
+When a module has to build a change (action policy `implement`), the build itself is an `aos-fabric` run, the same loop
+in every harness and on macOS, Linux and Windows 10+: Architect, TechLead, a human plan verdict, the build nodes,
+Reviewer and Shipping (`docs/fabric.md`). AOS works without AO; AO is only one optional executor.
+
+```sh
+aos-fabric start --run fix-142 --goal-file .agent-factory/goal.md
+aos-fabric drive --run fix-142        # headless; or next / report by hand with your own executor
+```
+
+- `drive` ends at `ready_to_ship` (exit 0) or when a human is needed (exit 6). `ready_to_ship` is not a publish: pushing,
+  merging and releasing stay behind the action policy and the go-gate.
+- The plan verdict is a human step. In an unattended run nobody answers it, so there set `AOS_PLAN_APPROVAL=auto`
+  (it prints a warning and records that no human approved), or the run ends `escalated` after the await timeout.
+- The loop never grants a GO and never changes the gate mode. Its workers run through `aos-acp`, which asks the
+  go-gate for guarded commands.
+
+## Unattended runs in a sandbox
+
+With no human at the keyboard, nobody can type `gogate off` or GO. For that case
+`bin/aos-factory.mjs --unattended` runs the factory inside a container, where the
+gate is off, and brings only commits back. The host gate is not changed and has no
+sandbox shortcut: nothing a host session writes or exports loosens it.
+
+```sh
+node <aos>/bin/aos-factory.mjs --unattended [--image <image>] --env <API_KEY_VARIABLE> -- \
+  sh -c 'node /opt/aos/bin/aos-fabric.mjs start --run factory --goal-file .agent-factory/goal.md && node /opt/aos/bin/aos-fabric.mjs drive --run factory'
+```
+
+If `--image` is omitted, `aos-factory:local` is used. Build the default image:
+
+```sh
+docker build -t aos-factory:local -f docker/factory/Dockerfile .
+```
+
+Override the default image by passing `--image <your-image>`.
+
+The default image contains the AOS sandbox: Node, git, the AOS hooks and CLIs
+(`bin/`, `lib/`, `.claude/hooks/`, with `/opt/aos/bin` on PATH: call the `.mjs` files with `node`). It contains no agent CLI.
+`aos-fabric drive` runs the build loop on the agent CLIs inside the container, the same way in every harness (see "Build runs"
+above), so the run needs an image derived from the default one, passed via `--image`:
+
+```Dockerfile
+FROM aos-factory:local
+USER root
+RUN npm install -g @anthropic-ai/claude-code
+USER aos
+```
+
+The default image is run with `--pull=never`, so it is never fetched from a registry.
+
+`aos-fabric` reads the node registry `.agents/nodes.json` from the project clone, from `~/.agents` or from its own package. The
+default image carries none, so the project needs its own `.agents/nodes.json` (this repository has one), or the derived image a
+`COPY .agents/ /opt/aos/.agents/`.
+
+**Isolated:**
+
+- The container sees one host path: a fresh `git clone --no-local --no-hardlinks`
+  of the current branch in a temp dir. Not the worktree, its `.git`, `$HOME`,
+  `~/.ssh`, `~/.gitconfig`, `~/.aos`, the Docker socket or any credential file.
+- The clone has no remotes, so a push fails at once.
+- The container has its own HOME. Before the command starts, AOS writes the `off`
+  gate profile (the file `aos-gate profile off` writes) into that HOME only.
+  Hard blocks and the never-grantable set still apply, because they are part of
+  the gate installed in the image.
+- `--rm`, `--cap-drop ALL`, `no-new-privileges`, never `--privileged`. The
+  image's own user is used; prefer an image with a non-root `USER`.
+- A repo that is your home directory or one of its parents is refused.
+
+**Not isolated:**
+
+- The network is open. Only the variables you name with `--env` enter, so pass
+  the agent's API key and nothing else (no GitHub or npm tokens).
+- Uncommitted changes on the host are not part of the run; commit first.
+- The `off` profile expires after 2 hours (the profile maximum); after that the
+  gate inside falls back to strict and blocks guarded commands.
+
+| OS | Accepted runtime | Refused |
+| --- | --- | --- |
+| macOS | Docker Desktop or Podman (machine running) | no runtime or daemon down |
+| Linux | Docker Engine or Podman | no runtime or daemon down |
+| Windows 10+ | Docker Desktop | WSL2 alone (it mounts the Windows drives under `/mnt` and can start Windows programs), Podman |
+
+Without a reachable runtime the command refuses with install hints and exits
+non-zero. Paths with a comma, quote or newline are refused because they break
+the `--mount` argument; Windows paths are passed as `C:/...`.
+
+**Results:** when the container exits, the new commits are exported to
+`~/.aos/factory/runs/<id>/` as `patches/*.patch`, `run.bundle` and `run.json`,
+and the temp clone is removed. Review and apply on the host:
+
+```sh
+git fetch ~/.aos/factory/runs/<id>/run.bundle HEAD:factory/<id>
+git log -p factory/<id>          # review
+git am ~/.aos/factory/runs/<id>/patches/*.patch   # or apply as patches
+```
+
+A non-zero container exit makes `aos-factory` exit non-zero; commits made before
+the failure are still exported. Push, merge and publish happen on the host and
+need your GO there.

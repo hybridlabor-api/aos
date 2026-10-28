@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
@@ -185,7 +186,20 @@ test('/api/health shape', async () => {
   const j = JSON.parse(body);
   assert.equal(j.ok, true);
   assert.equal(j.service, 'aos-hub');
-  assert.match(j.version, /^\d/);
+  assert.equal(j.version, JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version);
+});
+
+test('installed layout: version comes from the manifest, header never shows "v?"', async () => {
+  const fixtureHome = join(tmp, 'manifest-home');
+  mkdirSync(join(fixtureHome, '.agents'), { recursive: true });
+  writeFileSync(join(fixtureHome, '.agents', '.bdb-manifest.json'), JSON.stringify({ version: '9.8.7' }));
+  const { detectInstalledVersion } = createRequire(import.meta.url)('../lib/update-check.js');
+  assert.equal(detectInstalledVersion(fixtureHome), '9.8.7');
+  const { status, body } = await raw('/api/health');
+  assert.equal(status, 200);
+  const j = JSON.parse(body);
+  assert.match(j.version || '', /^\d+\.\d+\.\d+/);
+  assert.ok(`AOS v${j.version || '?'}` !== 'AOS v?');
 });
 
 test('/api/trail lists HTTP-answering ports only', async () => {

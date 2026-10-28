@@ -61,18 +61,10 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
   });
 }
 
-function respond(isAgy, allowed, reason = "") {
-  if (isAgy) {
-    console.log(JSON.stringify(allowed ? { decision: "allow" } : { decision: "deny", reason }));
-    process.exit(0);
-  } else {
-    if (allowed) {
-      process.exit(0);
-    } else {
-      process.stderr.write(`${reason}\n`);
-      process.exit(2);
-    }
-  }
+// Decision as { code, stdout, stderr }: shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+function decision(isAgy, allowed, reason = "") {
+  if (isAgy) return { code: 0, stdout: `${JSON.stringify(allowed ? { decision: "allow" } : { decision: "deny", reason })}\n`, stderr: "" };
+  return allowed ? { code: 0, stdout: "", stderr: "" } : { code: 2, stdout: "", stderr: `${reason}\n` };
 }
 
 function reasonFor(filePath) {
@@ -149,22 +141,31 @@ export function envFileReason(filePath, cwd = "") {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
-async function main() {
-  const rawInput = (await readStdinBounded(2000)) ?? "";
+// Not decidable, but not blind either: input that names the go-gate store anywhere (JSON escapes `\/` and
+// `\\` included) is denied; any other unparseable input still passes so the hook cannot wedge every write.
+function undecidable(rawInput) {
+  if (GATE_STORE.test(rawInput.replace(/\\+\//g, "/").replace(/\\{2,}/g, "\\"))) {
+    const reason = "Blocked by env-file-protection hook: unreadable hook input that names the AOS go-gate store.";
+    return { code: 2, stdout: `${JSON.stringify({ decision: "deny", reason })}\n`, stderr: `${reason}\n` };
+  }
+  return { code: 0, stdout: "", stderr: "" };
+}
+
+function flush({ code, stdout, stderr }) {
+  if (stdout) process.stdout.write(stdout);
+  if (stderr) process.stderr.write(stderr);
+  process.exit(code);
+}
+
+// Decision as { code, stdout, stderr }: shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+export function hook(rawInput) {
+  rawInput = String(rawInput ?? "");
   let input = {};
   if (rawInput.trim()) {
     try {
       input = JSON.parse(rawInput);
     } catch {
-      // Not decidable, but not blind either: input that names the go-gate store anywhere (JSON escapes `\/` and
-      // `\\` included) is denied; any other unparseable input still passes so the hook cannot wedge every write.
-      if (GATE_STORE.test(rawInput.replace(/\\+\//g, "/").replace(/\\{2,}/g, "\\"))) {
-        const reason = "Blocked by env-file-protection hook: unreadable hook input that names the AOS go-gate store.";
-        console.log(JSON.stringify({ decision: "deny", reason }));
-        process.stderr.write(`${reason}\n`);
-        process.exit(2);
-      }
-      process.exit(0);
+      return undecidable(rawInput);
     }
   }
   if (!input || typeof input !== "object") input = {};
@@ -174,10 +175,11 @@ async function main() {
 
   for (const filePath of targetsOf(input)) {
     const reason = envFileReason(filePath, cwd);
-    if (reason) return respond(isAgy, false, reason);
+    if (reason) return decision(isAgy, false, reason);
   }
-  respond(isAgy, true);
+  return decision(isAgy, true);
 }
+
 
 // Every path-like argument a file tool may carry, across harnesses: Claude Code (file_path, notebook_path), OpenCode
 // (filePath, patchText of apply_patch), agy (toolCall.args). The agy/OpenCode extra key names are best-effort and
@@ -201,4 +203,11 @@ export function targetsOf(input) {
   return out;
 }
 
-if (isMain()) await main();
+if (isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 10 s timeout. Past it the input counts as undecidable, the same
+  // answer as for unparseable input.
+  let raw = "";
+  setTimeout(() => flush(undecidable(raw)), 7000 - process.uptime() * 1000).unref();
+  raw = (await readStdinBounded(2000)) ?? "";
+  flush(hook(raw));
+}

@@ -6,6 +6,7 @@
       "title": "Core & Pipeline",
       "description": "The dispatcher graph, release gates, memory and orchestration skills that make up the AOS kernel.",
       "skills": [
+        "advisor",
         "agent-manager-skill",
         "agent-memory-mcp",
         "agent-pipeline",
@@ -14,6 +15,7 @@
         "aos-project-init",
         "aos-setup",
         "aos-store",
+        "aos-update",
         "ask-tim",
         "bdb-aos",
         "bdb-deploy",
@@ -33,6 +35,7 @@
         "fabric-teamwork",
         "factory",
         "factory-human-digest",
+        "find-skill",
         "gogate",
         "instinct-export",
         "instinct-import",

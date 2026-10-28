@@ -25,6 +25,7 @@ const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
 const mcpCopyMarker = require('./lib/mcp-copy-marker');
+const skillManifest = require('./lib/skill-manifest');
 const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
@@ -143,19 +144,23 @@ const VALID_PLATFORMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '10'];
 const platformsArgRaw = process.argv.find(a => a === '--platforms' || a.startsWith('--platforms='));
 let PLATFORMS_ARG = null;
 if (platformsArgRaw) {
-    const rawValue = platformsArgRaw.startsWith('--platforms=')
-        ? platformsArgRaw.slice('--platforms='.length)
-        : null;
-    if (rawValue === null || rawValue.trim() === '') {
+    // PowerShell splits an unquoted --platforms=1,2,5 at the commas, so the value may arrive as
+    // "--platforms=1 2 5" or as "--platforms=1" "2" "5"; "--platforms 1,2,5" is accepted too.
+    const argv = process.argv;
+    const at = argv.indexOf(platformsArgRaw);
+    const tail = [];
+    for (let i = at + 1; i < argv.length && /^[\d,]+$/.test(argv[i]); i++) tail.push(argv[i]);
+    const rawValue = [platformsArgRaw.startsWith('--platforms=') ? platformsArgRaw.slice('--platforms='.length) : '', ...tail].join(',');
+    if (rawValue.replace(/,/g, '').trim() === '') {
         console.warn(`${colors.yellow} -> Ignoring '--platforms' without a value. Use --platforms=<n[,n]>, e.g. --platforms=2 for Claude.${colors.reset}`);
     } else {
-        const requested = rawValue.split(',').map(v => v.trim()).filter(Boolean);
+        const requested = rawValue.split(/[,\s]+/).map(v => v.trim()).filter(Boolean);
         const unknown = requested.filter(v => !VALID_PLATFORMS.includes(v));
         if (unknown.length > 0) {
             // Refuse rather than silently installing somewhere unintended: an
             // unrecognised value would otherwise fall through resolveTargetPaths
             // to the Antigravity default.
-            console.error(`${colors.red} -> Unknown --platforms value(s): ${unknown.join(', ')}. Valid: ${VALID_PLATFORMS.join(', ')} (4 = custom paths needs the interactive menu).${colors.reset}`);
+            console.error(`${colors.red} -> Unknown --platforms value(s): ${unknown.join(', ')}. Valid: ${VALID_PLATFORMS.join(', ')} (4 = custom paths needs the interactive menu). In PowerShell quote the list: --platforms="1,2,5".${colors.reset}`);
             process.exit(1);
         }
         if (requested.includes('4')) {
@@ -163,6 +168,35 @@ if (platformsArgRaw) {
             process.exit(1);
         }
         PLATFORMS_ARG = requested;
+    }
+}
+
+const mediaServersArgRaw = process.argv.find(a => a === '--media-servers' || a.startsWith('--media-servers='));
+let MEDIA_SERVERS_ARG = null;
+if (mediaServersArgRaw) {
+    const rawValue = mediaServersArgRaw.startsWith('--media-servers=')
+        ? mediaServersArgRaw.slice('--media-servers='.length)
+        : (process.argv[process.argv.indexOf('--media-servers') + 1] && !process.argv[process.argv.indexOf('--media-servers') + 1].startsWith('-')
+            ? process.argv[process.argv.indexOf('--media-servers') + 1]
+            : null);
+    if (rawValue === null || rawValue.trim() === '') {
+        console.warn(`${colors.yellow} -> Ignoring '--media-servers' without a value. Use --media-servers=all|<list> or --media-servers=none.${colors.reset}`);
+    } else {
+        MEDIA_SERVERS_ARG = rawValue.trim();
+    }
+}
+const FORCED_MEDIA_SERVERS = MEDIA_SERVERS_ARG || process.env.AOS_MEDIA_SERVERS || null;
+
+const updatesArgRaw = process.argv.find(a => a === '--updates' || a.startsWith('--updates='));
+let UPDATES_ARG = null;
+if (updatesArgRaw) {
+    const rawValue = updatesArgRaw.startsWith('--updates=')
+        ? updatesArgRaw.slice('--updates='.length)
+        : (process.argv[process.argv.indexOf('--updates') + 1] && !process.argv[process.argv.indexOf('--updates') + 1].startsWith('-')
+            ? process.argv[process.argv.indexOf('--updates') + 1]
+            : null);
+    if (rawValue && ['notify', 'auto', 'off'].includes(rawValue.trim().toLowerCase())) {
+        UPDATES_ARG = rawValue.trim().toLowerCase();
     }
 }
 
@@ -1632,6 +1666,7 @@ function buildRouterPreferences(mainHarness, selectedTargets, preset = 'default'
         reviewer: orderTargets(planningFirst, selectedTargets),
         builder: orderTargets(buildFirst, selectedTargets),
         scout: orderTargets(buildFirst, selectedTargets),
+        advisor: orderTargets(planningFirst, selectedTargets),
     };
 }
 
@@ -1869,6 +1904,9 @@ function ensureBackupParent() {
     return dir;
 }
 
+// Failures copyDirRecursiveSync only warns about. syncSkillEntry records a copy only when none happened during it.
+let copyFailures = 0;
+
 function copyDirRecursiveSync(source, target, excludeList = [], manifest = null, knownSourceHashes = null) {
     // Fall back to session-level state when no explicit manifest is passed.
     const mfst = manifest !== null ? manifest : _sessionManifest;
@@ -1922,6 +1960,7 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
                         log.warn(`Skipping broken symlink ${curSource}`);
                     }
                 } catch (e) {
+                    copyFailures++;
                     log.warn(`Could not copy symlink ${curSource}: ${e.message}`);
                 }
             } else if (stat.isDirectory()) {
@@ -1931,12 +1970,13 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
                 copyDirRecursiveSync(curSource, curTarget, excludeList, mfst, hashes);
             } else {
                 if (mfst && hashes) {
-                    resolveFileConflict(curSource, curTarget, mfst, hashes);
+                    if (resolveFileConflict(curSource, curTarget, mfst, hashes) === 'skipped') copyFailures++;
                 } else {
                     fs.copyFileSync(curSource, curTarget);
                 }
             }
         } catch (e) {
+            copyFailures++;
             log.warn(`Failed to copy ${curSource} -> ${curTarget}: ${e.message}`);
         }
     });
@@ -1959,8 +1999,26 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
 // global sync intact.
 function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
     const isLeafSkill = fs.existsSync(path.join(fullPath, 'SKILL.md'));
+
     if (isLeafSkill) {
-        copyDirRecursiveSync(fullPath, path.join(targetSkillDir, dirName), excludeSkills);
+        const targetPath = path.join(targetSkillDir, dirName);
+        const skip = skillManifest.shouldSkipSkillSync(fullPath, targetPath, pkg.version);
+        // The record is written per skill but the install manifest only when the run ends: a run that died in between
+        // leaves records for files the manifest never saw, and skipping them would keep those files out of it for good.
+        const tracked = !_sessionManifest || Boolean(_sessionManifest[path.join(targetPath, 'SKILL.md')]);
+        const force = process.argv.includes('--force') || Boolean(process.env.AOS_FORCE);
+        if (skip.skip && tracked && !force) return; // Skip unchanged skill
+        if (skip.reason === 'target edited') log.warn(`[skills] ${dirName}: ${targetPath} differs from what AOS last wrote; edited files are kept and the shipped version lands beside them as .new`);
+
+        const failedBefore = copyFailures;
+        copyDirRecursiveSync(fullPath, targetPath, excludeSkills);
+
+        // Record the sync only when every file arrived: the record stands for "this copy is complete".
+        const sourceHash = skillManifest.computeDirContentHash(fullPath);
+        const targetHash = skillManifest.computeDirContentHash(targetPath);
+        if (copyFailures === failedBefore && sourceHash && targetHash) {
+            skillManifest.writeManifest(targetPath, sourceHash, targetHash, pkg.version);
+        }
     } else {
         copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
     }
@@ -2080,6 +2138,7 @@ function collectSkillFiles(dir) {
         try { items = fs.readdirSync(fullDir, { withFileTypes: true }); } catch (_) { unsafe = true; return; }
         for (const item of items) {
             if (item.name === '.DS_Store') continue;
+            if (!sub && item.name === skillManifest.MANIFEST_FILE) continue;
             const rel = sub ? `${sub}/${item.name}` : item.name;
             const full = path.join(dir, rel);
             let st;
@@ -2168,6 +2227,12 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
             const codexScan = collectSkillFiles(codexSkillDir);
             const agentsScan = collectSkillFiles(agentsSkillDir);
 
+            // The recorded files are already gone (removeLooseCopies); AOS's sync record is all this copy still holds.
+            if (!codexScan.unsafe && codexScan.files.length === 0 && skillManifest.removeSyncedRecord(codexSkillDir)) {
+                cleanEmptySkillDirs(codexSkillDir);
+                continue;
+            }
+
             if (codexScan.unsafe || agentsScan.unsafe || codexScan.files.length === 0 || codexScan.files.length !== agentsScan.files.length) {
                 leftoverSkills.add(skillName);
                 continue;
@@ -2236,6 +2301,7 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
                     logDebug(e, `${label} retire module skill: ${abs}`);
                 }
             }
+            skillManifest.removeSyncedRecord(codexSkillDir);
             cleanEmptySkillDirs(codexSkillDir);
         }
     }
@@ -2399,7 +2465,7 @@ function ensureTauriPilotCli({ exec = execFileSync, has = hasExecutable } = {}) 
     }
     log.step(`Installing the tauri-pilot CLI: ${TAURI_PILOT_INSTALL_CMD} (compiles from source, can take several minutes)`);
     try {
-        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000 });
+        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000, windowsHide: true });
         uninstallRecords.recordCargoCrate(homeDir, 'rustauri', 'tauri-pilot-cli');
         return true;
     } catch (e) {
@@ -3218,11 +3284,13 @@ async function installDeja() {
             log.step('deja-vu is already installed globally; left as it is.');
         } else {
             log.step('Installing deja-vu session memory...');
-            execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
+            // stderr is kept: npm's own reason (EACCES, ETARGET, a network error) is the only useful part of a failure.
+            execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
             uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
         }
     } catch (e) {
-        log.warn(`deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
+        const tail = String((e && e.stderr) || (e && e.message) || '').trim().split(/\r?\n/).filter((l) => l.trim()).slice(-5).join(' | ');
+        log.warn(`deja-vu install failed${tail ? `: ${tail}` : ''}. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
     const dejaOnPath = hasExecutable('deja');
     if (!dejaOnPath) {
@@ -4642,6 +4710,8 @@ function installMcpLauncher() {
         [path.join(srcDir, 'lib', 'mcp-secrets.js'), path.join(homeDir, '.agents', 'lib', 'mcp-secrets.js')],
         [path.join(srcDir, 'lib', 'jsonc.js'), path.join(homeDir, '.agents', 'lib', 'jsonc.js')],
         [path.join(srcDir, 'lib', 'mcp-pick.js'), path.join(homeDir, '.agents', 'lib', 'mcp-pick.js')],
+        [path.join(srcDir, 'lib', 'cli-spawn.js'), path.join(homeDir, '.agents', 'lib', 'cli-spawn.js')],
+        [path.join(srcDir, 'lib', 'win-bin.js'), path.join(homeDir, '.agents', 'lib', 'win-bin.js')],
     ];
     let ok = true;
     for (const [src, dest] of pairs) {
@@ -5036,7 +5106,8 @@ async function installMcpsForTarget(paths, ctx) {
                 log.step(`[dry-run] would pre-warm Python deps for ${mcp.folder}`);
                 continue;
             }
-            const result = spawnSync(uvBin(), prewarmArgs, { cwd: targetFolder, stdio: 'ignore', windowsHide: true });
+            // cli-spawn resolves uv through PATH x PATHEXT and the standard folders; a bare spawnSync fails with ENOENT on Windows.
+            const result = require('./lib/cli-spawn.js').run(uvBin(), prewarmArgs, { cwd: targetFolder, timeout: 600000 });
             if (result.error) {
                 // uv itself is missing or unrunnable. That is one machine-level
                 // fact, not six per-MCP failures — say it once and stop trying.
@@ -5076,9 +5147,7 @@ async function installMcpsForTarget(paths, ctx) {
         // a shell (EINVAL since the CVE-2024-27980 fix) -- wrap the command in
         // cmd /c here so every generated config, the Codex TOML block and the
         // ~/.claude.json mirror get the launchable form.
-        if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
-            parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
-        }
+        parsedMcpConfig.mcpServers = require('./lib/gateway/migrate-memory').absoluteCommands(parsedMcpConfig.mcpServers);
         // Direct mode spawns ONE plugin per harness session; the UXP plugins (Photoshop / Premiere)
         // hard-code ws://localhost:8080 (mcps/adobe_uxp_mcp/plugins/*/index.js:3), so a free-port
         // pick would leave them disconnected: direct mode therefore pins the FIXED default port
@@ -5110,7 +5179,7 @@ async function installMcpsForTarget(paths, ctx) {
         // MCP names, so a fifth dist-based entry added later is covered too.
         if (!DRY_RUN) {
             for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
-                if (val.command !== 'node' || !Array.isArray(val.args) || !val.args[0]) continue;
+                if (!['node', process.execPath].includes(val.command) || !Array.isArray(val.args) || !val.args[0]) continue;
                 const entryArg = val.args[0];
                 if (!entryArg.startsWith('__MCPS_DIR__/')) continue;
                 const relPath = entryArg.slice('__MCPS_DIR__/'.length);
@@ -5673,6 +5742,7 @@ const READ_ONLY_AGENT_SLUGS = new Set([
     'reviewer',
     'reviewer-1',
     'reviewer-2',
+    'advisor',
     'security-reviewer',
     'database-reviewer',
     'silent-failure-hunter',
@@ -6598,6 +6668,12 @@ function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
             copyDirRecursiveSync(path.join(srcDir, 'mcp_picks.json'), path.join(targetHome, '.agents', 'mcp_picks.json'));
         }
         mcpSecrets.migrateLegacyAgyWorkspaceMcp(targetHome, srcDir, { log });
+        // lib/router/table.js resolves the shipped table at <root>/config/router.json; under ~/.agents it must exist.
+        const routerSrc = path.join(srcDir, 'config', 'router.json');
+        if (fs.existsSync(routerSrc)) {
+            fs.mkdirSync(path.join(targetHome, '.agents', 'config'), { recursive: true });
+            copyDirRecursiveSync(routerSrc, path.join(targetHome, '.agents', 'config', 'router.json'));
+        }
         // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
         const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
         if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(targetHome, '.agents', 'lib', 'gate-profile.mjs'));
@@ -6699,12 +6775,11 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const bdbHookScripts = v5Profile.CLAUDE_MERGE_HOOKS;
     // The template wires a2a-session.mjs (SessionStart) too, so it is in CLAUDE_MERGE_HOOKS: replaced, not cloned, on every run;
     // installClaudeA2aSessionHook then only copies the script (it skips the settings write when already wired).
-    // memb-inject reads the machine-global memB store under $HOME and is
-    // installed once per machine, so it stays $HOME-anchored even inside a
-    // project harness -- unlike the two gate hooks, which are per-checkout by
-    // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
-    // prompt in any project the harness was never installed into. trail-relay
-    // talks to machine-global live-map daemons, so it is anchored the same way.
+    // The template wires one dispatcher entry per event (aos-hooks.mjs <Event> <module.mjs>...), so a module is
+    // dropped by dropping its name from that command (v5Profile.dropContextHooks) and the whole entry replaces the
+    // old per-module entries of earlier installs: every one of them names a CLAUDE_MERGE_HOOKS script.
+    // The dispatcher is per-checkout like the gates (a project harness copies every hook next to it); only the
+    // single-module SessionEnd entry (memb-session-save) stays $HOME-anchored.
     const machineGlobalHooks = v5Profile.CONTEXT_HOOKS;
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
@@ -7951,7 +8026,7 @@ function migrateMcpSecrets() {
 function resolveShippedMcpServers() {
     const mcpsDir = path.join(resolveTargetPaths(defaultPlatformValue(), null).targetMcpDir, 'mcps');
     let servers = { ...mcpPicks().servers };
-    if (process.platform === 'win32' && servers.deja) servers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+    servers = require('./lib/gateway/migrate-memory').absoluteCommands(servers);
     servers = v5Profile.filterMcpServers(servers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS)).servers;
     if (!memoryOn) servers = v5Profile.filterMcpServers(servers, v5Profile.MEMORY_MCPS).servers;
     const esc = (p) => String(p).replace(/\\/g, '\\\\');
@@ -7963,7 +8038,7 @@ function resolveShippedMcpServers() {
         const dirs = [...raw.matchAll(/__MCPS_DIR__\/([^/"\\]+)/g)].map((m) => m[1]);
         if (dirs.some((d) => !fs.existsSync(path.join(mcpsDir, d)))) continue;
         // A dist-based server whose build never produced its entry script would fail at launch (#185); fresh installs check this too.
-        const entry = def.command === 'node' && Array.isArray(def.args) && typeof def.args[0] === 'string' && def.args[0].startsWith('__MCPS_DIR__/') ? def.args[0].slice('__MCPS_DIR__/'.length) : null;
+        const entry = ['node', process.execPath].includes(def.command) && Array.isArray(def.args) && typeof def.args[0] === 'string' && def.args[0].startsWith('__MCPS_DIR__/') ? def.args[0].slice('__MCPS_DIR__/'.length) : null;
         if (entry && !fs.existsSync(path.join(mcpsDir, entry))) {
             log.warn(`${name}: ${entry} is missing (the build did not finish) -- not registering it. Run "npm run build" in ${path.join(mcpsDir, entry.split('/')[0])}; the failure is in the update log under ${path.join(homeDir, '.aos', 'logs')}.`);
             continue;
@@ -8650,11 +8725,17 @@ async function main() {
             : PLATFORMS_ARG;
     }
 
+    let selectedMediaServers = null;
+    let updatesChoice = null;
     if (isAutoYes) {
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
         selectedMcps = await promptMcpSelection(tier);
+        const selection = require('./lib/gateway/selection');
+        selectedMediaServers = tier === '1'
+            ? (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : selection.detectMediaServers({ home: homeDir }))
+            : [];
     } else {
-        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, contextProfile: null, router: null };
+        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, selectedMediaServers: null, updates: null, contextProfile: null, router: null };
         const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
@@ -8668,6 +8749,33 @@ async function main() {
             });
             if (t === BACK) return 'back';
             ctx.tier = t;
+        };
+
+        const stepMediaServers = async (direction) => {
+            if (ctx.tier !== '1') return direction === 'back' ? 'back' : undefined;
+            const selection = require('./lib/gateway/selection');
+            const detected = selection.detectMediaServers({ home: homeDir });
+            const initial = ctx.selectedMediaServers !== null
+                ? ctx.selectedMediaServers
+                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : detected);
+            const MEDIA_SERVER_LABELS = {
+                bdb_grandma3_mcp: 'grandMA3 (bdb_grandma3_mcp)',
+                bdb_resolume_mcp: 'Resolume Arena/Avenue (bdb_resolume_mcp)',
+                bdb_td_backup: 'TouchDesigner (bdb_td_backup)',
+                bdb_unreal_mcp: 'Unreal Engine (bdb_unreal_mcp)',
+            };
+            const sel = await multiselectWithBack({
+                message: 'Media MCP servers (detected apps preselected, any can be ticked even without the app):',
+                options: selection.SERVER_GROUPS.media.map((name) => ({
+                    value: name,
+                    label: MEDIA_SERVER_LABELS[name] || name,
+                    hint: detected.includes(name) ? 'app detected' : 'app not detected',
+                })),
+                initialValues: initial,
+                allowEmpty: true,
+            });
+            if (sel === BACK) return 'back';
+            ctx.selectedMediaServers = sel;
         };
 
         const stepPlatforms = async () => {
@@ -8713,9 +8821,9 @@ async function main() {
             }
         };
 
-        const stepCustomPaths = async () => {
-            if (ctx.selectedPlatforms.includes('9')) return;
-            if (!ctx.selectedPlatforms.includes('4')) return;
+        const stepCustomPaths = async (direction) => {
+            if (ctx.selectedPlatforms.includes('9')) return direction === 'back' ? 'back' : undefined;
+            if (!ctx.selectedPlatforms.includes('4')) return direction === 'back' ? 'back' : undefined;
             log.info('Custom Path Configuration:');
             const skillDirRes = await textWithBack({ message: `Target directory for global skills [default: ${path.join(homeDir, '.bdb-skills')}] (< = back):`, placeholder: path.join(homeDir, '.bdb-skills') });
             if (skillDirRes === BACK) return 'back';
@@ -8820,11 +8928,35 @@ async function main() {
             ctx.creds = c;
         };
 
+        const stepUpdates = async (direction) => {
+            if (ctx.selectedPlatforms.includes('9')) return direction === 'back' ? 'back' : undefined;
+            if (v5Profile.hasConfiguredUpdates(homeDir)) return direction === 'back' ? 'back' : undefined;
+            const ans = await v5Profile.resolveUpdateMode({
+                currentSetting: undefined,
+                interactive: true,
+                selectFn: async () => {
+                    const v = await selectWithBack({
+                        message: 'Updates: notify (default) / auto / off',
+                        options: [
+                            { value: 'notify', label: 'notify (banner / line; default)', hint: 'Default' },
+                            { value: 'auto', label: 'auto (opt-in auto update in foreground)' },
+                            { value: 'off', label: 'off (disabled)' },
+                        ],
+                        initialValue: ctx.updates || UPDATES_ARG || 'notify',
+                    });
+                    return v === BACK ? 'back' : v;
+                },
+            });
+            if (ans === 'back') return 'back';
+            ctx.updates = ans;
+        };
+
         const stepReview = async () => {
             const specNow = ctx.selectedPlatforms.filter(p => p !== '0');
             if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push(defaultPlatformValue());
             const lines = [
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
+                ...(ctx.tier === '1' ? [`Media Servers: ${(ctx.selectedMediaServers || []).join(', ') || '(none)'}`] : []),
                 `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...skillPacks.tierPacks(ctx.tier)])].join(', ')}` : 'all skills (no pack selection stored)'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
@@ -8832,6 +8964,7 @@ async function main() {
                 `Context:       ${ctx.contextProfile || 'full'}`,
                 `Router:        ${ctx.router ? `custom (lead: ${ctx.router.mainHarness})` : 'shipped table'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
+                `Updates:       ${ctx.updates || (v5Profile.hasConfiguredUpdates(homeDir) ? v5Profile.readSettings(homeDir, () => {}).updates : 'notify')}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
                 `Dry Run:       ${DRY_RUN ? 'YES - nothing will be written' : 'no'}`
@@ -8849,14 +8982,33 @@ async function main() {
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepContextProfile, stepRouter, stepMcps, stepCredentials, stepReview];
+        const steps = [
+            stepTier,
+            stepMediaServers,
+            stepPlatforms,
+            stepMode,
+            stepCustomPaths,
+            stepMemory,
+            stepContextProfile,
+            stepRouter,
+            stepMcps,
+            stepCredentials,
+            stepUpdates,
+            stepReview,
+        ];
 
         let i = 0;
+        let dir = 'forward';
         while (i < steps.length) {
-            const res = await steps[i]();
+            const res = await steps[i](dir);
             if (res === 'exit') { outro('Cancelled.'); return; }
-            if (res === 'back') i = Math.max(0, i - 1);
-            else i++;
+            if (res === 'back') {
+                dir = 'back';
+                i = Math.max(0, i - 1);
+            } else {
+                dir = 'forward';
+                i++;
+            }
         }
 
         tier = ctx.tier;
@@ -8864,6 +9016,8 @@ async function main() {
         customPaths = ctx.customPaths;
         creds = ctx.creds;
         selectedMcps = ctx.selectedMcps;
+        selectedMediaServers = ctx.selectedMediaServers;
+        updatesChoice = ctx.updates;
         contextProfileChoice = ctx.contextProfile;
         routerChoice = ctx.router;
         wantsUniversal = ctx.selectedPlatforms.includes('0');
@@ -8900,6 +9054,13 @@ async function main() {
         const st = v5Profile.readSettings(homeDir, () => {});
         st.context = contextProfileChoice;
         v5Profile.writeSettings(homeDir, st);
+    }
+    if (!v5Profile.hasConfiguredUpdates(homeDir)) {
+        const chosenUpdate = updatesChoice || UPDATES_ARG || v5Profile.DEFAULT_UPDATES;
+        const st = v5Profile.readSettings(homeDir, () => {});
+        st.updates = chosenUpdate;
+        if (updatesChoice) st.updatesAsked = true;
+        if (!DRY_RUN) v5Profile.writeSettings(homeDir, st);
     }
     if (!isAutoYes && !DRY_RUN && process.stdout.isTTY && process.stdin.isTTY) {
         const ok = await askConfirm({ message: 'Optional: allow read-only aos status/doctor commands without prompts (adds rules to ~/.claude/settings.json, backup first, undo with `aos allow aos-tools --remove`)?', initialValue: false });
@@ -9006,7 +9167,7 @@ async function main() {
     if (aosCliRequested) installAosCli();
 
     // After every harness MCP config write above: the gateway switches those entries, and a later write would undo it.
-    saveGatewaySelectedServers(tier);
+    saveGatewaySelectedServers(tier, null, homeDir, selectedMediaServers);
     for (const name of await require('./lib/v5/menu').installDefaults(module.exports, { ...v5Options(!isAutoYes), dryRun: DRY_RUN }, installExcluded)) {
         moduleFailures.push({ id: name, name, reason: 'see the step line above and ~/.aos/logs' });
     }
@@ -9031,7 +9192,7 @@ async function main() {
 // (Pro MEDIA adds the media/show-control group) and installed modules (Creator Extension adds
 // the creative group), unioned with what the user already runs today. An explicit choice saved
 // by a prior run or `aos-gateway add/remove` is kept; DRY_RUN writes nothing.
-function saveGatewaySelectedServers(tierValue = tier, installedList = null, home = homeDir) {
+function saveGatewaySelectedServers(tierValue = tier, installedList = null, home = homeDir, mediaChoice = null) {
     if (DRY_RUN) return false;
     try {
         const gwConfig = require('./lib/gateway/config');
@@ -9040,9 +9201,19 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const current = require('./lib/v5/pkg-gateway').currentShippedUpstreams(dir);
         const seen = require('./lib/gateway/doctor').directGatewayNames({ files: mcpSecrets.harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
         const st = v5Profile.readSettings(home, () => {});
+        const mediaServers = tierValue === '1'
+            ? (Array.isArray(mediaChoice)
+                ? mediaChoice
+                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : selection.detectMediaServers({ home })))
+            : false;
+        let baseStored = st.gateway && st.gateway.servers;
+        if (Array.isArray(baseStored) && (Array.isArray(mediaChoice) || FORCED_MEDIA_SERVERS)) {
+            const chosenMedia = Array.isArray(mediaServers) ? mediaServers : [];
+            baseStored = [...baseStored.filter(s => !selection.SERVER_GROUPS.media.includes(s)), ...chosenMedia];
+        }
         const r = selection.resolveGatewayServers({
-            settingServers: st.gateway && st.gateway.servers,
-            media: tierValue === '1' ? selection.detectMediaServers({ home }) : false,
+            settingServers: baseStored,
+            media: mediaServers,
             creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
             keep: [...current, ...seen],
         });
@@ -9221,6 +9392,7 @@ module.exports = {
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
+    syncSkillEntry,
     INSTALL_MANIFEST_PATH,
     // Agent compilers & pipeline helpers
     parseAgentsMd,

@@ -31,7 +31,7 @@ test('dejaContext is off by default and runs `deja hook-context --once` only whe
   assert.strictEqual(dejaContextOn({}, '/nonexistent'), false);
   assert.strictEqual(dejaContextOn({ AOS_DEJA_CONTEXT: 'on' }, '/nonexistent'), true);
   let seen;
-  const out = dejaContext('/x', (cmd, args) => { seen = [cmd, ...args]; return ' digest \n'; });
+  const out = await dejaContext('/x', (cmd, args) => { seen = [cmd, ...args]; return ' digest \n'; });
   assert.deepStrictEqual(seen, ['deja', 'hook-context', '--plain', '--once']);
   assert.deepStrictEqual(out, ['digest']);
 });

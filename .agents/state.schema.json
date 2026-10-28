@@ -16,8 +16,8 @@
     },
     "phase": {
       "type": "string",
-      "enum": ["define", "plan", "build", "verify", "review", "ready_to_ship", "ship", "done", "escalated"],
-      "description": "Current pipeline stage. 'ready_to_ship' means all gates passed but no GO has been recorded yet -- distinct from 'ship' (actively executing the GO-gated push) and 'done'. 'escalated' means the dispatcher stopped the loop and handed control back to the user (max_iterations reached or needs_human)."
+      "enum": ["define", "plan", "build", "verify", "review", "ready_to_ship", "ship", "done", "escalated", "cancelled"],
+      "description": "Current pipeline stage. 'ready_to_ship' means all gates passed but no GO has been recorded yet -- distinct from 'ship' (actively executing the GO-gated push) and 'done'. 'escalated' means the dispatcher stopped the loop and handed control back to the user (max_iterations reached or needs_human). 'cancelled' means `aos-fabric cancel` ended the run."
     },
     "artifacts": {
       "type": "object",
@@ -74,7 +74,7 @@
       "type": "integer",
       "minimum": 1,
       "default": 3,
-      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/fabric-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
+      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/fabric-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the same blocking findings Reviewer already flagged (same ids for the single Reviewer, same node and title for the parallel reviewers), the run stops rather than repeating an identical cycle."
     },
     "approvals": {
       "type": "array",
@@ -119,10 +119,33 @@
       "description": "AO scaffold metadata: per-role harness assignments.",
       "additionalProperties": { "type": "string" }
     },
+    "attempts": {
+      "type": "object",
+      "description": "aos-fabric: how many results a node has reported per iteration, keyed \"<iteration>-<node>\". A step that fails max_attempts times escalates the run.",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "last_blocking_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "aos-fabric: the blocking finding ids of the last Reviewer round. The same ids after a repair round mean no progress (the loop brake in lib/fabric/edges.mjs)."
+    },
     "needs_human": {
       "type": "boolean",
       "default": false,
       "description": "Any node can set this to force an in-loop feedback edge back to the user (per B5's reference diagram), independent of the gate/iteration state."
+    },
+    "pre_approved": {
+      "type": "boolean",
+      "description": "True when the run started from a plan passed with --plan whose approval record was verified, so Architect and the plan approval were skipped."
+    },
+    "approval_source": {
+      "type": "string",
+      "description": "Path of the pre-approved plan file (--plan)."
+    },
+    "approval_hash": {
+      "type": "string",
+      "description": "SHA-256 of the pre-approved plan content, as recorded in its approval record."
     },
     "team": {
       "type": "object",

@@ -66,21 +66,29 @@ describe('mergeBdbSettingsHooks', () => {
         assert.equal(cmds.filter((c) => c === 'node /my/own/hook.mjs').length, 1);
     });
 
-    // The memB store is machine-global. Rewriting this one hook to
-    // $CLAUDE_PROJECT_DIR the way the gates are rewritten would point it at a
-    // file that does not exist in any project the harness was never installed
-    // into, and it would then fail on every single prompt there.
-    test('keeps memb-inject $HOME-anchored in a project harness', () => {
+    // One dispatcher entry per event carries gates and context modules alike; a project harness copies every
+    // hook next to it, so the whole entry is project-anchored. Only the single-module SessionEnd entry stays on $HOME.
+    test('anchors the dispatcher to the project in a project harness and keeps memb-session-save on $HOME', () => {
         const p = settingsPath('project.json');
         mergeBdbSettingsHooks(p, { projectLocal: true });
         const s = readSettings(p);
 
         const memb = commandsFor(s, 'UserPromptSubmit').find((c) => c.includes('memb-inject.mjs'));
-        assert.ok(memb.includes('$HOME'), `expected $HOME-anchored path, got: ${memb}`);
-        assert.ok(!memb.includes('$CLAUDE_PROJECT_DIR'));
+        assert.ok(memb.includes('${CLAUDE_PROJECT_DIR}/.claude/hooks/aos-hooks.mjs'), `expected the project-anchored dispatcher, got: ${memb}`);
 
         const gate = commandsFor(s, 'PreToolUse').find((c) => c.includes('go-gate.mjs'));
         assert.ok(gate.includes('${CLAUDE_PROJECT_DIR}'), 'gates stay project-local');
+
+        const save = commandsFor(s, 'SessionEnd').find((c) => c.includes('memb-session-save.mjs'));
+        assert.ok(save.includes('$HOME'), save);
+    });
+
+    test('a global install points the dispatcher at the installed copy under $HOME', () => {
+        const p = settingsPath('global.json');
+        mergeBdbSettingsHooks(p);
+        const cmds = Object.values(readSettings(p).hooks).flat().flatMap((e) => e.hooks.map((h) => h.command));
+        assert.ok(cmds.every((c) => !c.includes('CLAUDE_PROJECT_DIR')), cmds.join('\n'));
+        assert.ok(cmds.filter((c) => c.includes('aos-hooks.mjs')).every((c) => c.includes('$HOME/.claude/hooks/aos-hooks.mjs') || c.includes('${CLAUDE_CONFIG_DIR}/hooks/aos-hooks.mjs')));
     });
 
     test('never overwrites a settings.json that is not valid JSON', () => {
@@ -135,7 +143,7 @@ describe('installGlobalHooks (Quick Update delivery path)', () => {
     test('delivers every hook script into a fresh $HOME and wires them', () => {
         run();
 
-        for (const f of ['go-gate.mjs', 'go-token.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
+        for (const f of ['aos-hooks.mjs', 'go-gate.mjs', 'go-token.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
             assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', f)), `${f} not delivered`);
         }
         const s = readSettings(path.join(home, '.claude', 'settings.json'));

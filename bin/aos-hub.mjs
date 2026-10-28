@@ -120,7 +120,9 @@ const codeStamp = () => {
 
 const packageVersion = () => {
   try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version; }
-  catch { return 'unknown'; }
+  catch {
+    try { return require('../lib/update-check.js').detectInstalledVersion(homeDir()) || 'unknown'; } catch { return 'unknown'; }
+  }
 };
 
 async function cmdStart(opts) {

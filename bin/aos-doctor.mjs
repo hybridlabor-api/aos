@@ -166,8 +166,10 @@ function checkAosCore() {
     const g = npmGlobalAos.detectGlobalAos();
     if (!g.checked) {
       add('aos-core', 'Global npm install', true, 'could not check (npm missing or offline)', '', true);
+    } else if (g.found && npmGlobalAos.isCurrentGlobal(g, pkg.version)) {
+      add('aos-core', 'Global npm install', true, `${tilde(g.root)} (v${g.version}, matches the running version)`);
     } else if (g.found) {
-      add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version})`,
+      add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version}, running v${pkg.version})`,
         `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
     } else {
       add('aos-core', 'Global npm install', true, 'none — only the ~/.local/bin launcher');
@@ -239,6 +241,23 @@ function checkOpencodeMcpNames() {
   add('harnesses', 'OpenCode MCP names', tooLong.length === 0,
     tooLong.length ? `${tooLong.length} MCP name(s) over ${ZEN_TOOL_NAME_MAX} characters (Zen gateway limit): ${tooLong.join(', ')}` : `${names.length} MCP name(s) in ${tilde(file)}, none over ${ZEN_TOOL_NAME_MAX} characters`,
     `Rename the MCP server(s) in ${tilde(file)} to a shorter name; tool names are built from them and a name over ${ZEN_TOOL_NAME_MAX} characters is rejected by the Zen gateway. Keeping the MCP set lean also helps.`, true);
+}
+
+// OpenCode 1.18.30 reads config.json, opencode.json and opencode.jsonc (merged, in that order) from
+// $XDG_CONFIG_HOME/opencode or ~/.config/opencode on every platform; %APPDATA%\\opencode is never read (#188).
+// Copies elsewhere never take effect, and an entry written there is lost on the machine.
+function checkOpencodeConfigCopies() {
+  const loadedDir = path.join(process.env.XDG_CONFIG_HOME || h('.config'), 'opencode');
+  const names = ['config.json', 'opencode.json', 'opencode.jsonc'];
+  const loaded = names.map((n) => path.join(loadedDir, n)).filter((f) => existsSync(f));
+  const others = [h('.opencode'), ...(process.env.APPDATA ? [path.join(process.env.APPDATA, 'opencode')] : [])]
+    .filter((d) => path.resolve(d) !== path.resolve(loadedDir))
+    .flatMap((d) => names.map((n) => path.join(d, n))).filter((f) => existsSync(f));
+  if (!loaded.length && !others.length) return;
+  add('harnesses', 'OpenCode config copies', others.length === 0,
+    others.length ? `loaded: ${loaded.map(tilde).join(', ') || 'none'}; not loaded (duplicates): ${others.map(tilde).join(', ')}`
+      : `${loaded.length} config file(s) loaded from ${tilde(loadedDir)}`,
+    `Edit only ${tilde(loadedDir)}. Move anything you still need from ${others.map(tilde).join(', ')} into it and delete the copy; AOS does not touch them.`, true);
 }
 
 // ---------------------------------------------------------------- 3. Harness Placement & Skills Sync
@@ -343,6 +362,7 @@ function checkHarnesses() {
   const ov = req('../lib/opencode-verify.js');
   results.push(...ov.checkOpencode({ home: HOME }), ...ov.checkAcpAndGoCheck({ home: HOME }));
   checkOpencodeMcpNames();
+  checkOpencodeConfigCopies();
 }
 
 // ---------------------------------------------------------------- 4. Hooks & Security Gates
@@ -350,13 +370,13 @@ function checkHooks() {
   const claudeHooksDir = hc('hooks');
   const gateOff = req('../lib/v5/profile.js').readSettings(HOME, () => {}).gate === 'off';
   if (gateOff) add('hooks', 'go-gate: off (by setting)', true, 'go-gate, go-token, go-grant and graph-gate are not registered; turn on: aos, Settings, Go-gate', '');
-  const EXPECTED_VERSION = { 'memb-inject.mjs': 8 };
+  const EXPECTED_VERSION = { 'memb-inject.mjs': 9 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
     return m ? Number(m[1]) : null;
   };
 
-  for (const file of ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
+  for (const file of ['aos-hooks.mjs', 'go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
     const p = path.join(claudeHooksDir, file);
     if (!existsSync(p)) {
       add('hooks', file, false, 'missing from ~/.claude/hooks',
@@ -697,19 +717,23 @@ async function checkGateway() {
     // Per-harness exposure: live tool counts (estimate) when the gateway answers; server list always.
     try {
         let toolCounts = undefined;
+        let countError = null;
         const profile = req('../lib/v5/profile.js');
         const st = profile.readSettings(home, () => {});
         const selection = (st.gateway && st.gateway.servers) || undefined;
         const aosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
         const presets = req('../lib/v5/pkg-gateway.js').shippedPresets(aosRoot);
         if (status && status.running) {
-            const { gatewayToolCounts } = req('../lib/gateway/doctor.js');
-            try { toolCounts = await gatewayToolCounts({ token: fs.readFileSync(path.join(gatewayDir(home), 'token'), 'utf8').trim() }); } catch { /* estimate unavailable */ }
+            const { gatewaySizeMetrics } = req('../lib/gateway/doctor.js');
+            try {
+                const m = await gatewaySizeMetrics({ token: fs.readFileSync(path.join(gatewayDir(home), 'token'), 'utf8').trim() });
+                if (m.ok) toolCounts = m.counts; else countError = m.error;
+            } catch (e) { countError = e.message; }
         }
         const { gatewayExposureRows } = req('../lib/gateway/doctor.js');
         const rows = gatewayExposureRows({ files: harnessMcpFiles(home, process.env, process.platform, home), toolCounts: toolCounts || {}, selection, presets: {} });
         for (const r of rows) {
-            const counts = r.tools === null ? 'tool count unavailable (gateway not running or did not answer)' : `~${r.tools} tools (estimate)`;
+            const counts = r.tools === null ? `tool count unavailable (${countError || 'gateway not running'})` : `~${r.tools} tools (estimate)`;
             add('gateway', `gateway exposure in ${path.basename(r.file)}`, r.servers.length > 0,
                 `${r.servers.length} gateway server(s): ${r.servers.join(', ')}; ${counts}${r.estimatedTokens !== null ? ` => ~${r.estimatedTokens.toLocaleString()} tokens (estimate: ${r.tools} tools x 85 tokens/tool)` : ''}`, r.servers.length ? '' : 'aos-gateway add <server>', true);
         }
@@ -793,7 +817,7 @@ async function checkDaemonsAndModules() {
     } else if (!venvPython || !existsSync(venvPython)) {
       add('daemons', 'memB MCP venv', false, `no venv python at ${tilde(venvPython || '')}`, 're-run the AOS installer to create the venv', true);
     } else {
-      const r = spawnSync(venvPython, ['-c', 'import memb; import run as memb_run'], { cwd: membMcp, timeout: 10000, encoding: 'utf8' });
+      const r = spawnSync(venvPython, ['-c', 'import memb; import run as memb_run'], { cwd: membMcp, timeout: 10000, encoding: 'utf8', windowsHide: true });
       if (r.error || r.status !== 0) {
         const why = r.error && r.error.code === 'ETIMEDOUT' ? 'timed out after 10s' : (r.stderr || '').trim().split('\n').slice(-3).join(' | ') || `exit ${r.status}`;
         add('daemons', 'memB MCP venv', false, `entry import failed: ${why}`, 'reinstall the venv: re-run the AOS installer (requirements reconcile) or delete the .venv and re-run', true);
@@ -851,14 +875,14 @@ async function checkDaemonsAndModules() {
     const reaEnabled = process.env.AOS_REA_MCP === 'on';
     if (!reaEnabled) {
       add('daemons', 'REA MCP', true,
-        'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+        'off — dual-use research tool; opt-in MCP pick via AOS_REA_MCP=on (rea_mcp in mcp_picks.json), or use the reverse-engineer-anything skill',
         'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.', true);
     } else {
       let reaPath = which('rea');
       let reaVer = null;
       if (reaPath) {
         try {
-          reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
         } catch {}
       }
       // Fall back to the npm package name when the global `rea` shim is absent.
@@ -876,7 +900,7 @@ async function checkDaemonsAndModules() {
       } else {
         add('daemons', 'REA MCP', false,
           'AOS_REA_MCP=on but the REA CLI is not reachable',
-          'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+          'Run: npm install -g rea-agents@latest (or use the reverse-engineer-anything skill)');
       }
     }
   }
@@ -912,14 +936,14 @@ async function checkDaemonsAndModules() {
   let aoVer = null;
   if (aoBin) {
     try {
-      aoVer = execFileSync(aoBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      aoVer = execFileSync(aoBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
     } catch {}
   }
   const aoListening = await portOpen(3101);
   let aoServiceInfo = 'Not running';
   if (aoBin) {
     try {
-      const statusOut = execFileSync(aoBin, ['service', 'status'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+      const statusOut = execFileSync(aoBin, ['service', 'status'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
       const runningLine = statusOut.split('\n').find(l => l.toLowerCase().includes('running'));
       if (runningLine) aoServiceInfo = runningLine.trim();
     } catch {}
@@ -937,11 +961,11 @@ async function checkDaemonsAndModules() {
   if (aoBin && aoCheckout && existsSync(path.join(aoCheckout, '.git'))) {
     const build = readGoBuildInfo(aoBin);
     let head = null;
-    try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
+    try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim(); } catch {}
     // Only backend/ builds the binary: commits elsewhere in the checkout (app, docs) do not make it stale.
     let backendSame = false;
     if (build && head && build.revision !== head) {
-      try { execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'diff', '--quiet', build.revision, head, '--', 'backend'], { stdio: 'ignore' }); backendSame = true; } catch {}
+      try { execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'diff', '--quiet', build.revision, head, '--', 'backend'], { stdio: 'ignore', windowsHide: true }); backendSame = true; } catch {}
     }
     const same = !!(build && head && (build.revision === head || backendSame) && !build.modified);
     add('daemons', 'AO revision vs checkout', same,
@@ -1056,7 +1080,7 @@ function checkPlugins() {
     const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
     const off = MODS.filter((m) => !enabled.includes(m));
     let ver = null;
-    try { ver = /(\d+\.\d+\.\d+)/.exec(execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))?.[1] || null; } catch { /* version unknown */ }
+    try { ver = /(\d+\.\d+\.\d+)/.exec(execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }))?.[1] || null; } catch { /* version unknown */ }
     add('plugins', 'Claude Code mods', off.length === 0,
       `enabled: ${enabled.join(', ') || 'none'}; not enabled: ${off.join(', ') || 'none'}; Claude Code in PATH is ${ver || 'of unknown version'}`,
       `Mods need Claude Code >= 2.1.287 (the doctor checks the CLI in PATH). Run \`claude update\`, then \`aos package install ${off.join('|')}\`.`, true);

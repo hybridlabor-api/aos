@@ -105,6 +105,7 @@ Never call `aos-uninstall`, `aos-gate`, `aos-cli` unprompted: they are for the h
 - `aos-router` - See which worker target a role routes to, or set a role preference.
 - `aos-sessions` - See which sessions need input, are working or idle, and which ACP workers run.
 - `aos-team` - List teams, show one team, or create a team definition from a playbook.
+- `aos-fabric` - Run /fabric-graph or /factory work in any harness: get the next step, run it with your own executor, report the result back. drive does that loop headless. (side effects)
 - `aos-bus` - Send text to a running OpenCode session, or list sessions that can receive it.
 - `go-check` - A runner outside a harness (for example AO) must ask the GO gate before executing a command.
 - `mcsc` - Decide which worker CLI should take a task type, or run it there. (side effects)
@@ -113,6 +114,7 @@ Never call `aos-uninstall`, `aos-gate`, `aos-cli` unprompted: they are for the h
 - `aos-cli` - A human wants a terminal chat with AOS. Not meant for agents to call.
 - `aos-setup-doctor` - Used by the aos-setup skill before installing. For an installed system use `aos doctor`.
 - `aos-project-doctor` - After or before /aos-project-init, to see what is missing in a project.
+- `aos-evolve` - Record redacted task failure signatures for evolution analysis or check evolution kill switch status.
 <!-- aos:cli-reference:end -->
 
 ---
@@ -184,13 +186,13 @@ category: one-of-the-categories-below
 **Pipeline and role skills stay model-invocable.** Never set
 `disable-model-invocation: true` on `fabric`, `fabric-graph`, `fabric-multigraph`,
 `fabric-teamwork`, `fabric-swarm`, `fabric-loop`, the `godmode-*` roles, `master-session`, `ao-orchestrator`,
-`bdbrainstorm`, `bdbmediastorm`, `grill-me`, `grill-with-docs`, `ask-tim`,
+`bdbrainstorm`, `bdbmediastorm`, `grill-me`, `grill-with-docs`, `ask-tim`, `find-skill`,
 `memb-skill` or any playbook (`kind: playbook`). The Master and every orchestrator
 start them through the Skill tool, and hiding them forces a human to type each
 step, which breaks multi-harness coding. Side effects are guarded by go-gate, not
 by hiding the skill; `validate-skills` enforces this (E-DMI01, E-PB06). The flag
 is kept only where invocation by a model is harmful even with the gates:
-`bdb-updater` (rewrites installed configs and runs the installer) and `triage`
+`aos-update` and its alias `bdb-updater` (rewrite installed configs and run the installer) and `triage`
 (posts to GitHub issues, which go-gate does not guard yet).
 
 `category:` must be exactly one of: `design-ui-ux`, `engineering-method`,
@@ -235,7 +237,8 @@ The fabric family — see each skill for the full contract:
 | `/fabric-graph` | Dispatcher graph: durable `state.json`, Reviewer repair loop with a no-progress guard, automated quality gate, human escalation. Contract in `.agents/graph.md`, registry in `.agents/nodes.json`. Flags `--skill=`, `--profile=`, `--workstreams`. The only full pipeline; a straight-line run without state is described in `skills/basic/fabric-graph/linear.md`. |
 | `/fabric-multigraph` | Throwaway 2-4 node fan-out. Nothing persistent left behind. |
 | `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. |
-| `/fabric-swarm`, `/fabric-loop` | Documented, arrive in 5.4.1; route to `fabric-multigraph` and `loop-templates` meanwhile. |
+| `/fabric-swarm` | N similar workers take items from one shared pool (`production_artifacts/swarm.json`). |
+| `/fabric-loop` | Repeats a graph run until an exit check is green, bounded by round limits. |
 
 The rule that applies to every mode: **agents never invoke each other.** A
 dispatcher — the main session, or the workflow script — decides every next

@@ -27,6 +27,7 @@ Every AOS CLI answers `--help`, `-h` and `help` without side effects (exit 0). `
 | `aos-router` | See which worker target a role routes to, or set a role preference. | `aos-router show --json` |
 | `aos-sessions` | See which sessions need input, are working or idle, and which ACP workers run. | `aos-sessions --json --section needs` |
 | `aos-team` | List teams, show one team, or create a team definition from a playbook. | `aos team list --json` |
+| `aos-fabric` | Run /fabric-graph or /factory work in any harness: get the next step, run it with your own executor, report the result back. drive does that loop headless. | `aos-fabric start --run demo --goal "add a status page"` |
 | `aos-bus` | Send text to a running OpenCode session, or list sessions that can receive it. | `aos-bus list` |
 | `go-check` | A runner outside a harness (for example AO) must ask the GO gate before executing a command. | `node ~/.aos/bin/go-check.mjs --session w1 --command "git push"` |
 | `mcsc` | Decide which worker CLI should take a task type, or run it there. | `mcsc route --task-type refactor --json` |
@@ -35,6 +36,7 @@ Every AOS CLI answers `--help`, `-h` and `help` without side effects (exit 0). `
 | `aos-cli` | A human wants a terminal chat with AOS. Not meant for agents to call. | `aos-cli --continue` |
 | `aos-setup-doctor` | Used by the aos-setup skill before installing. For an installed system use `aos doctor`. | `node aos-doctor.mjs --json` |
 | `aos-project-doctor` | After or before /aos-project-init, to see what is missing in a project. | `node aos-project-doctor.mjs . --json` |
+| `aos-evolve` | Record redacted task failure signatures for evolution analysis or check evolution kill switch status. | `aos-evolve status` |
 
 ## aos
 
@@ -494,7 +496,7 @@ aos-uninstall --restore-plugin-backup
 | Option | What it does |
 |---|---|
 | `--dry-run` | List everything, delete nothing. |
-| `--purge` | Also remove the memory store, wikis and credentials (asks to type PURGE). |
+| `--purge` | Also remove the memory store, wikis, credentials and AOS state files under ~/.aos and ~/.agents/gateway (asks to type PURGE). Backups stay and are listed. |
 | `--yes` | Skip the confirmations (CI only). |
 | `--restore-plugin-backup` | Restore loose skill copies the installer removed when it registered the bdb-aos plugin; never overwrites. |
 
@@ -921,6 +923,72 @@ aos-team new <id> [--from-playbook <name>] [--json]
 aos team list --json
 ```
 
+## aos-fabric
+
+The fabric build loop (Architect, TechLead, build nodes, Reviewer, Shipping) as a CLI any harness or shell can drive: start, next, report, drive.
+
+- **When to use:** Run /fabric-graph or /factory work in any harness: get the next step, run it with your own executor, report the result back. drive does that loop headless.
+- **Agent safety:** has side effects, call only when the task needs it. start, report, cancel and drive write the run store under production_artifacts/runs/<id>/ and mirror production_artifacts/state.json. drive starts worker agents (aos-acp, codex exec or AO) that edit files in the work tree. next and status only read. --help is side-effect free.
+- **Entry:** `bin/aos-fabric.mjs`
+
+```text
+aos-fabric start [--run <id>] (--goal <text> | --goal-file <f>) [--skill <name>]... [--max-iterations <n>] [--executor aos-acp|ao|auto]
+aos-fabric next --run <id>
+aos-fabric report --run <id> --step <step_id> (--file <report.json> | --fail <reason>)
+aos-fabric status --run <id>
+aos-fabric cancel --run <id> [--reason <text>]
+aos-fabric drive --run <id> [--executor aos-acp|ao|auto] [--timeout <s>] [--sandbox coop|wsl2]
+```
+
+| Command | Usage | What it does |
+|---|---|---|
+| `start` | `aos-fabric start [--run <id>] (--goal <text> \| --goal-file <f>)` | Create a run and return its first step. The same run id and goal again returns the current state and writes nothing. |
+| `next` | `aos-fabric next --run <id>` | The open step again (same step_id), or how the run ended (kind done, escalated, ready_to_ship; exit 0, read kind). Never changes the run. |
+| `report` | `aos-fabric report --run <id> --step <step_id> (--file <report.json> \| --fail <reason>)` | Hand in the report of the open step; returns the next step. The same report twice is a no-op. --fail records the step as failed when the executor left no report. |
+| `status` | `aos-fabric status --run <id>` | Phase, iteration, open findings, last step and lock info. Read-only. |
+| `cancel` | `aos-fabric cancel --run <id> [--reason <text>]` | End the run (phase cancelled). Already cancelled is a no-op. |
+| `drive` | `aos-fabric drive --run <id>` | Loop next, execute, report until the run is terminal; prints one JSON event per line. |
+
+| Option | What it does |
+|---|---|
+| `--run ID` | Run id (letters, digits, . _ -). start derives one from the goal when omitted. |
+| `--goal TEXT` | start: the goal. |
+| `--goal-file FILE` | start: read the goal from a file. |
+| `--skill NAME` | start: a skill every build node must apply (repeatable, --skill=<name> also works). |
+| `--max-iterations N` | start: repair-loop ceiling, 1 to 20 (default 3). |
+| `--executor aos-acp\|ao\|auto` | Who runs the steps (default aos-acp). ao falls back to aos-acp when AO is absent; auto uses AO only when it is clearly up. |
+| `--step STEP_ID` | report: the step the report belongs to. |
+| `--file FILE` | report: the report JSON (aos.fabric.report/1). |
+| `--fail REASON` | report: record the step as failed instead of handing in a file (executor crashed, timed out or left no report). |
+| `--reason TEXT` | cancel: why. |
+| `--timeout SEC` | drive: hard limit per step, replaces the node default. |
+| `--sandbox coop\|wsl2` | drive: sandbox provider passed to aos-acp; required for agy steps that write. |
+
+| Environment | What it does |
+|---|---|
+| `AOS_FABRIC_SANDBOX` | Default for --sandbox. |
+| `AOS_PLAN_APPROVAL` | auto skips the plan-canvas human verdict (CI only, prints a warning). |
+| `AOS_PLAN_AWAIT_TIMEOUT_MS` | How long the human verdict step waits (headless default 30 minutes, 0 = unbounded). |
+
+| Exit code | Meaning |
+|---|---|
+| 0 | ok (drive: the run reached ready_to_ship or done) |
+| 1 | unexpected error, or drive found no harness |
+| 2 | invalid input: unknown flag, unknown schema version, broken report |
+| 3 | unknown run or step_id |
+| 4 | conflict: another report for an accepted step, or the same run id with another goal |
+| 5 | run lock busy: retry shortly |
+| 6 | run is terminal and takes no such command: report or cancel on a finished run, next on a cancelled run; drive: escalated or cancelled, a human is needed |
+| 7 | run state is corrupt: inspect events.jsonl |
+
+**JSON:** Every command prints one JSON object (schema aos.fabric.response/1); drive prints one JSON event per line. Errors are one JSON line on stderr.
+
+```sh
+aos-fabric start --run demo --goal "add a status page"
+aos-fabric next --run demo
+aos-fabric drive --run demo
+```
+
 ## aos-bus
 
 Master-to-session message bus through per-session inbox files (OpenCode sessions).
@@ -1171,4 +1239,54 @@ node aos-project-doctor.mjs [dir] [--json]
 
 ```sh
 node aos-project-doctor.mjs . --json
+```
+
+## aos-evolve
+
+Harness evolution engine: record failure signatures, inspect kill switch status, and manage offline evolution prep (B2 store-only until WP5).
+
+- **When to use:** Record redacted task failure signatures for evolution analysis or check evolution kill switch status.
+- **Agent safety:** safe to call. capture writes sanitized failure records to ~/.aos/evolve/failure.json; disable/enable toggles kill switch; --help is side-effect free.
+- **Entry:** `bin/aos-evolve.mjs`
+
+```text
+aos-evolve capture <failure.json | --error "..."> [--skill <name>] [options]
+aos-evolve status [--json]
+aos-evolve disable
+aos-evolve enable
+```
+
+| Command | Usage | What it does |
+|---|---|---|
+| `capture` | `aos-evolve capture <failure.json> [--skill <name>]` | Capture and redact failure into failure.json. |
+| `status` | `aos-evolve status [--json]` | Display evolution engine status and failure count. |
+| `disable` | `aos-evolve disable` | Activate kill switch to disable evolution loop. |
+| `enable` | `aos-evolve enable` | Remove kill switch to re-enable evolution loop. |
+
+| Option | What it does |
+|---|---|
+| `--skill` | Target skill directory name. |
+| `--error` | Raw error message or transcript excerpt to capture. |
+| `--kind` | Failure kind: test \| build \| review \| advisor-repeat \| user. |
+| `--harness` | Execution harness: claude \| agy \| opencode \| codex. |
+| `--role` | Active agent role. |
+| `--dry-run` | Compute redaction and signature without writing to store. |
+| `--storage` | Custom failure.json destination file. |
+| `--json` | Format output as JSON. |
+| `-h, --help` | Show help message. |
+
+| Environment | What it does |
+|---|---|
+| `AOS_EVOLVE` | Set to off to disable evolution loop globally. |
+
+| Exit code | Meaning |
+|---|---|
+| 0 | command succeeded |
+| 1 | validation failed, error missing, or disabled via kill switch |
+
+**JSON:** --json outputs structured record or status.
+
+```sh
+aos-evolve status
+aos-evolve capture failure.json --skill clean-code
 ```

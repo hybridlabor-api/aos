@@ -71,3 +71,41 @@ The doctor treats an antigravity value outside `inherit|flash|pro` as an error, 
 **Codex, OpenCode**: no model is written without an override (commit e2522a4; `compileCodexAgents`, `compileOpenCodeAgents`, tests in `tests/agent-models.test.js`).
 
 **Cursor, Kimi**: the installer writes no agent files for them. Cursor receives only `.cursor/rules/*.mdc` rule files; there is no Kimi code path in `installer.js`.
+
+## advisor role
+
+`advisor` is a router role (`config/router.json`, `lib/router/table.js`) used by the read-only `/advisor` skill at exactly three points: before a plan or schema is locked, on the second identical test or build error, and before "done". The router role picks the harness (default: the same harness as the planning roles). The model for that harness comes from `models.<harness>` in `pipeline.json`; without an entry the advisor inherits the session model.
+
+Recommendation: set the strongest model available per harness for `advisor`. Shipped skills never name a model.
+
+```json
+{
+  "advisor": {
+    "models": {
+      "claude": "<strongest-claude-model>",
+      "antigravity": "<strongest-antigravity-model>",
+      "codex": "<strongest-codex-model>",
+      "opencode": "<strongest-opencode-model>"
+    }
+  }
+}
+```
+
+This block is the role entry; in `pipeline.json` it sits under the top-level `"pipeline"` key. The keys are the harness names `resolveAgentConfig` receives from the installer. No entry means the advisor inherits the session model. Router targets map to these keys: `agy` to `antigravity`, `opencode-go` to `opencode`, `claude-glm` to `claude`; other targets are used as-is. Precedence: explicit model argument, then `pipeline.json`, then the configured default. A missing or invalid `pipeline.json` falls back to the default.
+
+The advisor is not a graph node and its output is never a GO.
+
+### Failure capture at call point 2
+
+At call point 2 (the second identical test or build error) the dispatcher also records the failure with Harness² capture:
+
+```
+aos-evolve capture --error "<error text>" --skill <skill in use>
+```
+
+The error text is redacted inside capture; never pass secrets. The advisor agent has no shell, so the dispatcher runs the command. `--skill` is required; if the skill is unknown the capture is skipped. When evolve is off (`AOS_EVOLVE=off` or a disabled store) the command exits non-zero and the dispatcher skips it silently.
+
+### Deny-list scope (Hard Safety Boundary B2)
+
+The deny-list check applies to store paths only (what capture/store writes); candidate diffs are NOT checked yet; a diff check is required before any future step executes proposals (planned for 5.4.2+).
+

@@ -68,10 +68,17 @@ export function issueGoToken(prompt, { transcript_path, session_id, message_id }
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
+// In-process entry for aos-hooks.mjs; output-free and never throws.
+export function hook(input) {
+  try { issueGoToken(input?.prompt, input); } catch { /* a failing hook must never block the prompt */ }
+  return { code: 0, stdout: "", stderr: "" };
+}
+
 if (isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 5 s timeout. Past it: exit 0 without a token, as on bad input.
+  setTimeout(() => process.exit(0), 3500 - process.uptime() * 1000).unref();
   try {
-    const input = JSON.parse((await readStdinBounded(2000)) ?? "");
-    issueGoToken(input.prompt, input);
+    hook(JSON.parse((await readStdinBounded(2000)) ?? ""));
   } catch { /* a failing hook must never block the prompt */ }
   process.exit(0);
 }

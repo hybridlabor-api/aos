@@ -5,6 +5,8 @@
   const TOKEN = (document.querySelector('meta[name="trail-side-token"]') || {}).content || ''
   const wide = () => matchMedia('(min-width:1100px)').matches
   let model = null, open = wide(), scopes = {}, busy = new Set(), lastSwitchSig = ''
+  // Lanes motion state: arrival (M1) only for new ids, status flip (M5) only on a real change.
+  const seen = new Set(), lastStatus = {}
   try { const v = localStorage.getItem('at-side'); if (v) open = v === '1' } catch { /* private mode */ }
 
   function el(tag, cls, text, attrs) {
@@ -68,13 +70,20 @@
     const needs = $('side-needs'); needs.textContent = ''
     if (!model.available) needs.append(el('p', 'muted small', 'Go-gate module not found; no requests to show.'))
     else if (!n) needs.append(el('p', 'muted small', 'Nothing waiting for you.'))
-    for (const r of model.requests) needs.append(goCard(r))
+    for (const r of model.requests) { const c = goCard(r); if (!seen.has('g:' + r.id)) { seen.add('g:' + r.id); c.classList.add('aos-enter') } needs.append(c) }
 
     const sess = $('side-sessions'); sess.textContent = ''
+    let pulsed = false
     if (!model.sessions.length) sess.append(el('p', 'muted small', 'No registered sessions.'))
     for (const s of model.sessions) {
-      const row = el('div', 'sess')
-      const a = el('div', 's1'); a.append(el('b', null, s.name), chip(s.status, s.status === 'working' ? 'running' : 'idle'))
+      const row = el('div', 'sess' + (s.role === 'master' && !pulsed ? ' aos-pulse-inner' : '') + (seen.has('s:' + s.name) ? '' : ' aos-enter'))
+      if (s.role === 'master') pulsed = true
+      seen.add('s:' + s.name)
+      if (typeof agentColor === 'function') row.style.setProperty('--lane', agentColor(s.name))
+      const st = chip(s.status, s.status === 'working' ? 'running' : 'idle')
+      if (lastStatus[s.name] && lastStatus[s.name] !== s.status) st.classList.add('aos-flip')
+      lastStatus[s.name] = s.status
+      const a = el('div', 's1'); a.append(el('b', null, s.name), st)
       const b = el('div', 's2'); b.append(el('span', 'role r-' + s.role, s.role), el('span', null, s.harness), el('span', null, s.lastSeen ? 'seen ' + ago(model.now - s.lastSeen) + ' ago' : 'seen unknown'))
       row.append(a, b); sess.append(row)
     }

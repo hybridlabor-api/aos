@@ -12,25 +12,26 @@ const fake = (out) => (cmd, args, opts) => {
   return out;
 };
 
-test('renders wip lines under a session header', () => {
+// dejaWip is async since 5.4.0-beta.2: deja runs as a bounded async child, so the hook budget can fire meanwhile.
+test('renders wip lines under a session header', async () => {
   const out = JSON.stringify({ harness: 'claude', session: '3593156a-43b1', lines: ['working on: x', 'settled:  y\n z'] });
-  assert.deepStrictEqual(dejaWip('/proj', fake(out)), [
+  assert.deepStrictEqual(await dejaWip('/proj', fake(out)), [
     '- Last session here (claude deja:3593156a):',
     '  - working on: x',
     '  - settled: y z',
   ]);
 });
 
-test('caps at four lines of 220 chars', () => {
+test('caps at four lines of 220 chars', async () => {
   const out = JSON.stringify({ lines: Array(6).fill('a'.repeat(300)) });
-  const r = dejaWip('/proj', fake(out));
+  const r = await dejaWip('/proj', fake(out));
   assert.strictEqual(r.length, 5);
   assert.strictEqual(r[0], '- Last session here:');
   assert.strictEqual(r[1].length, 4 + 220);
 });
 
-test('fails open: missing deja, bad json, no lines', () => {
-  assert.deepStrictEqual(dejaWip('/proj', fake(new Error('ENOENT'))), []);
-  assert.deepStrictEqual(dejaWip('/proj', fake('not json')), []);
-  assert.deepStrictEqual(dejaWip('/proj', fake('{}')), []);
+test('fails open: missing deja, bad json, no lines', async () => {
+  assert.deepStrictEqual(await dejaWip('/proj', fake(new Error('ENOENT'))), []);
+  assert.deepStrictEqual(await dejaWip('/proj', fake('not json')), []);
+  assert.deepStrictEqual(await dejaWip('/proj', fake('{}')), []);
 });

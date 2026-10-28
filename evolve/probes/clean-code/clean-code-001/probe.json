@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "clean-code-001",
+  "skill": "clean-code",
+  "task": "Verify clean code transformation satisfies single responsibility, input validation, and constant naming.",
+  "harness": "agy",
+  "role": "builder",
+  "seed": 1337,
+  "repeats": 3,
+  "timeout_s": 60,
+  "max_tokens": 10000,
+  "checker": "check.mjs",
+  "expected": "expected.json",
+  "origin": {
+    "kind": "handwritten"
+  },
+  "tags": [
+    "target",
+    "refactoring"
+  ]
+}

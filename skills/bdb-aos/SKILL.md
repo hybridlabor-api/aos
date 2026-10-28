@@ -6,7 +6,7 @@ description: Entry point for BDB Agent OS suite. Routes 200+ skills, fabric suba
 
 # BDB Agent OS
 
-The full AOS suite: 200+ skills, 45 subagents, and the fabric pipelines.
+The full AOS suite: 200+ skills, 46 subagents, and the fabric pipelines.
 
 ## Where things live
 
@@ -27,7 +27,8 @@ The fabric family. `fabric` picks the mode; the modes differ in how much machine
 | `fabric-graph` | Dispatcher graph: durable `state.json`, Reviewer repair loop, automated quality gate, human escalation. |
 | `fabric-multigraph` | Throwaway 2–4 node fan-out, nothing persistent left behind. |
 | `fabric-teamwork` | 9-step prompt crafting and delegation to a team. |
-| `fabric-swarm`, `fabric-loop` | Documented; arrive in 5.4.1 and route to `fabric-multigraph` / `loop-templates` meanwhile. |
+| `fabric-swarm` | N similar workers take items from one shared pool. |
+| `fabric-loop` | Repeats a graph run until an exit check is green, bounded by round limits. |
 
 **Agents never invoke each other.** A dispatcher — the main session or the
 workflow script — decides every next step. Routing lives in the graph contract,
@@ -57,6 +58,7 @@ Generated from `lib/cli-specs` (`node scripts/build-cli-reference.mjs`); full re
 | `aos-router` | See which worker target a role routes to, or set a role preference. | `aos-router show --json` |
 | `aos-sessions` | See which sessions need input, are working or idle, and which ACP workers run. | `aos-sessions --json --section needs` |
 | `aos-team` | List teams, show one team, or create a team definition from a playbook. | `aos team list --json` |
+| `aos-fabric` | Run /fabric-graph or /factory work in any harness: get the next step, run it with your own executor, report the result back. drive does that loop headless. | `aos-fabric start --run demo --goal "add a status page"` |
 | `aos-bus` | Send text to a running OpenCode session, or list sessions that can receive it. | `aos-bus list` |
 | `go-check` | A runner outside a harness (for example AO) must ask the GO gate before executing a command. | `node ~/.aos/bin/go-check.mjs --session w1 --command "git push"` |
 | `mcsc` | Decide which worker CLI should take a task type, or run it there. | `mcsc route --task-type refactor --json` |
@@ -64,6 +66,7 @@ Generated from `lib/cli-specs` (`node scripts/build-cli-reference.mjs`); full re
 | `aos-memb-ingest` | Normally never by hand. Use `aos memory` to configure paths and time. | `aos-memb-ingest --dry-run` |
 | `aos-setup-doctor` | Used by the aos-setup skill before installing. For an installed system use `aos doctor`. | `node aos-doctor.mjs --json` |
 | `aos-project-doctor` | After or before /aos-project-init, to see what is missing in a project. | `node aos-project-doctor.mjs . --json` |
+| `aos-evolve` | Record redacted task failure signatures for evolution analysis or check evolution kill switch status. | `aos-evolve status` |
 
 Probe with `aos help --all --json`; `<cli> --help` never has side effects.
 <!-- aos:cli-table:end -->

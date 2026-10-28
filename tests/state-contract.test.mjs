@@ -10,7 +10,7 @@ const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 
 const GATE_KEYS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
 const GATE_VALUES = new Set(['pass', 'fail', 'skip']);
-const PHASES = new Set(['define', 'plan', 'build', 'verify', 'review', 'ready_to_ship', 'ship', 'done', 'escalated']);
+const PHASES = new Set(['define', 'plan', 'build', 'verify', 'review', 'ready_to_ship', 'ship', 'done', 'escalated', 'cancelled']);
 
 function sampleAoState() {
   return {
@@ -77,6 +77,14 @@ describe('state schema contract', () => {
     assert.equal(schema.properties.roles.type, 'object');
     assert.equal(schema.properties.models.type, 'object');
     assert.equal(schema.properties.harnesses.type, 'object');
+  });
+
+  test('declares the --plan pre-approval record the dispatcher writes into state.json', () => {
+    const types = { pre_approved: 'boolean', approval_source: 'string', approval_hash: 'string' };
+    for (const [key, type] of Object.entries(types)) {
+      assert.equal(schema.properties[key]?.type, type, `${key} must be declared as ${type}`);
+      assert.ok(!schema.required.includes(key), `${key} must stay optional`);
+    }
   });
 
   test('sample AO scaffold state satisfies the required shapes', () => {

@@ -299,7 +299,7 @@ export const MODEL_INVOCABLE = new Set([
   'fabric', 'fabric-graph', 'fabric-multigraph', 'fabric-teamwork', 'fabric-swarm', 'fabric-loop',
   'godmode-engineering', 'godmode-shipping', 'godmode-ui-ux', 'godmode-media-eventtech',
   'master-session', 'ao-orchestrator', 'bdbrainstorm', 'bdbmediastorm',
-  'grill-me', 'grill-with-docs', 'ask-tim', 'memb-skill',
+  'grill-me', 'grill-with-docs', 'ask-tim', 'find-skill', 'memb-skill',
 ]);
 
 export function checkInvocation(name, byKey) {

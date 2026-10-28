@@ -117,20 +117,34 @@ function readStdinBounded(maxMs, maxBytes = 64 << 20) {
   });
 }
 
+// Hook body shared by the script entry and the in-process dispatcher (aos-hooks.mjs).
+// buildHint writes its notices to stderr itself; stdout is returned.
+export async function hook(input) {
+  input = input && typeof input === "object" ? input : {};
+  const isAgy = !input.hook_event_name && (Array.isArray(input.workspacePaths) || !!input.conversationId);
+  if (isAgy && !agyHintFirstTime(input.conversationId)) return { code: 0, stdout: "", stderr: "" };
+  const hint = await buildHint();
+  if (!hint) return { code: 0, stdout: "", stderr: "" };
+  return {
+    code: 0,
+    stdout: JSON.stringify(isAgy
+      ? { injectSteps: [{ ephemeralMessage: hint }] }
+      : { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: hint } }) + "\n",
+    stderr: "",
+  };
+}
+
 async function main() {
   let input = {};
   try { input = JSON.parse((await readStdinBounded(1500)) ?? ""); } catch {} // unparseable input is still not an error
-  const isAgy = !input.hook_event_name && (Array.isArray(input.workspacePaths) || !!input.conversationId);
-  if (isAgy && !agyHintFirstTime(input.conversationId)) return;
-  const hint = await buildHint();
-  if (!hint) return;
-  process.stdout.write(JSON.stringify(isAgy
-    ? { injectSteps: [{ ephemeralMessage: hint }] }
-    : { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: hint } }) + "\n");
+  const r = await hook(input);
+  if (r.stdout) process.stdout.write(r.stdout);
 }
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 if (process.argv[1] && isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 3 s timeout; past it, exit 0 without a hint.
+  setTimeout(() => process.exit(0), 2000 - process.uptime() * 1000).unref();
   try { await main(); } catch {}
   process.exit(0);
 }

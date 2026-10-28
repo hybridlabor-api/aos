@@ -69,6 +69,7 @@ function usage() {
     '  aos-plan-canvas open <file> --await  Open, then block like await in the same call',
     '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
     '  aos-plan-canvas annotate <app-url>  Print the script tag that lets you annotate a running dev app',
+    '  aos-plan-canvas annotate <app-url> --proxy  Serve the app through a loopback proxy with the overlay built in (foreground)',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
     '  aos-plan-canvas pending          Show feedback queued for no listener',
     '  aos-plan-canvas typing <file>    Show a thinking/typing indicator in chat',
@@ -90,6 +91,8 @@ function usage() {
     '         --force        Overwrite an existing output file',
     '  annotate: --session <file>  Session file (default production_artifacts/canvas-annotations/<host>-<port>.md)',
     '         --ttl-ms <n>   Token lifetime (default 8h, max 24h)',
+    '         --proxy        Foreground loopback proxy, no script tag: prints a one-time login URL, Ctrl+C stops',
+    '         --proxy-port <n>  With --proxy: fixed proxy port 1024-65535 (default: a free port)',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
     '         --timeout-ms <n>  Return {status:"waiting"} after n ms (tests/debug only)',
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
@@ -339,7 +342,8 @@ async function cmdOpen(file, args, context) {
   // open --await: one call opens the session AND keeps listening, so the turn
   // can never end without a listener. Same output contract as await.
   if (!result.error && args.includes('--await')) {
-    return cmdAwait(file, args.filter(a => a !== '--await'), context);
+    const waited = await cmdAwait(file, args.filter(a => a !== '--await'), context);
+    return waited.url ? waited : { ...waited, url: result.url };
   }
   return result;
 }
@@ -386,11 +390,18 @@ async function doOpen(file, args, { stateDir, port }) {
     artifact = built.outFile;
   }
 
-  await ensureServer({ stateDir, port });
-  const res = await request(port, 'POST', '/api/sessions', {
-    file: artifact,
-    reopen: args.includes('--reopen')
-  });
+  // An idle-out can land between the health check and the POST (ECONNRESET/ECONNREFUSED): start it again and retry.
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await ensureServer({ stateDir, port });
+      res = await request(port, 'POST', '/api/sessions', { file: artifact, reopen: args.includes('--reopen') });
+      break;
+    } catch (error) {
+      if (attempt >= 3 || !['ECONNRESET', 'ECONNREFUSED'].includes(error.code)) throw error;
+      await sleep(300);
+    }
+  }
   if (res.statusCode === 409) {
     return {
       ...res.body,
@@ -461,11 +472,8 @@ async function cmdAnnotate(appUrl, args, context) {
   const opened = await cmdOpen(file, args, context);
   if (opened.error || opened.status !== 'open') return opened;
   const key = sessionKeyFor(canonicalizeArtifactPath(file));
-  const res = await request(context.port, 'POST', `/api/annotate/${key}/token`, {
-    origin,
-    ...(ttlMs === undefined ? {} : { ttlMs })
-  });
-  if (res.statusCode !== 200) throw new Error(res.body.error || `token request failed (HTTP ${res.statusCode})`);
+  if (args.includes('--proxy')) return serveAnnotateProxy({ origin, key, file, context, args });
+  const res = await requestAnnotateToken(context, key, origin, ttlMs);
   return {
     status: 'ready',
     url: opened.url,
@@ -475,6 +483,61 @@ async function cmdAnnotate(appUrl, args, context) {
     expiresAt: res.body.expiresAt,
     next_step: `Add scriptTag to the dev app's index.html (or paste the bookmarklet), reload the app, press Alt+Shift+A to annotate, then run \`aos-plan-canvas await ${file}\`. The token only works from ${origin}; rerun annotate to rotate it.`
   };
+}
+
+async function requestAnnotateToken(context, key, origin, ttlMs) {
+  const res = await request(context.port, 'POST', `/api/annotate/${key}/token`, {
+    origin,
+    ...(ttlMs === undefined ? {} : { ttlMs })
+  });
+  if (res.statusCode !== 200) throw new Error(res.body.error || `token request failed (HTTP ${res.statusCode})`);
+  return res;
+}
+
+// The overlay's token is bound to the proxy origin the browser sees, and lives
+// 30 min: shorter than the session token, so a leaked overlay config expires fast.
+const PROXY_OVERLAY_TTL_MS = 30 * 60 * 1000;
+
+// Foreground: serves the app through a loopback proxy and blocks until Ctrl+C.
+// The one-time login URL sets the session cookie; the app is then reached at /.
+async function serveAnnotateProxy({ origin, key, context, args }) {
+  const { createProxy } = await import('./lib/plan-canvas/annotation/proxy.mjs');
+  const appUrl = new URL(origin);
+  const appPort = Number(appUrl.port);
+  const proxyPortRaw = valueAfter(args, '--proxy-port');
+  const proxyPort = proxyPortRaw === null ? 0 : Number(proxyPortRaw);
+  if (!Number.isInteger(proxyPort) || (proxyPort !== 0 && (proxyPort < 1024 || proxyPort > 65535))) {
+    throw new Error('--proxy-port must be an integer 1024-65535');
+  }
+  const proxy = await createProxy({
+    port: proxyPort,
+    upstream: { host: appUrl.hostname, port: appPort },
+    allowedPorts: [appPort],
+    canvasPort: context.port
+  });
+  const proxyOrigin = `http://127.0.0.1:${proxy.port}`;
+  try {
+    const minted = await requestAnnotateToken(context, key, proxyOrigin, PROXY_OVERLAY_TTL_MS);
+    proxy.setOverlay({ session: key, token: minted.body.token, endpoint: `/__aos_annot/api/${key}` });
+  } catch (error) {
+    proxy.server.close();
+    throw error;
+  }
+  const login = proxy.issueLogin();
+  process.stdout.write(
+    `Proxy for ${origin} on ${proxyOrigin}\n` +
+    `Open once (single use, valid 10 min): ${proxyOrigin}/__aos/annotate/login?t=${login.token}\n` +
+    `Annotation token valid 30 min. Ctrl+C stops the proxy.\n`
+  );
+  await new Promise((resolve) => {
+    const stop = () => {
+      proxy.server.closeAllConnections?.();
+      proxy.server.close(resolve);
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+  });
+  return { status: 'stopped', origin, proxy: proxyOrigin };
 }
 
 function awaitRequest(port, key, timeoutMs) {
@@ -496,12 +559,29 @@ function awaitRequest(port, key, timeoutMs) {
             reject(new Error('await response was not JSON (server restarted?) - re-run await; feedback is never lost'));
           }
         });
+        // Headers (and heartbeat blanks) are already out when the server drops the socket: no 'end', no request error.
+        res.on('error', reject);
+        res.on('close', () => { if (!res.complete) reject(Object.assign(new Error('await connection reset (ECONNRESET)'), { code: 'ECONNRESET' })); });
       }
     );
     req.setTimeout(0);
     req.on('error', reject);
     req.end();
   });
+}
+
+// The server drops held polls when it restarts on new code (watchCodeStamp) or crashes; queued
+// feedback survives on disk, so wait for it to come back and re-park instead of giving up.
+async function awaitWithReconnect(port, key, timeoutMs, { attempts = 20, retryMs = 500 } = {}) {
+  for (let i = 0; ; i++) {
+    try {
+      return await awaitRequest(port, key, timeoutMs);
+    } catch (error) {
+      if (i >= attempts) throw error;
+      for (let j = 0; j < 40 && !(await healthCheck(port)); j++) await sleep(retryMs / 5);
+      await sleep(retryMs);
+    }
+  }
 }
 
 // A bdb-plan-builder session is keyed by the built plan.builder.html, but agents
@@ -525,11 +605,40 @@ function addRoutes(result, file, trail) {
   if (!Array.isArray(result.items)) return;
   const { routeFor } = require('./lib/plan-canvas/route');
   let planHasComponents = false;
-  if (result.items.some(item => item && item.kind === 'verdict' && item.verdict === 'approve')) {
+  const hasApproveVerdict = result.items.some(item => item && item.kind === 'verdict' && item.verdict === 'approve');
+  if (hasApproveVerdict) {
     try {
       planHasComponents = require('./lib/plan-canvas/trail-on-approve').planComponents(file).length > 0;
     } catch {
       planHasComponents = false;
+    }
+    // Write approval.json sidecar when plan is approved
+    try {
+      const crypto = require('crypto');
+      // Find the source plan.mdx file: if file is plan.builder.html, look for plan.mdx in same dir
+      let sourceFile = file;
+      if (path.basename(file) === 'plan.builder.html') {
+        const dir = path.dirname(file);
+        const mdxFile = path.join(dir, 'plan.mdx');
+        if (fs.existsSync(mdxFile)) {
+          sourceFile = mdxFile;
+        }
+      }
+      const fileContent = fs.readFileSync(sourceFile, 'utf8');
+      const contentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
+      const parsed = path.parse(sourceFile);
+      const approvalPath = path.join(parsed.dir, `${parsed.name}.approval.json`);
+      const approval = {
+        schema: 'aos.plan-approval/1',
+        verdict: 'approve',
+        contentHash: contentHash,
+        timestamp: new Date().toISOString(),
+        source: 'plan-canvas'
+      };
+      fs.writeFileSync(approvalPath, JSON.stringify(approval, null, 2) + '\n');
+      process.stderr.write(`[plan-canvas] approval record written to ${approvalPath}\n`);
+    } catch (e) {
+      process.stderr.write(`[plan-canvas] warning: could not write approval record: ${e.message}\n`);
     }
   }
   let appItems = 0;
@@ -571,7 +680,7 @@ async function cmdAwait(file, args, { stateDir, port }) {
   const timeoutRaw = valueAfter(args, '--timeout-ms');
   const timeoutMs = timeoutRaw === null ? null : Number.parseInt(timeoutRaw, 10) || 0;
   process.stderr.write('[plan-canvas] waiting for human feedback... leave this running (re-run if interrupted; queued feedback is never lost)\n');
-  const result = await awaitRequest(port, sessionKeyFor(canonicalizeArtifactPath(file)), timeoutMs);
+  const result = await awaitWithReconnect(port, sessionKeyFor(canonicalizeArtifactPath(file)), timeoutMs);
   if (result.status === 'feedback') {
     result.next_step = result.sessionEnded
       ? 'The user sent this feedback and ended the session. Address it and report in chat; do not reopen the canvas uninvited.'

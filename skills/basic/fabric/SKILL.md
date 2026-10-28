@@ -16,18 +16,28 @@ category: bdb-core
 | `fabric-graph` | An approved plan should be built and correctness beats speed: durable `production_artifacts/state.json`, Reviewer repair loop, automated quality gate, human escalation. | `fabric-graph` |
 | `fabric-multigraph` | A small throwaway fan-out (2-4 nodes, nothing persistent) in any project. | `fabric-multigraph` |
 | `fabric-teamwork` | The brief is still vague and needs 9-step prompt crafting before delegation to a team. | `fabric-teamwork` |
-| `fabric-swarm` | Many similar workers on one pool of items. Arrives in 5.4.1; routes to `fabric-multigraph` meanwhile. | `fabric-swarm` |
-| `fabric-loop` | A repeating cycle until a condition holds (CI green, review rounds). Arrives in 5.4.1; routes to `loop-templates` meanwhile. | `fabric-loop` |
+| `fabric-swarm` | Many similar workers taking items from one shared pool (`production_artifacts/swarm.json`, 4 workers, cap 6). | `fabric-swarm` |
+| `fabric-loop` | A repeating cycle until an exit check is green (CI green, review rounds), bounded by round limits. | `fabric-loop` |
 
 ## Choosing
 
 1. The task needs resumable state, a review loop or a quality gate before anything ships: `fabric-graph`.
 2. The task splits into a few independent slices and nothing has to survive the session: `fabric-multigraph`.
 3. The goal is unclear and a team will receive it: `fabric-teamwork` first, then one of the above.
-4. Repeat-until-done: `fabric-loop`. Many near-identical slices: `fabric-swarm`.
+4. Repeat-until-done with an exit check and round limits: `fabric-loop`. Many near-identical slices: `fabric-swarm`.
 5. A small task needs no mode at all: do it yourself.
 
-Flags such as `--skill=<name>`, `--profile=` and `--workstreams` are handled by `fabric-graph`; pass the goal text through verbatim.
+Pass the goal text through verbatim; flags are described below.
+
+## Flags and building blocks
+
+- `--skill=<name>`: handled by `fabric-graph` and `fabric-multigraph`. `fabric-swarm` and `fabric-loop` pass it through to each worker brief. `fabric-teamwork` does not support it.
+- `--profile=<name>`: domain profile from `.agents/profiles/<name>.json`; handled by the workflow script of `fabric-graph`. An unknown profile escalates.
+- `--workstreams`: workflow script of `fabric-graph` only; the Architect plans 1-6 dynamic workstreams (target 4, cap 6). Off by default.
+- Teams: `aos-team list`, `aos-team show <id>`, `aos-team new <id> [--from-playbook <name>]`; add `--json` for machine output. Team JSON lives in `~/.aos/teams` or `.aos/teams` (project wins); shipped teams are in `lib/roles/teams`.
+- Roles: a registry of role JSON files (types plan, approve, build, review, gate, specialist). Precedence: project `.aos/roles` over user `~/.aos/roles` over shipped. Role flags beyond the registry: unverified.
+
+**One loop for every harness.** `fabric-graph` (and a `fabric-loop` round) runs on the `aos-fabric` CLI: `start`, then `next` and `report` by hand with your own executor, or `drive` for a headless run. It needs no workflow runtime and works without AO.
 
 **Agents never invoke each other.** The dispatcher (the main session or the workflow script) decides every next step. Independent sub-tasks go to subagents; only work whose members must react to each other needs a team.
 

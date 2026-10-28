@@ -64,8 +64,9 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     const claudeSettings = JSON.parse(
       fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8')
     );
-    const wired = JSON.stringify(claudeSettings.hooks || {});
-    assert.ok(wired.includes('a2a-inbox.mjs') && wired.includes('drain') && wired.includes('stop'),
+    // The dispatcher entries of UserPromptSubmit (drain) and Stop (stop) name the a2a-inbox module.
+    const wired = (event) => JSON.stringify(claudeSettings.hooks?.[event] || []);
+    assert.ok(wired('UserPromptSubmit').includes('a2a-inbox.mjs') && wired('Stop').includes('a2a-inbox.mjs'),
       'Claude settings.json must register the a2a-inbox.mjs drain + Stop/UserPromptSubmit hooks');
 
     // OpenCode: the plugin must contain the sidecar init call (ensureSidecar).
@@ -175,9 +176,9 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     assert.ok(fs.existsSync(launcher), 'aos-a2a launcher must be wired');
     assert.match(fs.readFileSync(launcher, 'utf8'), /aos-a2a\.mjs/);
     const s = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8'));
-    const count = (event, arg) => (s.hooks[event] || []).filter((e) => (e.hooks || []).some((h) => h.command.includes('a2a-inbox.mjs') && h.command.trim().endsWith(arg))).length;
-    assert.equal(count('UserPromptSubmit', 'drain'), 1);
-    assert.equal(count('Stop', 'stop'), 1);
+    const count = (event) => (s.hooks[event] || []).filter((e) => (e.hooks || []).some((h) => h.command.includes('aos-hooks.mjs') && h.command.includes('a2a-inbox.mjs'))).length;
+    assert.equal(count('UserPromptSubmit'), 1);
+    assert.equal(count('Stop'), 1);
   });
 
   test('installGlobalBinaries wires an aos-gate launcher whose installed copy resolves gate-profile and runs status', { skip: SANDBOX_SKIP }, async () => {

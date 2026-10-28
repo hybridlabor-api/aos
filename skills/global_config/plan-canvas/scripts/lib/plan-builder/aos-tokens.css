@@ -1,0 +1,79 @@
+/* AOS shared design tokens ("Lanes": obsidian floor, green accent, beige paper light theme, amber attention, lila highlights, mono labels).
+   Canonical copy. The copies in skills/global_config/agenttrail/public/shared/ and
+   skills/global_config/plan-canvas/scripts/lib/plan-builder/ must stay byte-identical (those skills install on
+   their own). tests/ui-tokens-sync.test.mjs checks the AgentTrail copy; tests/ui-lanes-tokens.test.mjs checks both. */
+:root{color-scheme:dark;
+--aos-bg:#0a0a0a;--aos-surface:#121212;--aos-surface-2:#1a1a1b;--aos-surface-3:#242426;--aos-border:#2a2a2c;--aos-border-strong:#77797e;--aos-line:color-mix(in srgb,var(--aos-text) 8%,transparent);
+--aos-text:#f3f3f1;--aos-muted:#a4a6aa;--aos-faint:#85878b;
+--aos-accent:#54bf5c;--aos-accent-deep:#095717;--aos-accent-ink:#04070f;--aos-highlight:#c58cff;--aos-ok:#5fe0a0;--aos-warn:#e5ac4c;--aos-bad:#ff6b7a;--aos-info:#6cb8ff;
+--aos-code-bg:#0a0a0a;--aos-overlay:#000a;
+--aos-radius:4px;--aos-radius-s:3px;--aos-chip-r:2px;--aos-top-h:52px;--aos-side-w:360px;
+--aos-font-ui:Geist,Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+--aos-font-mono:"Geist Mono","JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+:root[data-theme="light"]{color-scheme:light;
+--aos-bg:#f1efe4;--aos-surface:#f7f5ec;--aos-surface-2:#ebe8db;--aos-surface-3:#dbd8c9;--aos-border:#c9c6b7;--aos-border-strong:#7c7866;
+--aos-text:#04070f;--aos-muted:#484d58;--aos-faint:#5c616b;
+--aos-accent:#095717;--aos-accent-deep:#095717;--aos-accent-ink:#f7f5ec;--aos-highlight:#7a2fc9;--aos-ok:#08592f;--aos-warn:#734400;--aos-bad:#941026;--aos-info:#0a4f94;
+--aos-code-bg:#ebe8db;--aos-overlay:#0003}
+/* Lanes: identity + status + motion tokens. Rules in docs/ui-lanes.md. Lane colours are accents (edge, tick, dot), never large fills. */
+:root{
+--aos-space-1:4px;--aos-space-2:8px;--aos-space-3:12px;--aos-space-4:16px;--aos-space-5:24px;--aos-space-6:32px;--aos-radius-l:12px;--aos-radius-pill:999px;
+--aos-motion-instant:90ms;--aos-motion-fast:160ms;--aos-motion-enter:260ms;--aos-motion-settle:420ms;--aos-motion-loop:1600ms;
+--aos-ease-out:cubic-bezier(.23,1,.32,1);--aos-ease-pop:cubic-bezier(.34,1.3,.64,1);--aos-ease-camera:cubic-bezier(.32,.72,0,1);
+--aos-lane-0:#c58cff;--aos-lane-1:#6cb8ff;--aos-lane-2:#4fd8c4;--aos-lane-3:#e3c07a;--aos-lane-4:#ff8fa8;--aos-lane-5:#a9d96a;
+--aos-lane-0-soft:color-mix(in srgb,var(--aos-lane-0) 14%,transparent);--aos-lane-1-soft:color-mix(in srgb,var(--aos-lane-1) 14%,transparent);--aos-lane-2-soft:color-mix(in srgb,var(--aos-lane-2) 14%,transparent);--aos-lane-3-soft:color-mix(in srgb,var(--aos-lane-3) 14%,transparent);--aos-lane-4-soft:color-mix(in srgb,var(--aos-lane-4) 14%,transparent);--aos-lane-5-soft:color-mix(in srgb,var(--aos-lane-5) 14%,transparent);
+--aos-shadow-card:inset 0 1px 0 #ffffff0b,0 1px 2px #00000099,0 12px 32px -16px #000000e6;--aos-shadow-focus:inset 0 1px 0 #ffffff12,0 0 0 1px color-mix(in srgb,var(--aos-highlight) 30%,transparent),0 28px 70px -28px #000,0 0 80px -40px color-mix(in srgb,var(--aos-highlight) 35%,transparent);
+--aos-status-running-fg:var(--aos-ok);--aos-status-done-fg:var(--aos-info);--aos-status-needs-you-fg:var(--aos-warn);--aos-status-stopped-fg:var(--aos-muted);--aos-status-failed-fg:var(--aos-bad);
+--aos-status-running-bg:color-mix(in srgb,var(--aos-ok) 14%,transparent);--aos-status-done-bg:color-mix(in srgb,var(--aos-info) 14%,transparent);--aos-status-needs-you-bg:color-mix(in srgb,var(--aos-warn) 14%,transparent);--aos-status-stopped-bg:color-mix(in srgb,var(--aos-muted) 14%,transparent);--aos-status-failed-bg:color-mix(in srgb,var(--aos-bad) 14%,transparent);
+--aos-status-running-border:color-mix(in srgb,var(--aos-ok) 45%,transparent);--aos-status-done-border:color-mix(in srgb,var(--aos-info) 45%,transparent);--aos-status-needs-you-border:color-mix(in srgb,var(--aos-warn) 45%,transparent);--aos-status-stopped-border:color-mix(in srgb,var(--aos-muted) 45%,transparent);--aos-status-failed-border:color-mix(in srgb,var(--aos-bad) 45%,transparent)}
+:root[data-theme="light"]{
+--aos-lane-0:#7a2fc9;--aos-lane-1:#0b5cad;--aos-lane-2:#0a6e62;--aos-lane-3:#7a5200;--aos-lane-4:#b01e4c;--aos-lane-5:#3f6b0a;
+--aos-shadow-card:inset 0 1px 0 #ffffffb3,0 1px 2px #3a32141a,0 10px 24px -14px #3a321440;--aos-shadow-focus:inset 0 1px 0 #fff,0 0 0 1px color-mix(in srgb,var(--aos-highlight) 40%,transparent),0 18px 40px -20px #3a321459}
+.aos-chip{display:inline-block;font:400 .72em var(--aos-font-mono);padding:1px 8px;border-radius:var(--aos-chip-r);
+ border:1px solid color-mix(in srgb,var(--c,var(--aos-muted)) 45%,transparent);background:color-mix(in srgb,var(--c,var(--aos-muted)) 14%,transparent);
+ color:var(--c,var(--aos-muted));white-space:nowrap;text-transform:uppercase;letter-spacing:.06em}
+.aos-chip.ok{--c:var(--aos-ok)}.aos-chip.info{--c:var(--aos-info)}.aos-chip.bad{--c:var(--aos-bad)}.aos-chip.warn{--c:var(--aos-warn)}.aos-chip.accent{--c:var(--aos-accent)}
+.aos-btn{font:inherit;font-family:var(--aos-font-mono);font-size:.92em;color:var(--aos-text);background:var(--aos-surface-3);border:1px solid var(--aos-line);
+ border-radius:7px;padding:5px 12px;min-height:34px;cursor:pointer;transition:background var(--aos-motion-fast) var(--aos-ease-out),border-color var(--aos-motion-fast) var(--aos-ease-out),transform var(--aos-motion-instant) var(--aos-ease-out)}
+.aos-btn:hover{border-color:var(--aos-accent)}
+.aos-btn:active{transform:scale(.97)}
+.aos-btn.primary{background:var(--aos-accent);color:var(--aos-accent-ink);border-color:var(--aos-accent);font-weight:700}
+.aos-btn:disabled{opacity:.5;cursor:not-allowed}
+.aos-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{outline:2px solid var(--aos-accent);outline-offset:2px}
+.aos-status{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:var(--aos-radius-pill);font:600 .72em var(--aos-font-mono);white-space:nowrap;
+ color:var(--aos-status-stopped-fg);background:var(--aos-status-stopped-bg);border:1px solid var(--aos-status-stopped-border)}
+.aos-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.aos-status[data-status=running]{color:var(--aos-status-running-fg);background:var(--aos-status-running-bg);border-color:var(--aos-status-running-border)}
+.aos-status[data-status=done]{color:var(--aos-status-done-fg);background:var(--aos-status-done-bg);border-color:var(--aos-status-done-border)}
+.aos-status[data-status=needs-you]{color:var(--aos-status-needs-you-fg);background:var(--aos-status-needs-you-bg);border-color:var(--aos-status-needs-you-border)}
+.aos-status[data-status=failed]{color:var(--aos-status-failed-fg);background:var(--aos-status-failed-bg);border-color:var(--aos-status-failed-border)}
+.aos-status[data-status=needs-you]::before{animation:aos-breathe var(--aos-motion-loop) ease-in-out infinite}
+@keyframes aos-breathe{50%{opacity:.45;transform:scale(.8)}}
+/* Lanes components. [data-lane=0..5] sets --lane; cards and rows only ever use it as an edge or tick. */
+[data-lane="0"]{--lane:var(--aos-lane-0)}[data-lane="1"]{--lane:var(--aos-lane-1)}[data-lane="2"]{--lane:var(--aos-lane-2)}[data-lane="3"]{--lane:var(--aos-lane-3)}[data-lane="4"]{--lane:var(--aos-lane-4)}[data-lane="5"]{--lane:var(--aos-lane-5)}
+.aos-card{position:relative;border-radius:var(--aos-radius-l);background:var(--aos-surface-2);box-shadow:var(--aos-shadow-card);overflow:hidden}
+.aos-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--lane,transparent);opacity:.55;pointer-events:none}
+.aos-card.is-focus,.aos-card:focus-within{box-shadow:var(--aos-shadow-focus)}.aos-card.is-focus::before{opacity:1}
+.aos-row{position:relative;padding-left:14px;border-radius:7px;transition:background var(--aos-motion-fast) var(--aos-ease-out)}
+.aos-row::before{content:"";position:absolute;left:5px;top:9px;bottom:9px;width:2px;border-radius:2px;background:var(--lane,var(--aos-border));opacity:.85}
+.aos-row:hover{background:var(--aos-surface-3)}
+.aos-mono{font-family:var(--aos-font-mono);font-variant-numeric:tabular-nums}
+.aos-kpi{font:500 26px/1.15 var(--aos-font-mono);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.aos-meta{font:400 11px/1.4 var(--aos-font-mono);color:var(--aos-faint)}
+.aos-well{border-radius:8px;background:var(--aos-bg);box-shadow:inset 0 1px 2px #0000004d}
+.aos-dotgrid{background-image:radial-gradient(color-mix(in srgb,var(--aos-text) 7%,transparent) 1px,transparent 1.2px);background-size:22px 22px}
+/* Motion M1 arrival, M5 status flip, M7 shimmer, M8 pulse-inner, M9 stream line. Add the class when the data event happens, not on every render. */
+.aos-enter{animation:aos-enter var(--aos-motion-enter) var(--aos-ease-out) both;animation-delay:calc(var(--i,0) * 60ms)}
+@keyframes aos-enter{from{opacity:0;transform:translateY(12px) scale(.97)}}
+.aos-flip{animation:aos-flip 300ms var(--aos-ease-pop) both}
+@keyframes aos-flip{from{opacity:.3;transform:scale(.85)}}
+.aos-line-in{animation:aos-line-in 180ms var(--aos-ease-out) both}
+@keyframes aos-line-in{from{opacity:0;transform:translateY(6px)}}
+.aos-shimmer{background:linear-gradient(90deg,var(--aos-faint) 0 38%,var(--aos-text) 50%,var(--aos-faint) 62% 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:aos-shimmer 2s linear infinite}
+@keyframes aos-shimmer{from{background-position:100% 0}to{background-position:0 0}}
+.aos-pulse-inner{position:relative;overflow:hidden}
+.aos-pulse-inner::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(120px 70px at 0 0,color-mix(in srgb,var(--aos-highlight) 32%,transparent),transparent 70%);animation:aos-pulse-inner 3.2s ease-in-out infinite}
+@keyframes aos-pulse-inner{0%,100%{opacity:.25}50%{opacity:.75}}
+@media(prefers-reduced-motion:reduce){:root{--aos-motion-instant:0ms;--aos-motion-fast:0ms;--aos-motion-enter:0ms;--aos-motion-settle:0ms;--aos-motion-loop:0ms}
+*,*::before,*::after{animation:none!important;transition:none!important}}

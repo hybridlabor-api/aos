@@ -121,7 +121,7 @@ async function main() {
   if (!text || !mcp || !firstTime(sid)) return;
   const cwd = input.cwd || (Array.isArray(input.workspacePaths) && input.workspacePaths[0]) || process.cwd();
   const harness = input.hook_event_name ? 'claude' : 'agy';
-  const child = spawn(mcp.python, ['-c', PY], { cwd: mcp.dir, detached: true, stdio: ['pipe', 'ignore', 'ignore'], env: process.env });
+  const child = spawn(mcp.python, ['-c', PY], { cwd: mcp.dir, detached: true, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true, env: process.env });
   child.on('error', () => {});
   child.stdin.on('error', () => {});
   await new Promise((r) => child.stdin.end(JSON.stringify({ text, project: path.basename(cwd), harness, session: String(sid) }), r));
@@ -130,6 +130,8 @@ async function main() {
 
 const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 if (process.argv[1] && isMain()) {
+  // Hard wall-clock budget: ~70 % of this hook's 5 s timeout (Claude SessionEnd, agy Stop); past it, exit 0.
+  setTimeout(() => process.exit(0), 3500 - process.uptime() * 1000).unref();
   try { await main(); } catch { /* fail open */ }
   process.exit(0);
 }

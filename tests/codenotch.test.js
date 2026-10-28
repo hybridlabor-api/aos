@@ -426,6 +426,18 @@ test('win32: registry missing before install proceeds; missing after install is 
     assert.ok(!fs.existsSync(c.stateFile));
 });
 
+test('win32: a clean installer exit with the old version still registered (Codenotch running) warns, is not recorded, does not fail', async () => {
+    const state = { platform: 'win32', uninstallPath: UNINST, version: '1.0.0' };
+    const c = winSetup({ regVersion: '1.0.0', regAfter: '1.0.0', state });
+    const warned = [];
+    const r = await cn.runCodenotchStep({ ...c.opts, argv: [], env: {}, interactive: false, log: { warn: (m) => warned.push(m) } });
+    assert.strictEqual(r.status, 'stale');
+    assert.match(r.message, /still shows 1\.0\.0, expected 1\.2\.0.*close it and run the update again/);
+    assert.strictEqual(warned.length, 1);
+    assert.doesNotMatch(cn.codenotchSummaryLine(r), /FAILED/);
+    assert.deepStrictEqual(readState(c.stateFile), state, 'the old record stays');
+});
+
 test('win32: registry fallback finds the install by DisplayName', async () => {
     const c = winSetup({ regVersion: '2.0.0', regScan: true });
     assert.strictEqual((await cn.installCodenotch(c.opts)).status, 'up-to-date');

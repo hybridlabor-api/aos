@@ -10,7 +10,7 @@ advisory)` (b5605c1, part of the release/5.2.2-bundle merge PR #167).
 
 The single declarative table (config/router.json), four sections:
 
-- `roles`: `architect`, `techlead`, `reviewer`, `builder`, `scout`.
+- `roles`: `architect`, `techlead`, `reviewer`, `builder`, `scout`, `advisor` (see `docs/agent-models.md`).
 - `targets`: `claude`, `opencode-go` (`model: glm-5.3-flash`), `agy`,
   `codex`, `claude-glm`; each with percent `limits`
   (`window_5h` / `weekly`, soft 0.8, hard 0.95) held as data.
