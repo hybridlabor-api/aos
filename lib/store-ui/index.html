@@ -152,6 +152,7 @@ const scopeToggle=()=>`<div class="scope"><span class="kicker" style="margin:0">
 function act(i){
   if(i.core) return '<span class="state">AOS Core</span>';
   if(i.installed) return `<span class="state">Installed</span>`;
+  if(i.available&&S.busy!==key(i)) return `<span class="state">Available</span> <button class="button secondary" data-a="add" data-v="${esc(key(i))}">+ Add</button>`;
   if(S.busy===key(i)) return '<button class="button" disabled>Working...</button>';
   return `<button class="button secondary" data-a="add" data-v="${esc(key(i))}">+ Add</button>`;
 }

@@ -70,6 +70,7 @@ aos <command> --help
 | `memory` | `aos memory <list\|show\|deja-context <on\|off>\|add-path <dir>\|remove-path <dir>\|set-time <HH:MM\|off>\|run>` | Configure and run the memB project-doc ingest. |
 | `allow` | `aos allow <preset> [--<param> <value>] [--dry-run] [--remove]` | Add or remove Claude Code permissions.allow presets; `aos allow list` shows them. |
 | `context` | `aos context [full\|orchestrator\|worker\|small]` | Show or set the context profile. |
+| `skills` | `aos skills [status\|lean\|smart [--refresh] [--top=N] [--groups=a,b]\|groups <a,b>\|full] [--dry-run]` | Show or set the skill library mode (lean routers, smart most-used, groups, full). |
 | `team` | `aos team [list\|show\|new] ...` | Manage and inspect agent teams (same as aos-team). |
 | `help` | `aos help [<cli>] [--all] [--json]` | Print help for aos, one CLI, or all CLIs (--all [--json]). |
 

@@ -3,7 +3,7 @@
 import '../lib/cli-help-guard.mjs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAX_BYTES, aosInstalledExact, fetchSkillFiles, readAosFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rankSearch, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
 import { installPack, removePack, packOverview, knownPack, packSkillNames } from '../lib/store-packs.mjs';
@@ -77,7 +77,18 @@ async function download(src, upstreamPath) {
   return content;
 }
 
-const targetsFor = (type, name) => sharedTargetsFor(type, name, { project });
+// --harness=claude|agents|agy|opencode|cursor|roo limits an install to that harness's skill dir (default: every dir).
+const HARNESS_DIRS = { claude: '.claude', agents: '.agents', codex: '.agents', agy: '.gemini', gemini: '.gemini', opencode: 'opencode', cursor: '.cursor', roo: '.roo' };
+const targetsFor = (type, name) => {
+  const all = sharedTargetsFor(type, name, { project });
+  const h = option('--harness');
+  if (!h || project) return all;
+  const dir = HARNESS_DIRS[h];
+  if (!dir) throw new Error(`Unknown harness: ${h} (${Object.keys(HARNESS_DIRS).join(', ')})`);
+  const sel = all.filter((t) => t.includes(`${sep}${dir}${sep}`));
+  if (!sel.length) throw new Error(`No skill dir for harness ${h}`);
+  return sel;
+};
 
 async function install(name) {
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(`Invalid store name: ${name}`);
@@ -197,7 +208,7 @@ function usage() {
   console.log('Usage:');
   console.log('  aos store list [--type=skills|agents] [--source=ecc|scenario|aos|all]');
   console.log('  aos store search <query> [--source=...]');
-  console.log('  aos store install <name> [--project] [--dry-run] [--net]');
+  console.log('  aos store install <name> [--project] [--harness=claude|agents|agy|opencode] [--dry-run] [--net]');
   console.log('  aos store install --pack <name> [--project] [--dry-run]   offline, from ~/.aos/library');
   console.log('  aos store remove --pack <name> [--project] [--dry-run]');
   console.log('  aos store packs                                          list packs');
