@@ -1,7 +1,7 @@
 // Sidecar liveness rules (lib/a2a-liveness.mjs) with a fake clock and an injected kill: no real pids are signalled.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -90,4 +90,26 @@ test("parentProbe: alive parent true; ESRCH false; EPERM true; re-parented to pi
   assert.equal(parentProbe(4242, () => 4242, err("ESRCH"))(), false);
   assert.equal(parentProbe(4242, () => 4242, err("EPERM"))(), true);
   assert.equal(parentProbe(4242, () => 1, () => true)(), false);
+});
+
+test("list prunes a sidecar whose heartbeat lapsed past the idle window (legacy, no parentPid) and keeps a fresh one", async () => {
+  const { list } = await import("../lib/a2a-registry.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "aos-prune-"));
+  const saved = { s: process.env.AOS_SESSIONS_DIR, b: process.env.AOS_A2A_BOOK };
+  process.env.AOS_SESSIONS_DIR = dir;
+  process.env.AOS_A2A_BOOK = join(dir, "book.json");
+  try {
+    // process.pid is alive and started before `started`, so only the heartbeat decides.
+    const started = new Date(Date.now() - process.uptime() * 1000).toISOString();
+    const entry = (name, ts) => writeFileSync(join(dir, `${name}.json`), JSON.stringify({ name, harness: "codex", pid: process.pid, started, ts, status: "idle" }));
+    entry("codex-01a17f87", Date.now() - 11 * 3600_000);
+    entry("codex-fresh", Date.now());
+    const kept = list({ prune: true }).map((e) => e.name);
+    assert.deepEqual(kept, ["codex-fresh"]);
+    assert.throws(() => readFileSync(join(dir, "codex-01a17f87.json")), /ENOENT/);
+  } finally {
+    if (saved.s === undefined) delete process.env.AOS_SESSIONS_DIR; else process.env.AOS_SESSIONS_DIR = saved.s;
+    if (saved.b === undefined) delete process.env.AOS_A2A_BOOK; else process.env.AOS_A2A_BOOK = saved.b;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
