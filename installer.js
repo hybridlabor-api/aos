@@ -39,6 +39,7 @@ const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs, LEGACY_CODEX_DISPATCH } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
+const leanSkills = require('./lib/lean-skills');
 const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
@@ -215,6 +216,9 @@ let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
 // `skillSet` setting: "core" installs only lib/core-skills.json and leaves the rest to `aos store install`.
 let skillSet = coreSkills.DEFAULT_SKILL_SET;
+// `skillLibrary` setting (lib/lean-skills.js): "lean" installs only the router skills, the rest comes from ~/.aos/library on demand.
+let skillLibrary = leanSkills.DEFAULT_MODE;
+let skillLibraryOpts = {};
 // Pack selection: array of pack names from ~/.aos/v5-settings.json ("packs", next to skillSet).
 // null = no selection ever stored — everything is installed/kept, no silent removal.
 let packSelection = null;
@@ -1264,6 +1268,31 @@ function applySkillSet(manifest) {
             log,
         });
     } catch (e) { log.warn(`Skill set "core" skipped: ${e.message}`); }
+}
+
+// "lean" skill library: retire installed AOS copies outside the router set (lib/lean-skills.js).
+function applyLeanLibrary(manifest) {
+    if (skillLibrary === 'full' || DRY_RUN) return;
+    try {
+        leanSkills.pruneLean({ root: srcDir, home: homeDir, manifest, roots: globalSkillDestRoots(), backupDir: path.join(homeDir, '.agents', 'backups', `lean-library-${timestamp}`), log, mode: skillLibrary, opts: skillLibraryOpts });
+    } catch (e) { log.warn(`Lean skill library prune skipped: ${e.message}`); }
+}
+
+// `aos skills lean|full`: lean retires, full reinstalls through the normal kernel update. Returns failed steps.
+function applySkillLibrary(mode) {
+    applyInstallOptions(homeDir);
+    const state = detectInstallState();
+    if (mode !== 'lean') {
+        const failures = quickUpdateKernel(state);
+        flushSessionManifest();
+        return failures;
+    }
+    initSessionManifest(state.installManifest, [path.join(srcDir, 'skills')]);
+    populateSkillLibrary();
+    applyLeanLibrary(_sessionManifest);
+    const agy = runAgyPluginStep();
+    flushSessionManifest();
+    return agy ? [`agy plugin: ${agy}`] : [];
 }
 
 // Populates the local library (~/.aos/library/skills) with every shipped skill and writes the
@@ -4677,7 +4706,7 @@ function getTierExcludeSkills(tier) {
     // A stored pack selection excludes every shipped skill outside base+packs; the Pro MEDIA
     // tier and installed modules imply their packs on top (additive). No stored selection
     // excludes nothing (existing users keep all skills).
-    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? skillPacks.BASIC_TIER_EXCLUDES : [])];
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...leanSkills.excluded(skillLibrary, srcDir, skillLibraryOpts), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? skillPacks.BASIC_TIER_EXCLUDES : [])];
 }
 
 // Merge the BDB MCP servers into a harness's *secondary* config store without
@@ -8274,6 +8303,7 @@ function quickUpdateKernel(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyLeanLibrary(_sessionManifest);
     applyPackSelection(_sessionManifest);
     if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
         installRustauri();
@@ -8408,6 +8438,8 @@ function applyInstallOptions(home = homeDir) {
     activeProfile = r.profile;
     installExcluded = r.excluded;
     skillSet = r.skillSet;
+    skillLibrary = r.skillLibrary;
+    skillLibraryOpts = r.skillLibraryOpts;
     packSelection = r.packs;
     runImpliedPacks.length = 0;
     // An unattended --modules= request that names a pack (or the creator/hardware modules)
@@ -8586,6 +8618,10 @@ async function main() {
     applyInstallOptions();
     if (args[0] === 'memory') {
         process.exitCode = await require('./lib/memory-import').command(args.slice(1), { home: homeDir });
+        return;
+    }
+    if (args[0] === 'skills') {
+        process.exitCode = await leanSkills.command(args.slice(1), module.exports, { home: homeDir, dryRun: DRY_RUN });
         return;
     }
     if (args[0] === 'context') {
@@ -9096,6 +9132,7 @@ async function main() {
     // Pro MEDIA brings the live-show pack (additive; base pack is always in).
     skillPacks.tierPacks(tier).forEach(addImpliedPack);
     persistInstallOptions();
+    skillLibrary = leanSkills.seedFresh(homeDir, { dryRun: DRY_RUN });
     if (INSTALL_OPTS.router && !routerChoice) {
         const detected = detectRouterTargets().filter((t) => t.detected).map((t) => t.key);
         routerChoice = { preset: INSTALL_OPTS.router, mainHarness: 'claude', selectedTargets: [...new Set(['claude', ...detected])] };
@@ -9159,6 +9196,7 @@ async function main() {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyLeanLibrary(_sessionManifest);
     applyPackSelection(_sessionManifest);
     if (skillPacks.selectedSkillNames(srcDir, effectivePackSelection()).includes('rust-pro')) {
         installRustauri();
@@ -9365,6 +9403,10 @@ module.exports = {
     addImpliedPack,
     populateSkillLibrary,
     applyPackSelection,
+    applyLeanLibrary,
+    applySkillLibrary,
+    skillRoots: () => globalSkillDestRoots(),
+    srcDir: () => srcDir,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,

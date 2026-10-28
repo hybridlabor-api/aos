@@ -303,6 +303,11 @@ function checkHarnesses() {
       `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, (!exists && !viaPlugin) || unmanaged);
   }
 
+  // Skill library mode (lean = routers only, others on demand from ~/.aos/library).
+  const libMode = readJson(h('.aos', 'v5-settings.json'))?.skillLibrary === 'lean' ? 'lean' : 'full';
+  const installedCount = Math.max(0, ...harnesses.map((hr) => dirCount(hr.path)));
+  add('harnesses', 'Skill library', true, libMode === 'lean' ? `lean (${installedCount} routers installed; others on demand: aos store install <name>)` : `full (${installedCount} skills)`, "Change with 'aos skills lean|full'.");
+
   // Codex reads ~/.codex/skills AND ~/.agents/skills; AOS writes only the latter, so same-named copies in the former double-list.
   const codexRoot = h('.codex', 'skills');
   const doubled = existsSync(codexRoot) ? readdirSync(codexRoot, { withFileTypes: true })
