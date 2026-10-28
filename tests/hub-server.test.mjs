@@ -195,7 +195,7 @@ test('installed layout: version comes from the manifest, header never shows "v?"
   writeFileSync(join(fixtureHome, '.agents', '.bdb-manifest.json'), JSON.stringify({ version: '9.8.7' }));
   const { detectInstalledVersion } = createRequire(import.meta.url)('../lib/update-check.js');
   assert.equal(detectInstalledVersion(fixtureHome), '9.8.7');
-  const { status, body } = await raw('/api/services/meta');
+  const { status, body } = await raw('/api/health');
   assert.equal(status, 200);
   const j = JSON.parse(body);
   assert.match(j.version || '', /^\d+\.\d+\.\d+/);
