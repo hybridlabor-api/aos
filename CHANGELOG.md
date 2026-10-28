@@ -1,5 +1,101 @@
 # Changelog
 
+## [5.4.2-beta.1](https://github.com/hybridlabor-api/aos/compare/v5.4.0-beta.1...v5.4.2-beta.1) (2026-10-28)
+
+
+### Features
+
+* **agenttrail:** Lanes tokens in the hub layout and count roll on change ([86ac3e9](https://github.com/hybridlabor-api/aos/commit/86ac3e9973eba09ce793bf8e1d8b1f90d372a8f5))
+* AOS² 5.4.2-beta.1 (5.4.1 + 5.4.2 + 5.4.0-beta.2 hook fixes) ([73d39a3](https://github.com/hybridlabor-api/aos/commit/73d39a3ad5a1a68f14a27fd4bc763d8993c3e7e0))
+* **fabric:** accept a pre-approved plan and run four parallel reviewers ([322ce95](https://github.com/hybridlabor-api/aos/commit/322ce95d1384c9c652f7b83e40cb7a369eaf841c))
+* **fabric:** aos-fabric CLI and executor adapters (WP4-WP5) ([07a66fe](https://github.com/hybridlabor-api/aos/commit/07a66fe586067d1393ae6b9ccd49bc95e015e872))
+* **fabric:** aos-fabric start, next, report, status, cancel with real steps (WP4) ([2d3b090](https://github.com/hybridlabor-api/aos/commit/2d3b0907f285a219563304b39362f16bdd95673b))
+* **fabric:** core library for the harness-neutral fabric (schemas, store, edges) ([d8840af](https://github.com/hybridlabor-api/aos/commit/d8840af4356baf9becafb14f955d8f0881a4e6ab))
+* **fabric:** drive and the executors, with a real timeout (WP5) ([9c28657](https://github.com/hybridlabor-api/aos/commit/9c28657a01ec59218f2e3849faa48528f6a04073))
+* **fabric:** fabric-dispatch gets a cli engine, a thin client of aos-fabric (WP6) ([4f2ffdf](https://github.com/hybridlabor-api/aos/commit/4f2ffdf559a9554d9f364a5a5e133bfe6f51ec02))
+* **fabric:** pass --role to ao when advertised; add ao_session_id to step events ([0757cdc](https://github.com/hybridlabor-api/aos/commit/0757cdc9b368da8ae8dee59a49a3854cd4ef0b15))
+* **fabric:** the full edge table as one pure decide() (WP3) ([25c2e5d](https://github.com/hybridlabor-api/aos/commit/25c2e5d382d3dc367081e7cf4e8a9a40730fb119))
+* **factory:** ship a default sandbox image for unattended runs ([0f18cea](https://github.com/hybridlabor-api/aos/commit/0f18cea5c386addc03cd6581885641741b45c538))
+* **gateway:** seed a first selection from base and detected apps; direct-by-design servers ([9ecf327](https://github.com/hybridlabor-api/aos/commit/9ecf327605cbdfb4a835a7e3f2d791448d3b38ec))
+* **mcp:** ship one Rhino MCP per harness, golem fallback opt-in via AOS_RHINO_MCP=fallback ([8ec86dd](https://github.com/hybridlabor-api/aos/commit/8ec86ddeda20ee3fd387ece60b87d56dcabba7bc))
+* **router:** advisor reads models.&lt;harness&gt; from .aos/pipeline.json ([9193453](https://github.com/hybridlabor-api/aos/commit/91934537da891c101e266865dc0fcf5a4fb51b12))
+* **skills:** add find-skill, rename bdb-updater to aos-update with a thin alias, rank ask-tim for find-skill queries ([f1efd65](https://github.com/hybridlabor-api/aos/commit/f1efd65cc53f121a3b6895e681968ff47c3d41d7))
+* **skills:** generate ask-tim skill catalogue from frontmatter, rank store search by relevance ([022f3ff](https://github.com/hybridlabor-api/aos/commit/022f3ff731cb519a0948f1c85eba4c9baa528bc5))
+* **update:** ask the update mode once on aos update ([53f3fc6](https://github.com/hybridlabor-api/aos/commit/53f3fc678c59efd9e6b607f38c51fcb0793a4493))
+
+
+### Bug Fixes
+
+* **a2a:** pre-create the peer reply dir and skip mkdir on reply when it exists ([54b273f](https://github.com/hybridlabor-api/aos/commit/54b273faeb2b04be1affba24905ba6f1c90b3669))
+* **a2a:** start the Codex sidecar finisher outside Codex's job object on Windows ([b1a8375](https://github.com/hybridlabor-api/aos/commit/b1a837563bcec0889d10d95fe0342046246238c7))
+* **a2a:** stop codex sidecars and Windows monitors when their owner process is gone ([667ff76](https://github.com/hybridlabor-api/aos/commit/667ff76a9e5d2af157f5e740ea8094f0f3242a31))
+* **codenotch:** warn instead of failing when Windows still lists the old version ([676ef04](https://github.com/hybridlabor-api/aos/commit/676ef04dd79c5a164fb30ca0b329d9d98e497c60))
+* **doctor,installer:** accept a current global npm install, split --platforms lists, resolve uv on Windows ([0bfffd4](https://github.com/hybridlabor-api/aos/commit/0bfffd4348541e4d9a69721b891e71002405084f))
+* **doctor:** real gateway tool-count error and handshake, REA hint without missing package ([8add996](https://github.com/hybridlabor-api/aos/commit/8add99675518e59ec025f6ce50db160093ce0f2f))
+* **fabric-dispatch:** end hook mode at the budget instead of spawning on ([0414c8c](https://github.com/hybridlabor-api/aos/commit/0414c8cb9a0cb096744e1beb9a40a0d8aa19bf95))
+* **fabric:** close the blocking review findings ([0cb7e68](https://github.com/hybridlabor-api/aos/commit/0cb7e68d58059dce0325680c9531d322da1e59a7))
+* **fabric:** close the remaining fail-open paths in the dispatcher shim ([7a056ec](https://github.com/hybridlabor-api/aos/commit/7a056ecaa30b165eeff601ba43ae612e817f253b))
+* **fabric:** declare the --plan pre-approval record in the state schema ([88d6ff1](https://github.com/hybridlabor-api/aos/commit/88d6ff1f0e48913e9a69e1376e3a11f5adc32ec6))
+* **fabric:** deterministic plan approval and reviewer merge ([dacd1a3](https://github.com/hybridlabor-api/aos/commit/dacd1a37f6ccedf4ab45d548011528d33f5c5203))
+* **fabric:** escalate on every remaining executor failure path ([7e37640](https://github.com/hybridlabor-api/aos/commit/7e37640d9661b8bc21d90c4344dc4bd13325297f))
+* **fabric:** event-sourced run store with safe lock takeover (WP2) ([aa438fa](https://github.com/hybridlabor-api/aos/commit/aa438facd5f0b7bfe97c8c51493be558151a1048))
+* **fabric:** fail closed when the standalone agent shim's executor fails ([ad07122](https://github.com/hybridlabor-api/aos/commit/ad071225025727b29d4be84f9d603fc9901d817c))
+* **fabric:** harden reports, briefs and registry; next exits 0 for ends the graph reached ([4905047](https://github.com/hybridlabor-api/aos/commit/4905047f8ca5b43fb9c98effde20c92fcb326ce4))
+* **fabric:** installed libs, schema-valid --plan state, recorded reviews, checked replies ([c33267c](https://github.com/hybridlabor-api/aos/commit/c33267c87a077de7b13b3a77d30c1960200a0ccb))
+* **fabric:** keep findings per node, keep open status, real shim fail-closed tests ([339378e](https://github.com/hybridlabor-api/aos/commit/339378e4efcb9c9d7405559611ef036938c88042))
+* **fabric:** keep the home path out of reports, say why the scope was not checked ([3c9f70d](https://github.com/hybridlabor-api/aos/commit/3c9f70d0361be6680868f00e448c7bbee6a81491))
+* **fabric:** retry deleting the run lock where Windows holds the file for a moment ([1be7d26](https://github.com/hybridlabor-api/aos/commit/1be7d26dc2c83930fe12444728559fb9708271af))
+* **fabric:** run the AO executor in step.cwd via ao spawn --workdir ([5016612](https://github.com/hybridlabor-api/aos/commit/5016612e3d23df82b3448d850714e383f88878c7))
+* **fabric:** stop drive cleanly with a waiting_for_human state instead of an outer timeout ([0263bbd](https://github.com/hybridlabor-api/aos/commit/0263bbd3e3fec136c6969e4b263c99827c87a5b4))
+* **fabric:** validate step and report schemas for real (WP1) ([03db05a](https://github.com/hybridlabor-api/aos/commit/03db05a332fea0130f43ec849c532afc7aa35d5d))
+* **fabric:** verify plan approval and merge reviews in code under every runtime ([27984bb](https://github.com/hybridlabor-api/aos/commit/27984bb0d997acccaa806bb3d53ab8ad9201cb8e))
+* **factory:** allowlist the image contents and never pull the default image ([5edfce4](https://github.com/hybridlabor-api/aos/commit/5edfce42cf75d25ecc43fdbd15782ad8b9b6afff))
+* **gateway:** keep the 5.4 selection behaviour, report instead of change ([50b4c6c](https://github.com/hybridlabor-api/aos/commit/50b4c6ca4762d13ec1dff19fbf0550696993c2ae))
+* **gateway:** limit the P0 follow-up to doctor reporting ([dbbafc5](https://github.com/hybridlabor-api/aos/commit/dbbafc5cc4e798c4ffcb9be5da6f862aae26dbfc))
+* **gateway:** report dropped servers, direct-by-design and unverified rows ([f702644](https://github.com/hybridlabor-api/aos/commit/f702644e80140c39c3381f8f16ce0d885b4d604e))
+* **gateway:** resolve npx/uv on Windows in aos-mcp-env, warn and back off on failed pinned install ([700bf93](https://github.com/hybridlabor-api/aos/commit/700bf9320759c5ffd8be52b7f973b93d3a7f89d5))
+* **gateway:** show the upstream root-cause line and npx cache hint in status and doctor ([7dcc42c](https://github.com/hybridlabor-api/aos/commit/7dcc42cee08fab001a167a5e2f5d274513392188))
+* **gateway:** tolerate only the bare command form in memory entry check ([824ecb1](https://github.com/hybridlabor-api/aos/commit/824ecb1d2f69d53ec5daeb1aca3777d40193eb76))
+* **gateway:** treat bare node/deja direct memory entries as confirmed so the gateway copy is removed ([5be75b5](https://github.com/hybridlabor-api/aos/commit/5be75b57f929987662adfcf125e966a5593dc618))
+* **hooks:** give every hook a hard time budget and bounded children ([ebd2363](https://github.com/hybridlabor-api/aos/commit/ebd2363095d06daf6320ba71e04418a3806e8c31))
+* **hub-ui:** catalog harness filter default and store description/state line ([e261047](https://github.com/hybridlabor-api/aos/commit/e26104737ee1634722919b44d1d7d79b547a4e32))
+* **hub:** close the identity probe socket so hub-services tests exit ([addddea](https://github.com/hybridlabor-api/aos/commit/addddeab85ae89fdf7d489c1a5f6ca8247fd67e7))
+* **hub:** identify the hub by /api/health before reporting it up ([3e3163b](https://github.com/hybridlabor-api/aos/commit/3e3163be69606f2abd82cc53ed3826ef4e824f31))
+* **hub:** installed-version fallback, Windows ao path, HTML page for /trail when agenttrail is down ([3191ee5](https://github.com/hybridlabor-api/aos/commit/3191ee577787f57faf1cad1f6ae35208c3aab0b9))
+* **hub:** run the hub identity probe before the generic port probe ([b14a747](https://github.com/hybridlabor-api/aos/commit/b14a7475154e058e530b5ea897795ce5f04faead))
+* **installer:** keep bare node and deja when only versioned paths exist ([d473568](https://github.com/hybridlabor-api/aos/commit/d4735685dcefe384ba29dde1273f1451f25bfa3c))
+* **installer:** show npm's error when the deja-vu install fails ([bcb9b49](https://github.com/hybridlabor-api/aos/commit/bcb9b49f8a1965d19d2da74cdbbfc2dec06c9915))
+* **installer:** write absolute deja and node paths in shipped MCP entries ([dd32edb](https://github.com/hybridlabor-api/aos/commit/dd32edb48cb0782f687d05c9f09ecfb37a5452e4))
+* **memb-inject:** hand the Windows shell one command line for deja ([ce0dfcb](https://github.com/hybridlabor-api/aos/commit/ce0dfcbcf9988ba2d4101613683f1d7b49e2a1f0))
+* **opencode:** patch AOS-owned mcp entries into a commented opencode.jsonc ([#188](https://github.com/hybridlabor-api/aos/issues/188)) ([9e3a9c1](https://github.com/hybridlabor-api/aos/commit/9e3a9c11105dff83beaa94c5103dbc6ab1de9647))
+* **plan-canvas:** re-park await after the server drops the held long-poll ([a606898](https://github.com/hybridlabor-api/aos/commit/a60689826feb81187522c0ab36cd428b2bf35585))
+* **plan-canvas:** restart the server and retry open when it idles out mid-request ([0230ed7](https://github.com/hybridlabor-api/aos/commit/0230ed7538493b761c9d42dd7f81e6e3ea14a6e6))
+* **router:** install config/router.json under ~/.agents and fail clearly when missing ([61ffc15](https://github.com/hybridlabor-api/aos/commit/61ffc15dd862d650fee1fee33bff096adb67b80e))
+* **skills:** aos store search covers shipped skills with multi-word queries; refresh aos-setup, bdb-updater, ask-tim ([fd3cef2](https://github.com/hybridlabor-api/aos/commit/fd3cef2157034544c03698ddcc6c02cfa0bc9668))
+* **skills:** fabric-graph keeps its routing trigger words in the description ([8629e2e](https://github.com/hybridlabor-api/aos/commit/8629e2e0d769d839c02495ec6ca745c6116975e5))
+* **skills:** keep generated ask-tim catalogue free of brand tokens ([ac82609](https://github.com/hybridlabor-api/aos/commit/ac82609b2544b0718275474568893990718754e9))
+* **uninstall:** address second review (env-carrying servers, fail-closed link check, filtered manifest) ([ea91235](https://github.com/hybridlabor-api/aos/commit/ea912354cb74e2440fe04dcb123f1dc07ba946d4))
+* **uninstall:** content-based ownership for gemini configs, link-safe purge, crafted manifest entries refused ([73ab50a](https://github.com/hybridlabor-api/aos/commit/73ab50aa47ca6d96e95a8b3ccce08e99a4ca385d))
+* **uninstall:** decide Antigravity files by content, back them up, never follow links ([b6d54f5](https://github.com/hybridlabor-api/aos/commit/b6d54f5ada947e18a6318233c1e425169af39775))
+* **uninstall:** stop owned background processes, remove empty AOS folders, make --purge complete ([32f46b7](https://github.com/hybridlabor-api/aos/commit/32f46b76ec04e69a4ea3b623c4cdccade36368e2))
+* **update:** correct skill manifest hashing and the gateway install cache ([75adae3](https://github.com/hybridlabor-api/aos/commit/75adae3cf1d160017923681a4f6e6571de035136))
+* **update:** keep gateway uninstall exact with the npm install cache ([c7f5754](https://github.com/hybridlabor-api/aos/commit/c7f5754b775c88def17fc5be1a7c952032194031))
+* **update:** make the skill sync skip and the gateway install cache safe ([6d9dcc9](https://github.com/hybridlabor-api/aos/commit/6d9dcc9101218d4ef663cc432139be95a57fa994))
+* **update:** remove skill manifests on uninstall (needs review) ([3749c72](https://github.com/hybridlabor-api/aos/commit/3749c7254d055466f483b8459bc10b930adb172d))
+* **update:** sync a skill copy again when only its record is left ([8c439e8](https://github.com/hybridlabor-api/aos/commit/8c439e8df3b83e4a61d0c0a1c5efa11f02bc4f5b))
+* **update:** uninstall removes only the AOS skill record and emptied dirs ([13fb83e](https://github.com/hybridlabor-api/aos/commit/13fb83e71a1023539a2d1dfae458106849e329f5))
+* **windows:** start every child process with windowsHide ([8811459](https://github.com/hybridlabor-api/aos/commit/8811459ad3df0a193a457927653abef48d519445))
+
+
+### Performance Improvements
+
+* **update:** time update steps, skip unchanged skill copies and gateway installs ([7b5cbb4](https://github.com/hybridlabor-api/aos/commit/7b5cbb418397078201a45386567d2961be632bce))
+
+
+### Miscellaneous Chores
+
+* release 5.4.2-beta.1 ([e8eae65](https://github.com/hybridlabor-api/aos/commit/e8eae65e08b173db3fbbb68cc87721ee114a147c))
+
 ## [5.4.0-beta.1](https://github.com/hybridlabor-api/aos/compare/v5.3.0...v5.4.0-beta.1) (2026-10-27)
 
 

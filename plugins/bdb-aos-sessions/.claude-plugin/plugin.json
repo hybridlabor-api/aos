@@ -1,6 +1,6 @@
 {
   "name": "bdb-aos-sessions",
-  "version": "5.4.0-beta.1",
+  "version": "5.4.2-beta.1",
   "description": "AOS sessions viewer: every session of every harness plus the ACP workers",
   "types": "./types/index.d.ts"
 }
