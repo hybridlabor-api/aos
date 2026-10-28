@@ -2352,9 +2352,8 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
 // under $HOME (measured with agy 1.4.9), and exposes no setting to switch either off. AOS keeps only the
 // routers in the global dir: sessions outside $HOME still find the entry points (the rest comes via
 // `aos store search`), sessions inside $HOME see the full ~/.agents/skills once.
-const AGY_ROUTER_RE = /^(aos-|fabric)/;
-const AGY_ROUTERS = new Set(['find-skill', 'ask-tim', 'plan-canvas', 'openwiki-skill', 'bdb-aos']);
-const isAgyRouter = (name) => AGY_ROUTERS.has(name) || AGY_ROUTER_RE.test(name);
+// One router list for every mode and harness: lib/lean-skills.json.
+const isAgyRouter = (name) => leanSkills.isRouter(name);
 
 function agyLeafNames(skillsBase) {
     const out = [];
