@@ -42,6 +42,22 @@
       ]
     },
     {
+      "group": "rhino",
+      "candidates": [
+        {
+          "name": "bdb_rhino_mcp_fallback",
+          "requires": {
+            "env": {
+              "AOS_RHINO_MCP": "fallback"
+            }
+          }
+        },
+        {
+          "name": "bdb_rhino_mcp"
+        }
+      ]
+    },
+    {
       "group": "after_effects",
       "candidates": [
         {

@@ -146,7 +146,8 @@ test('pinned packages: failed install leaves no cache hash, successful install w
 
         const failing = { home, log: () => {}, run: async () => ({ status: 1, stderr: '' }) };
         await pkgGateway.installPinnedPackages(failing, dir, servers);
-        assert.strictEqual(fs.existsSync(cachePath), false, 'failed install must not leave a cache hash');
+        assert.strictEqual(JSON.parse(fs.readFileSync(cachePath, 'utf8')).failed, true, 'failed install is recorded, not a success hash');
+        fs.unlinkSync(cachePath);
 
         const passing = { home, log: () => {}, run: async () => ({ status: 0 }) };
         await pkgGateway.installPinnedPackages(passing, dir, servers);
@@ -198,6 +199,37 @@ test('pinned packages: a package that went missing after a good install is insta
         gatewayNpmCache.writeCache(pkgDir, gatewayNpmCache.computePackageHash(pkgDir), []);
         await pkgGateway.installPinnedPackages(ctx, dir, servers);
         assert.strictEqual(runs, 2, 'a package that went missing since is installed again');
+    } finally {
+        if (savedSandbox === undefined) delete process.env.AOS_TEST_SANDBOX; else process.env.AOS_TEST_SANDBOX = savedSandbox;
+        fs.rmSync(tmpDir, { recursive: true });
+    }
+});
+
+test('pinned packages: failed install retries without the puppeteer download, warns, and is not repeated for a day', async () => {
+    const pkgGateway = require('../lib/v5/pkg-gateway');
+    const savedSandbox = process.env.AOS_TEST_SANDBOX;
+    delete process.env.AOS_TEST_SANDBOX;
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
+    try {
+        const dir = path.join(tmpDir, 'gateway');
+        const servers = { 'chrome-devtools': { command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer@2025.5.12'] } };
+        const calls = [];
+        const msgs = [];
+        const ctx = { home: path.resolve(__dirname, '..'), log: (m) => msgs.push(m), env: {}, run: async (c, a, o) => { calls.push(o && o.env); return { status: 1 }; } };
+        await pkgGateway.installPinnedPackages(ctx, dir, servers);
+        assert.strictEqual(calls.length, 2);
+        assert.strictEqual(calls[0], undefined);
+        assert.strictEqual(calls[1].PUPPETEER_SKIP_DOWNLOAD, '1');
+        assert.strictEqual(calls[1].PUPPETEER_SKIP_CHROMIUM_DOWNLOAD, '1');
+        assert.ok(msgs.some((m) => /^WARN pinned MCP packages: npm install failed/.test(m)));
+        await pkgGateway.installPinnedPackages(ctx, dir, servers);
+        assert.strictEqual(calls.length, 2, 'a recent failure for the same packages is not retried');
+        const cachePath = path.join(dir, 'mcp-pkgs', gatewayNpmCache.CACHE_FILE);
+        const c = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        c.savedAt = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+        fs.writeFileSync(cachePath, JSON.stringify(c));
+        await pkgGateway.installPinnedPackages(ctx, dir, servers);
+        assert.strictEqual(calls.length, 4, 'after 24 h it tries again');
     } finally {
         if (savedSandbox === undefined) delete process.env.AOS_TEST_SANDBOX; else process.env.AOS_TEST_SANDBOX = savedSandbox;
         fs.rmSync(tmpDir, { recursive: true });
