@@ -162,3 +162,16 @@ test('guard loads from an installed (flat skills) layout', async () => {
     assert.equal(typeof g.embedAncestors, 'function');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('sec-fetch-site: /canvas iframe navigation only same-site, GET, with embed allowlist', () => {
+  const env = { AOS_EMBED_ANCESTORS: 'http://localhost:1420' };
+  const nav = { method: 'GET', path: '/canvas/', site: 'same-site', mode: 'navigate', dest: 'iframe' };
+  assert.equal(fetchSiteOk(nav, env), true);
+  assert.equal(fetchSiteOk({ ...nav, path: '/canvas' }, env), true);
+  assert.equal(fetchSiteOk(nav, { AOS_EMBED_ANCESTORS: '' }), false, 'embedding is opt-in');
+  assert.equal(fetchSiteOk({ ...nav, site: 'cross-site' }, env), false);
+  assert.equal(fetchSiteOk({ ...nav, method: 'POST' }, env), false);
+  assert.equal(fetchSiteOk({ ...nav, dest: 'document' }, env), false);
+  assert.equal(fetchSiteOk({ ...nav, path: '/canvasx' }, env), false);
+  assert.equal(fetchSiteOk({ ...nav, path: '/api/x' }, env), false);
+});
