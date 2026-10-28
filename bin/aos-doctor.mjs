@@ -1084,8 +1084,8 @@ function checkPlugins() {
     const MODS = ['fleet', 'sessions', 'alert', 'control'];
     const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
     const off = MODS.filter((m) => !enabled.includes(m));
-    let ver = null;
-    try { ver = /(\d+\.\d+\.\d+)/.exec(execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }))?.[1] || null; } catch { /* version unknown */ }
+    // runCli, not execFileSync: on Windows the claude.cmd shim cannot be spawned directly.
+    const ver = /(\d+\.\d+\.\d+)/.exec(runCli(claudeBin, ['--version'], { timeout: 5000 }).stdout)?.[1] || null;
     add('plugins', 'Claude Code mods', off.length === 0,
       `enabled: ${enabled.join(', ') || 'none'}; not enabled: ${off.join(', ') || 'none'}; Claude Code in PATH is ${ver || 'of unknown version'}`,
       `Mods need Claude Code >= 2.1.287 (the doctor checks the CLI in PATH). Run \`claude update\`, then \`aos package install ${off.join('|')}\`.`, true);
