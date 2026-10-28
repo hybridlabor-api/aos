@@ -2,6 +2,7 @@
   "base": [
     "bdb-aos",
     "ask-tim",
+    "find-skill",
     "bdbrainstorm",
     "grill-me",
     "plan-canvas",
@@ -35,6 +36,7 @@
     "aos-gateway",
     "gogate",
     "mcsc",
+    "aos-update",
     "bdb-updater",
     "skill-create",
     "memb-skill",

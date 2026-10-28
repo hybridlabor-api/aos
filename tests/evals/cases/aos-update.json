@@ -1,17 +1,17 @@
 {
-  "skill_name": "bdb-updater",
+  "skill_name": "aos-update",
   "trigger": {
     "positive": [
       {
-        "prompt": "Execute the standard bdb-updater workflow.",
+        "prompt": "Execute the standard aos-update workflow.",
         "top_k": 3
       },
       {
-        "prompt": "Run the bdb-updater tasks.",
+        "prompt": "Run the aos-update tasks.",
         "top_k": 3
       },
       {
-        "prompt": "Please apply the bdb-updater skill.",
+        "prompt": "Please apply the aos-update skill.",
         "top_k": 3
       }
     ],

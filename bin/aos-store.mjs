@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_BYTES, aosInstalledExact, fetchSkillFiles, readAosFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
+import { MAX_BYTES, aosInstalledExact, fetchSkillFiles, readAosFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rankSearch, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
 import { installPack, removePack, packOverview, knownPack, packSkillNames } from '../lib/store-packs.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,10 +26,10 @@ const optionValue = (name) => {
 };
 
 // The local aos source is listed only on request: --source=aos (or all). install always sees it.
-function allItems(type) {
+function allItems(type, { includeLocal = false } = {}) {
   const selected = type === 'agents' || type === 'subagents' ? 'subagents' : 'skills';
   const want = option('--source');
-  const visible = want === 'all' ? sources : sources.filter((src) => (want ? src.id === want : !src.local));
+  const visible = want === 'all' ? sources : sources.filter((src) => (want ? src.id === want : includeLocal || !src.local));
   if (want && want !== 'all' && !visible.length) throw new Error(`Unknown source: ${want} (${sources.map((s) => s.id).join(', ')}, all)`);
   return visible.flatMap((src) => Object.entries(src.index[selected] || {}).map(([name, item]) => ({ name, item, type: selected, src })));
 }
@@ -219,9 +219,8 @@ async function main() {
     return;
   }
   if (command === 'search') {
-    const query = (positional[1] || '').toLowerCase();
-    if (!query) throw new Error('Search requires a query.');
-    const items = allItems(option('--type') || '').filter(({ name, item }) => `${name} ${item.description} ${item.category}`.toLowerCase().includes(query));
+    if (!positional.slice(1).join(' ').trim()) throw new Error('Search requires a query.');
+    const items = rankSearch(allItems(option('--type') || '', { includeLocal: true }), positional.slice(1).join(' '));
     printItems(items);
     return;
   }

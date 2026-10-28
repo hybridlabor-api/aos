@@ -1213,7 +1213,8 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `bdb-aos` | Entry point for the BDB Agent OS suite installed as a Claude Code plugin. |
 | `bdb-deploy` | Build and deploy a project to a real server via rsync over SSH. |
 | `bdb-memb-mcp` | Model Context Protocol interface to the memB persistent agent memory layer. |
-| `bdb-updater` | Proactively check for and install updates to the AOS package via npm. |
+| `aos-update` | Update the installed AOS: check for a new version, preview, run the update and verify. |
+| `bdb-updater` | Alias of `aos-update`. |
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
 | `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /fabric-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
