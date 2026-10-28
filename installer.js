@@ -2180,7 +2180,7 @@ function cleanEmptySkillDirs(dir) {
 // backed up and removed, all-or-nothing (edited files stop the removal and are reported). Legacy module
 // skills (e.g. hardware-pcb) also present in ~/.agents/skills are backed up and retired when file
 // hashes match; edited copies stay and are reported.
-function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, rootDir = null, label = 'Codex', tag = 'codex-skills' } = {}) {
+function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, rootDir = null, label = 'Codex', tag = 'codex-skills', keep = null, onlyNames = null } = {}) {
     if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return { removed: [], leftover: [] };
     const targetHome = home || homeDir;
     const root = rootDir || path.join(targetHome, '.codex', 'skills');
@@ -2218,6 +2218,8 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
             if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
             const skillName = entry.name;
             if (leftoverSkills.has(skillName)) continue;
+            if (keep && keep.has(skillName)) continue;
+            if (onlyNames && !onlyNames.has(skillName)) continue;
             const codexSkillDir = path.join(root, skillName);
             const agentsSkillDir = path.join(agentsSkillsDir, skillName);
             let agentsStat;
@@ -2316,6 +2318,52 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
     return { removed: removedFiles, leftover: [...leftoverSkills].sort() };
 }
 
+
+// agy reads ~/.gemini/config/skills globally and ~/.agents/skills as a workspace dir whenever its cwd is
+// under $HOME (measured with agy 1.4.9), and exposes no setting to switch either off. AOS keeps only the
+// routers in the global dir: sessions outside $HOME still find the entry points (the rest comes via
+// `aos store search`), sessions inside $HOME see the full ~/.agents/skills once.
+const AGY_ROUTER_RE = /^(aos-|fabric)/;
+const AGY_ROUTERS = new Set(['find-skill', 'ask-tim', 'plan-canvas', 'openwiki-skill', 'bdb-aos']);
+const isAgyRouter = (name) => AGY_ROUTERS.has(name) || AGY_ROUTER_RE.test(name);
+
+function agyLeafNames(skillsBase) {
+    const out = [];
+    const walk = (dir) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!e.isDirectory() || e.name === 'global_legacy' || e.name === 'workspace_agents') continue;
+            const full = path.join(dir, e.name);
+            if (fs.existsSync(path.join(full, 'SKILL.md'))) out.push(e.name); else walk(full);
+        }
+    };
+    try { walk(skillsBase); } catch (_) {}
+    return out;
+}
+
+// excludeSkills plus every non-router leaf name, for installs into the agy global dir.
+function agyExcludeList(skillsBase, excludeSkills = []) {
+    return [...new Set([...excludeSkills, ...agyLeafNames(skillsBase).filter((n) => !isAgyRouter(n))])];
+}
+
+function retireAgySkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+    const root = path.join(home, '.gemini', 'config', 'skills');
+    if (!manifest || !fs.existsSync(root)) return { removed: [], leftover: [] };
+    const agentsSkills = path.join(home, '.agents', 'skills');
+    const prefix = path.resolve(root) + path.sep;
+    // Only skills that ~/.agents/skills also holds are retired, so no skill ever disappears from agy entirely.
+    const owned = {};
+    for (const [f, v] of Object.entries(manifest)) {
+        if (typeof f !== 'string' || !path.resolve(f).startsWith(prefix)) continue;
+        const name = path.resolve(f).slice(prefix.length).split(path.sep)[0];
+        if (!isAgyRouter(name) && fs.existsSync(path.join(agentsSkills, name))) owned[f] = v;
+    }
+    const keep = new Set(fs.readdirSync(root).filter((n) => isAgyRouter(n)));
+    const sub = { ...owned };
+    const r = retireCodexSkillCopies(sub, { home, rootDir: root, label: 'Antigravity', tag: 'agy-skills', keep, onlyNames: new Set(Object.keys(owned).map((f) => path.resolve(f).slice(prefix.length).split(path.sep)[0])) });
+    for (const f of Object.keys(owned)) if (!(f in sub)) delete manifest[f];
+    return r;
+}
+
 // OpenCode reads ~/.agents/skills through skills.paths (installOpencodePlugin); a second AOS copy under
 // ~/.config/opencode/skills made every skill a "duplicate skill" in opencode.log (#187). The copy is only
 // dropped once skills.paths really lists the shared store, so OpenCode never ends up without AOS skills.
@@ -2380,6 +2428,10 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
             moveIfExists(t.targetWorkspaceDir, path.join(backupDir, `workspace_skills_backup_${t.value}`), `workspace skills (${t.value})`);
         }
 
+        const agyGlobal = t.targetSkillDir === globalConfigDir;
+        const tExclude = agyGlobal ? agyExcludeList(skillsBase, excludeSkills) : excludeSkills;
+        if (agyGlobal) retireAgySkillCopies(_sessionManifest);
+
         installStep(`create the skill target directories (${t.value})`, () => {
             if (!viaPlugin) {
                 fs.mkdirSync(t.targetSkillDir, { recursive: true });
@@ -2408,7 +2460,8 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
                     } else if (dir === 'workspace_agents') {
                         copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
                     } else {
-                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
+                        if (agyGlobal && fs.existsSync(path.join(fullPath, 'SKILL.md')) && !isAgyRouter(dir)) continue;
+                        syncSkillEntry(fullPath, dir, t.targetSkillDir, tExclude);
                     }
                 }
                 log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
@@ -2554,6 +2607,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
 
     retireCodexSkillCopies(_sessionManifest);
     retireOpencodeSkillCopies(_sessionManifest);
+    retireAgySkillCopies(_sessionManifest);
     retireStaleCodexPluginDir(_sessionManifest);
     for (const { dir: dest } of extraSkillDestinations) {
         try {
@@ -8212,7 +8266,8 @@ function quickUpdateKernel(installState) {
             } else if (dir === 'workspace_agents') {
                 copyDirRecursiveSync(fullPath, paths.targetWorkspaceDir, excludeSkills);
             } else {
-                syncSkillEntry(fullPath, dir, paths.targetSkillDir, excludeSkills);
+                if (paths.targetSkillDir === globalConfigDir && fs.existsSync(path.join(fullPath, 'SKILL.md')) && !isAgyRouter(dir)) continue;
+                syncSkillEntry(fullPath, dir, paths.targetSkillDir, paths.targetSkillDir === globalConfigDir ? agyExcludeList(skillsBase, excludeSkills) : excludeSkills);
             }
         }
     }
@@ -9339,6 +9394,8 @@ module.exports = {
     runCodexPluginStep,
     retireCodexSkillCopies,
     retireOpencodeSkillCopies,
+    retireAgySkillCopies,
+    isAgyRouter,
     opencodeUsesAgentsSkills,
     syncSkillsToGlobalHarnesses,
     retireStaleCodexPluginDir,
