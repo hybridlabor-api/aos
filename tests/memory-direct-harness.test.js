@@ -90,9 +90,15 @@ test('absoluteCommands writes absolute deja/node; the migration still accepts th
     const dejaFile = path.join(bin, 'deja');
     fs.writeFileSync(dejaFile, '#!/bin/sh\n', { mode: 0o755 });
     const out = absoluteCommands({ deja: { command: 'deja', args: ['mcp'] }, mcsc: { command: 'node', args: ['x.js'] }, other: { command: 'npx', args: [] } },
-        { env: { PATH: bin }, platform: 'linux', nodePath: '/abs/node' });
+        { env: { PATH: bin }, platform: 'linux', execPath: '/abs/node' });
     assert.deepStrictEqual(out.deja, { command: dejaFile, args: ['mcp'] });
     assert.strictEqual(out.mcsc.command, '/abs/node');
+    const shimDir = tmp();
+    fs.writeFileSync(path.join(shimDir, 'node'), '#!/bin/sh\n', { mode: 0o755 });
+    const viaShim = absoluteCommands({ m: { command: 'node', args: [] } }, { env: { PATH: shimDir }, platform: 'linux', execPath: '/opt/homebrew/Cellar/node/26.0.0/bin/node' });
+    assert.strictEqual(viaShim.m.command, path.join(shimDir, 'node'));
+    const nvm = absoluteCommands({ m: { command: 'node', args: [] } }, { env: { PATH: tmp() }, platform: 'linux', execPath: '/home/u/.nvm/versions/node/v22/bin/node' });
+    assert.strictEqual(nvm.m.command, 'node');
     assert.strictEqual(out.other.command, 'npx');
     const none = absoluteCommands({ deja: { command: 'deja', args: ['mcp'] } }, { env: { PATH: tmp() }, platform: 'linux' });
     assert.strictEqual(none.deja.command, 'deja');
