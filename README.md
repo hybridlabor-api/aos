@@ -1628,11 +1628,11 @@ You can also set `AOS_NO_UPDATE_CHECK=1` in your environment to disable all upda
 
 ```bash
 aos-uninstall              # removes what AOS installed; memory, wikis and credentials stay
-aos-uninstall --purge      # also removes ~/.MemBDB, ~/.openwiki, ~/.synapse, ~/.memb
+aos-uninstall --purge      # also removes ~/.MemBDB, ~/.openwiki, ~/.synapse, ~/.memb and AOS state files (~/.aos hub/logs/status, ~/.agents/gateway)
 aos-uninstall --dry-run    # list everything, delete nothing
 ```
 
-**How it works.** The uninstaller works from the install manifest: a file that still matches the hash AOS wrote is removed, a file you edited is backed up instead, a file AOS never wrote is not touched. The same action is in the installer menu. `aos-uninstall --restore-plugin-backup` restores the loose skill copies the installer removed when it registered the plugin; see [docs/plugin-migration.md](docs/plugin-migration.md). Uninstall also moves your saved install options to `~/.aos/v5-settings.json.removed-<timestamp>` instead of deleting them.
+**How it works.** The uninstaller works from the install manifest: a file that still matches the hash AOS wrote is removed, a file you edited is backed up instead, a file AOS never wrote is not touched. The same action is in the installer menu. `aos-uninstall --restore-plugin-backup` restores the loose skill copies the installer removed when it registered the plugin; see [docs/plugin-migration.md](docs/plugin-migration.md). Uninstall also moves your saved install options to `~/.aos/v5-settings.json.removed-<timestamp>` instead of deleting them. It stops the background processes AOS started for this user (matched by command line, never by name alone), removes empty folders AOS created, and lists everything it keeps; backups (`~/.aos/backups`, `~/.agents/backups`, `*.bak`) always stay, even with `--purge`. The global npm package is not removed: run `npm uninstall -g @hybridlabor-api/aos` last.
 
 ---
 

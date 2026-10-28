@@ -496,7 +496,7 @@ aos-uninstall --restore-plugin-backup
 | Option | What it does |
 |---|---|
 | `--dry-run` | List everything, delete nothing. |
-| `--purge` | Also remove the memory store, wikis and credentials (asks to type PURGE). |
+| `--purge` | Also remove the memory store, wikis, credentials and AOS state files under ~/.aos and ~/.agents/gateway (asks to type PURGE). Backups stay and are listed. |
 | `--yes` | Skip the confirmations (CI only). |
 | `--restore-plugin-backup` | Restore loose skill copies the installer removed when it registered the bdb-aos plugin; never overwrites. |
 
