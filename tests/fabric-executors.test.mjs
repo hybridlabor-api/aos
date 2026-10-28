@@ -253,7 +253,13 @@ test('human step: the verdict of plan-canvas becomes ok, fail with the feedback,
   const missing = runHumanStep(humanStep(p), { env: {}, run: () => ({ missing: true }) });
   assert.match(missing.findings[0].summary, /aos-plan-canvas CLI is not on PATH/);
   const timedOut = runHumanStep(humanStep(p), { env: { AOS_PLAN_AWAIT_TIMEOUT_MS: '5000' }, run: () => ({ timedOut: true }) });
-  assert.match(timedOut.findings[0].summary, /no human verdict within 5000 ms/);
+  assert.match(timedOut.findings[0].summary, /^waiting for human approval: open /);
+  assert.equal(timedOut.waiting, true);
+  assert.equal(runHumanStep(humanStep(p), { env: { CI: '1' }, run: canvas({ status: 'waiting', url: 'http://127.0.0.1:4519/s/x' })([]) }).findings[0].summary, 'waiting for human approval: open http://127.0.0.1:4519/s/x');
+  assert.equal(runHumanStep(humanStep(p), { env: { CI: '1' }, run: canvas({ error: 'read ECONNRESET' })([]) }).waiting, undefined, 'a transport error is not a wait');
+  const bounded = [];
+  runHumanStep(humanStep(p), { env: { CI: '1' }, timeoutS: 300, run: (c, a, o) => { bounded.push(o.timeout); return { timedOut: true }; } });
+  assert.deepEqual(bounded, [300000], 'drive --timeout bounds the human wait');
   assert.equal(runHumanStep(humanStep(p, { plan: undefined }), { env: {}, run: () => assert.fail('nothing to open') }).status, 'escalate');
 }));
 
