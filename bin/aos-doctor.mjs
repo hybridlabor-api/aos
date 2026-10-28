@@ -731,7 +731,7 @@ async function checkGateway() {
         if (status && status.running) {
             const { gatewaySizeMetrics } = req('../lib/gateway/doctor.js');
             try {
-                const m = await gatewaySizeMetrics({ token: fs.readFileSync(path.join(gatewayDir(home), 'token'), 'utf8').trim() });
+                const m = await gatewaySizeMetrics({ token: readFileSync(path.join(gatewayDir(home), "token"), "utf8").trim() });
                 if (m.ok) toolCounts = m.counts; else countError = m.error;
             } catch (e) { countError = e.message; }
         }
