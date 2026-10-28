@@ -293,7 +293,7 @@ async function loadGit($: EngineInterface) {
   let items: GitWorktreeItem[] = []
   let failure = ''
   try {
-    items = await buildWorktreeItems($, root, state, probeCache, await $.clock.now())
+    items = await buildWorktreeItems(argv => $.process.run(argv), root, state, probeCache, await $.clock.now())
   } catch (err) {
     failure = redact(err instanceof Error ? err.message : String(err)).slice(0, 120)
   }
