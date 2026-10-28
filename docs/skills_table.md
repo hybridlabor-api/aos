@@ -188,7 +188,8 @@
 #### 📦 Other Utilities
 | Skill Name | Description |
 |------------|-------------|
-| `bdb-updater` | Proactively check for and install updates to the BDB Antigravity Skills package via NPM. |
+| `aos-update` | Update the installed AOS: check for a new version, preview, run the update and verify. |
+| `bdb-updater` | Alias of `aos-update`. |
 | `monorepo-management` | Build efficient, scalable monorepos that enable code sharing, consistent tooling, and atomic changes across multiple packages and applications. |
 | `obsidian-markdown` | Create and edit Obsidian Flavored Markdown with wikilinks, embeds, callouts, properties, and other Obsidian-specific syntax. Use when working with .md files in Obsidian, or when the user mentions wikilinks, callouts, frontmatter, tags, embeds, or Obsidian notes. |
 | `token-saver-config` | Context window output compression engine for CLI commands (60-99% token reduction). |

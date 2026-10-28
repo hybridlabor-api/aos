@@ -12,8 +12,9 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const cli = join(root, 'bin', 'aos-store.mjs');
 
+const emptyHome = mkdtempSync(join(tmpdir(), 'aos-store-home-'));
 function run(args) {
-  const result = spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, HOME: emptyHome } });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout;
 }
@@ -47,6 +48,24 @@ test('store search ranks exact name, then name word, then description', () => {
   assert.equal(fabric[0], 'fabric');
   assert.ok(fabric.indexOf('fabric-graph') < 6 && fabric.indexOf('fabric-multigraph') < 6, fabric.join());
   assert.equal(names('ask-tim')[0], 'ask-tim');
+});
+
+test('find-skill and ask-tim are found by find-skill style queries', () => {
+  const top = (q, n) => run(['search', ...q.split(' ')]).split('\n').filter((l) => l.startsWith('skill\t')).map((l) => l.split('\t')[1]).slice(0, n);
+  for (const q of ['find-skill', 'find skill', 'find a skill']) {
+    const t = top(q, 3);
+    assert.equal(t[0], 'find-skill', q);
+    assert.ok(t.includes('ask-tim'), `${q}: ${t}`);
+  }
+  assert.equal(top('which skill', 1)[0], 'find-skill');
+});
+
+test('aos-update is found first for update aos; bdb-updater is a thin alias', () => {
+  const t = run(['search', 'update', 'aos']).split('\n').filter((l) => l.startsWith('skill\t')).map((l) => l.split('\t')[1]);
+  assert.equal(t[0], 'aos-update');
+  const alias = readFileSync(join(root, 'skills', 'global_config', 'bdb-updater', 'SKILL.md'), 'utf8');
+  assert.match(alias, /aos-update/);
+  assert.ok(alias.length < 600, 'alias must stay a stub');
 });
 
 test('ask-tim catalogue lists every shipped skill and is not stale', () => {

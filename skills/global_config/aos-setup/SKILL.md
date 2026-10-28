@@ -174,6 +174,8 @@ installed and what has an update), `aos update`, `aos repair`, `aos setup`
 `--dry-run`; the install flags work too: `--profile minimal|standard|full`
 (saved), `--without ID,ID`, `--no-hooks`, `--coding|--no-coding`.
 
+For updating alone, use the `aos-update` skill.
+
 Interactive runs ask two things once and remember the answer in
 `~/.aos/v5-settings.json`: "Do you use AOS for coding?" and the update mode
 (notify, auto or off). Unattended runs (`-y`, no TTY) never ask. Change either

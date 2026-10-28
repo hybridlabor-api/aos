@@ -12,7 +12,7 @@ category: bdb-core
 
 # `ask-tim`: which way do I go?
 
-You don't remember every skill, so ask. This does no work itself.
+You don't remember every skill, so ask. This does no work itself. To look up a skill by name or topic, use `find-skill` (`aos store search <words>`); come back here when several look alike.
 
 Two layers, answering different questions. **The flow map** answers *"which way?"* — the route work travels from an idea to something shipped, and which branch to take at each fork. **The catalogue** below it answers *"which skill?"* — grouped by domain, with overlap guidance for the cases where several look alike. Start with the flow; drop to the catalogue when you already know roughly where you are.
 
@@ -63,6 +63,7 @@ A starting situation that generates work, then merges onto the main flow.
 - **Issues piling up** → `/triage`. For work you did *not* create: bug reports, incoming requests, anything raw. Tickets a pipeline already produced are agent-ready — **do not triage them**.
 - **Something is broken** → `systematic-debugging` for a structured hunt, `debugger` for a plain error. Both refuse to theorise before there is a reproduction.
 - **You need a runnable answer, not an argument** → `/prototype`. Throwaway code to settle a question that conversation cannot, then bring what you learned back to the idea thread.
+- **Installing or updating AOS itself** → `aos-setup` brings a machine to a verified install; `aos-update` checks for and applies a new release (`bdb-updater` is its old name).
 - **Deploying or shipping infrastructure** → `godmode-shipping` gates a release; `bdb-deploy`, `vercel-deployment` and `cloudflare-workers-expert` do the actual shipping.
 
 ---
@@ -450,11 +451,12 @@ Generated from the SKILL.md frontmatter of every shipped skill by the catalogue 
 - `aos-project-init` - Interview a project folder into AOS: .aos/project.json, OpenWiki, memB memory, Synapse...
 - `aos-setup` - Bring a machine to a verified AOS install: skills pack, MCP servers, gate hooks, memB,...
 - `aos-store` - Browse, preview, and install AOS Core, ECC and Scenario skills and agents from a local...
+- `aos-update` - Update the installed AOS: check for a new version, preview, run the update and verify
 - `ask-tim` - Route to the right AOS skill or flow for a task
 - `bdb-aos` - Entry point for AOS Agent OS suite
 - `bdb-deploy` - Deploy a project to a real server via rsync over SSH
 - `bdb-memb-mcp` - MCP interface to memB persistent memory
-- `bdb-updater` - Use when proactively checking for and installing updates to the AOS (AOS Agent OS) pack...
+- `bdb-updater` - Alias of aos-update
 - `bdbhtmlmanueldocs` - Enterprise-grade developer docs and user manuals
 - `bdbrainstorm` - Multi-agent brainstorming with /grill-me and Godmodes incl
 - `bdbresilience` - CI/CD error recovery, distributed file-based locking, diagnostic triage and GO-gate res...
@@ -469,6 +471,7 @@ Generated from the SKILL.md frontmatter of every shipped skill by the catalogue 
 - `fabric-swarm` - Fabric mode for N similar workers taking items from one shared pool
 - `fabric-teamwork` - Multi-agent team prompt crafting and delegation
 - `factory-human-digest` - Summarize work needing human judgment across PRs, issues, feedback and delivery signals
+- `find-skill` - Find which skill in the AOS library fits a task, by searching it
 - `gogate` - AOS go-gate status and modes
 - `instinct-export` - Use when the user wants to share or back up learned instincts — validates the local ins...
 - `instinct-import` - Use when the user brings an exported instincts JSON to merge into the local store — tre...
