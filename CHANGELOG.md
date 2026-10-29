@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.4.4](https://github.com/hybridlabor-api/aos/compare/v5.4.3...v5.4.4) (2026-10-29)
+
+
+### Bug Fixes
+
+* **release:** raise ls-tree buffer in prepack shipped-hashes build ([9042fc4](https://github.com/hybridlabor-api/aos/commit/9042fc4065c46843df6eae93a66a68fc391f9667))
+* **release:** raise ls-tree buffer in prepack shipped-hashes build ([86978c6](https://github.com/hybridlabor-api/aos/commit/86978c67e272f1f842d7c2bebeb03befd589fff9))
+
 ## [5.4.3](https://github.com/hybridlabor-api/aos/compare/v5.4.2...v5.4.3) (2026-10-29)
 
 
