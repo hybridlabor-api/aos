@@ -156,14 +156,15 @@ test('agy a2a-inbox: a ps that never answers cannot hold PreInvocation', { skip:
   } finally { for (const d of [home, bin]) rmSync(d, { recursive: true, force: true }); }
 });
 
-test('trail-relay: an agenttrail port that accepts and never answers costs the hook nothing', async () => {
+// The dispatcher row is #197: an in-process POST still in flight at process.exit() trips a libuv assertion on Windows.
+for (const [rel, args] of [['.claude/hooks/trail-relay.mjs', ['--agent', 'claude']], ['.claude/hooks/aos-hooks.mjs', ['PreToolUse', 'trail-relay.mjs']]]) test(`trail-relay via ${rel}: an agenttrail port that accepts and never answers costs the hook nothing`, async () => {
   const home = tmp();
   const sockets = [];
   // Reads (and drops) the request so the worker's FIN surfaces as end/close, but never answers.
   const server = net.createServer((s) => { s.resume(); sockets.push({ s, closed: false }); s.on('close', () => { sockets.find((x) => x.s === s).closed = true; }); });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   try {
-    await expectFailOpen('.claude/hooks/trail-relay.mjs', ['--agent', 'claude'], 1500, {
+    await expectFailOpen(rel, args, 1500, {
       env: hookEnv(home, '', { AGENTTRAIL_PORT: String(server.address().port) }), cwd: home,
       payload: { hook_event_name: 'PreToolUse', tool_name: 'Read', session_id: 'budget-6', cwd: home },
     });
