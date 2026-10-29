@@ -150,6 +150,7 @@ Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.
 Use these skills for UI development, component architecture, and design taste.
 
 * **Top Picks:** `godmode-ui-ux`, `senior-frontend`, `shadcn`
+* **Optional first step:** `creative-direction` before UI, motion or identity work on a new direction. It finds the insight and idea, then hands the brief to `godmode-ui-ux`, `prototype` or `bdbdesignpro`.
 
 ### Overlap: The UI Cluster vs Senior Frontend
 * **`ui-component` / `ui-page` / `ui-pattern`** (only if the optional StyleSeed package is installed): Use these strictly when scaffolding new pieces in the **StyleSeed Toss** design system convention (enforcing tokens, spacing, and rhythm).
@@ -514,6 +515,7 @@ Generated from the SKILL.md frontmatter of every shipped skill by the catalogue 
 - `bdb-ui-library` - Component and motion-icon lookup for UI work
 - `bdb-visual-edit` - Edit the source of a locally running app after a visual-edit item from plan-canvas
 - `bdbdesignpro` - Choose animation engines, define DTCG motion tokens, add scroll effects and audit motio...
+- `creative-direction` - Use before UI/UX, motion, visual identity or campaign work to find the insight and the...
 - `design-spells` - Use when adding curated micro-interactions, delightful animations, and subtle design de...
 - `editable-design` - Fixed-canvas editable visual designs: posters, banners, covers with HTML/PNG output and...
 - `frontend-dev-guidelines` - Senior frontend standards for architecture and performance
