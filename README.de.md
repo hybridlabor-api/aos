@@ -1038,7 +1038,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Skills (219)</b></summary>
+<summary><b>Skills (226)</b></summary>
 
 <details>
 <summary><b>library (85)</b></summary>
@@ -1197,10 +1197,11 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>bdb-core (45)</b></summary>
+<summary><b>bdb-core (51)</b></summary>
 
 | Skill | What it does |
 |---|---|
+| `advisor` | Read-only second opinion at the three advisor call points: verdict and at most 10 findings, never writes. |
 | `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions with cron-friendly scheduling. |
 | `agent-memory-mcp` | Hybrid memory system: persistent, searchable knowledge management for AI agents. |
 | `agent-pipeline` | Reference for the seven-node dispatcher graph that /fabric-graph runs. |
@@ -1211,19 +1212,27 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `aos-project-init` | Interview a project folder into AOS: slug and domain, OpenWiki, memB, Synapse map, AGENTS.md. |
 | `aos-setup` | Bring a machine to a complete, verified AOS installation. |
 | `aos-store` | Browse, preview, and install AOS Core, ECC and Scenario skills and agents from a local web UI. |
+| `aos-update` | Update the installed AOS: check for a new version, preview, run the update and verify. |
 | `ask-tim` | Ask which skill or flow fits your situation. |
 | `bdb-aos` | Entry point for the BDB Agent OS suite installed as a Claude Code plugin. |
 | `bdb-deploy` | Build and deploy a project to a real server via rsync over SSH. |
 | `bdb-memb-mcp` | Model Context Protocol interface to the memB persistent agent memory layer. |
-| `aos-update` | Update the installed AOS: check for a new version, preview, run the update and verify. |
 | `bdb-updater` | Alias of `aos-update`. |
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
 | `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /fabric-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
+| `clear-context` | Survive a /clear or context limit: save a verified handoff, then restore state, verify and continue. |
 | `codebase-memory` | >- |
 | `deja-memory` | Use `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. |
 | `design-control-loop` | Interview the user to design an agentic control loop tailored to their codebase, then build it. |
+| `fabric` | Master entry for the fabric family: picks the fitting mode for the task and says why. |
+| `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
+| `fabric-loop` | Repeat-until-done mode with an exit check and round limits. |
+| `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
+| `fabric-swarm` | N similar workers take items from one shared pool (`swarm.json`). |
+| `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `factory-human-digest` | Experimental workflow for summarizing work that still needs human judgment. |
+| `find-skill` | Find which AOS skill in the library fits a task, by searching it. |
 | `gogate` | Show or explain the AOS go-gate mode (hard, soft, off) and the time-limited grants of this session. |
 | `instinct-export` | >- |
 | `instinct-import` | >- |
@@ -1239,12 +1248,6 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `plan-canvas` | Open plans and HTML artifacts in a local browser canvas where the human annotates, chats, and approves. |
 | `quick-recap` | End each agent response with a red/yellow/green status line. |
 | `skill-create` | >- |
-| `fabric` | Master entry for the fabric family: picks the fitting mode for the task and says why. |
-| `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
-| `fabric-loop` | Repeat-until-done mode with an exit check and round limits. |
-| `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
-| `fabric-swarm` | N similar workers take items from one shared pool (`swarm.json`). |
-| `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `stay-within-limits` | Respect 5-hour and weekly usage limits by checking usage between waves and pausing near the cap. |
 | `subagent-setup` | Configure and synchronize multi-harness subagents with optional per-harness model overrides. |
 | `synapse-integration-skill` | BDB Synapse (3D Codebase Visualizer) integration. |
@@ -1280,13 +1283,14 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>design-ui-ux (13)</b></summary>
+<summary><b>design-ui-ux (14)</b></summary>
 
 | Skill | What it does |
 |---|---|
 | `bdb-ui-library` | >- |
 | `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app. |
 | `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
+| `creative-direction` | Use before UI/UX, motion, visual identity or campaign work to find the insight and the idea, then hand one brief to godmode-ui-ux, prototype or bdbdesignpro. |
 | `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
 | `editable-design` | Fixed-canvas editable visual designs: posters, marketing graphics, covers, menus, banners, social cards. |
 | `frontend-dev-guidelines` | Senior frontend engineering under strict architectural and performance standards. |
@@ -1648,7 +1652,7 @@ aos-uninstall --dry-run    # alles listen, nichts löschen
 - Ein Skill ist ein Verzeichnis mit `SKILL.md`; das Frontmatter braucht `name` (gleich dem Verzeichnis), `description` und `category`. `npm run validate` erzwingt den Contract, ebenso CI bei jedem Push.
 - `npm test` führt den Validator-Selftest, den Plugin-Manifest-Check und die Installer-, Store-, Doctor- und Cross-Harness-Hook-Tests aus.
 - `.claude-plugin/plugin.json` und `marketplace.json` werden von `npm run plugin:build` generiert und von `npm run plugin:check` geprüft. Sie existieren heute; der Claude-Code-Marketplace-Installationsweg wird noch finalisiert, also bleibt der Installer oben der unterstützte Weg.
-- Releases werden von release-please aus Conventional Commits geschnitten; `package.json` nicht von Hand bumpen. `feat:` bedeutet einen Minor-Bump.
+- Releases werden von release-please aus Conventional Commits geschnitten; `package.json` nicht von Hand bumpen. Jedes Release ist ein Patch (5.4.x), auch bei `feat:`; Minor oder Major nur über einen `Release-As:`-Footer.
 - Skills, die aus anderen Projekten abgeleitet sind, vermerken `source:` im Frontmatter und einen Eintrag in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Einen Bug gefunden oder willst du einen Skill hinzugefügt haben? [Ein Issue öffnen](https://github.com/hybridlabor-api/aos/issues).

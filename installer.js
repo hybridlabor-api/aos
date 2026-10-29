@@ -8623,7 +8623,13 @@ async function main() {
         process.exitCode = await leanSkills.command(args.slice(1), module.exports, { home: homeDir, dryRun: DRY_RUN });
         return;
     }
-    if (args[0] === 'project' && args[1] === 'init' && args.includes('--files')) {
+    // Any other `aos project ...` form must stop here, never fall through to the full install (F8).
+    if (args[0] === 'project' && !(args[1] === 'init' && args.includes('--files'))) {
+        console.error('aos project: only `aos project init --files` exists. Nothing was changed.');
+        process.exitCode = 2;
+        return;
+    }
+    if (args[0] === 'project') {
         const pAgents = path.join(currentDir, 'AGENTS.md');
         const pClaude = path.join(currentDir, 'CLAUDE.md');
         const pGemini = path.join(currentDir, 'GEMINI.md');

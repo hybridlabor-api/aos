@@ -56,7 +56,6 @@
     "pb-bug-fix",
     "pb-ci-fix",
     "pb-clip-from-moodboard",
-    "pb-content-studio",
     "pb-crew-call-sheet",
     "pb-deploy-saas",
     "pb-docs-site",
@@ -70,7 +69,6 @@
     "pb-inbox-zero",
     "pb-invoice-check",
     "pb-landing-page",
-    "pb-launch-video",
     "pb-machine-setup",
     "pb-master",
     "pb-meeting-actions",
@@ -135,6 +133,7 @@
         "web-performance-optimization",
         "wcag-audit-patterns",
         "ux-persuasion-engineer",
+        "creative-direction",
         "seo",
         "seo-audit",
         "schema-markup",
@@ -269,6 +268,14 @@
         "schematic-reverse-engineering"
       ],
       "external": true
+    },
+    "video": {
+      "description": "Video creation and rendering: routes, engines and handoffs",
+      "skills": [
+        "pb-code-video",
+        "pb-launch-video",
+        "pb-content-studio"
+      ]
     },
     "business": {
       "description": "Agentur & Business: project management, research, automation, APIs, automation",

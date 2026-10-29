@@ -36,8 +36,8 @@ export const REGISTRY = {
   'aos-session-hint.mjs': { budgetMs: 3000, run: async (c) => (await import('./aos-session-hint.mjs')).hook(c.input) },
   'a2a-session.mjs': { budgetMs: 4000, run: async (c) => (await import('./a2a-session.mjs')).hook(c.input, { harness: 'claude' }) },
   'trail-autostart.mjs': { tools: SUBAGENT, run: async (c) => (await import('./trail-autostart.mjs')).hook(c.input) },
-  // timeoutMs 150: the POST goes to loopback; a hung map must not slow the hot path by more than that.
-  'trail-relay.mjs': { relay: true, budgetMs: 150, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event, timeoutMs: 150 }) },
+  // The POST runs in a detached worker (#197); the 150 ms budget only covers preparing the payload.
+  'trail-relay.mjs': { relay: true, budgetMs: 150, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event }) },
 };
 
 export const COVERED = new Set([...BASH, ...FILE_TOOLS, ...SUBAGENT]);

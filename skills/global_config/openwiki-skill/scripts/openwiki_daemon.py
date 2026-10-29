@@ -899,9 +899,11 @@ def check_and_update_project(project_dir, api_key):
     if pre_hash:
         run_helper(helper, "post-snapshot", project_dir, ["--pre-hash", pre_hash])
 
-    commit_result = run_helper(helper, "commit", project_dir)
-    if commit_result:
-        log(f"Commit: {commit_result}")
+    # Auto-commits piled up hundreds of unpushed "docs(wiki) [auto]" commits per repo: opt in only.
+    if os.environ.get("OPENWIKI_AUTO_COMMIT") == "1":
+        commit_result = run_helper(helper, "commit", project_dir)
+        if commit_result:
+            log(f"Commit: {commit_result}")
 
     return True
 

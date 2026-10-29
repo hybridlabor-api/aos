@@ -9,12 +9,13 @@ const INSTALLER = path.join(__dirname, '..', 'installer.js');
 
 test('aos project init --files creates project rule files correctly', () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-project-init-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-project-init-home-'));
 
     // Write fake AGENTS.template.md for test since it depends on srcDir
     const srcDir = path.join(__dirname, '..');
 
     const r = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files'], {
-        cwd, env: { ...process.env, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
+        cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
     });
 
     assert.equal(r.status, 0, r.stderr);
@@ -43,11 +44,30 @@ test('aos project init --files creates project rule files correctly', () => {
 
     // Now test idempotency (running again should skip)
     const r2 = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files'], {
-        cwd, env: { ...process.env, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
+        cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
     });
 
     assert.equal(r2.status, 0, r2.stderr);
     assert.ok(r2.stdout.includes('Skipped'), 'Should skip existing files');
 
     fs.rmSync(cwd, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+});
+
+test('aos project without init --files stops and never falls through to the install', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-project-bad-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-project-bad-home-'));
+    try {
+        for (const args of [['project'], ['project', 'init'], ['project', 'list', '--files']]) {
+            const r = spawnSync(process.execPath, [INSTALLER, ...args], {
+                cwd, env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 120000,
+            });
+            assert.equal(r.status, 2, `${args.join(' ')}: ${r.stderr}`);
+            assert.deepEqual(fs.readdirSync(cwd), [], `${args.join(' ')} wrote into the project`);
+            assert.deepEqual(fs.readdirSync(home), [], `${args.join(' ')} wrote into HOME`);
+        }
+    } finally {
+        fs.rmSync(cwd, { recursive: true, force: true });
+        fs.rmSync(home, { recursive: true, force: true });
+    }
 });

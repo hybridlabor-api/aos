@@ -1,6 +1,6 @@
 {
   "name": "bdb-aos-control",
-  "version": "5.4.2",
+  "version": "5.4.4",
   "description": "AOS Control: unified cockpit for fleet, pipeline, git stages, and AOS controls",
   "types": "./types/index.d.ts"
 }
