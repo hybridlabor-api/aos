@@ -60,6 +60,24 @@
     "reason": "The P6 hit is the word 'directives' in the cspWithNonce() Content-Security-Policy transform, a pure header rewrite in a proxy that listens only on 127.0.0.1 and guards every request with checkRequest()."
   },
   {
+    "skill": "global_config/openwiki-skill",
+    "id": "TT3",
+    "file": "scripts/openwiki_daemon.py",
+    "reason": "The API key from the environment goes only as a Bearer header to the LLM endpoint the user configured for wiki generation; that request is the daemon's purpose."
+  },
+  {
+    "skill": "global_config/openwiki-skill",
+    "id": "AS1",
+    "file": "scripts/install_daemon.sh",
+    "reason": "The path is the skill's own installed copy under ~/.gemini/config/skills/openwiki-skill/, used as the daemon script target; no agent config is read."
+  },
+  {
+    "skill": "global_config/openwiki-skill",
+    "id": "AS1",
+    "file": "scripts/openwiki_daemon.py",
+    "reason": "The path is a fallback location of the skill's own openwiki_helper.py under ~/.gemini/config/skills/; no agent config is read."
+  },
+  {
     "skill": "global_config/creative-direction",
     "id": "P5",
     "file": "references/legendary-campaigns/cards/red-bull-stratos-2012.md",
