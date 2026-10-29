@@ -7,7 +7,7 @@
 // Why this exists: release-please (.github/workflows/release-please.yml) parses
 // commit subjects to compute the version bump and the changelog. It only reads
 // Conventional Commit prefixes, so an unprefixed subject is invisible to it —
-// exactly the prefix used for a user-facing addition decides a minor bump.
+// and the prefix decides whether a release is cut at all.
 //
 // Ported from davila7/claude-code-templates (MIT), which ships this as
 // conventional-commits.py. Ported to .mjs rather than vendored verbatim: every
@@ -104,8 +104,8 @@ function reasonFor(message) {
     "Bad:   Added new feature   (no type)",
     "Bad:   feature: add login  (wrong type, use 'feat')",
     "",
-    "AOS reserves feat: for user-facing additions -- it always bumps the minor",
-    "version, however small. Housekeeping belongs under chore: or fix:.",
+    "AOS reserves feat: for user-facing additions. Releases bump the patch",
+    "version only (5.4.x); housekeeping belongs under chore: or fix:.",
   ].join("\n");
 }
 
