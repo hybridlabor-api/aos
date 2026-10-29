@@ -64,5 +64,83 @@
     "id": "TM1",
     "file": "SKILL.md",
     "reason": "The TM1 hit is due to the phrase 'never any other visibility' which enforces private repo creation, it is a security control rather than evasion."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "P5",
+    "file": "references/legendary-campaigns/cards/red-bull-stratos-2012.md",
+    "reason": "Case-study prose describing the risk of the Red Bull Stratos jump (\"watching something that might kill someone, in real time\"); no harmful instruction."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "PE3",
+    "file": "references/activation-toolkit.md",
+    "reason": "Marketing table row: the product itself acts as payment or \"access token\" (Heineken 0.0 toll road); no credential is read or requested."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/creative-constitution.md",
+    "reason": "Feedback guidance: a subjective opinion invites the reply \"well, I don't\" (\"you can always respond\"); it does not suppress refusals."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR2",
+    "file": "references/legendary-campaigns/cards/burger-king-whopper-freakout-2007.md",
+    "reason": "Case-study prose: Burger King removed the Whopper \"without warning\" as the campaign mechanic; not an agent directive."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR3",
+    "file": "references/methods-catalog.md",
+    "reason": "Describes the Disney creativity method, where the Dreamer role generates ideas \"without constraints\"; brainstorming guidance, not a bypass of agent limits."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/legendary-campaigns/MOC-budget.md",
+    "reason": "The hit is the name or tagline of a real advertising campaign (\"Never Say No to Panda\", Panda Cheese 2010) quoted in a case-study reference, not an instruction to the agent."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/legendary-campaigns/MOC-emotion.md",
+    "reason": "The hit is the name or tagline of a real advertising campaign (\"Never Say No to Panda\", Panda Cheese 2010) quoted in a case-study reference, not an instruction to the agent."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/legendary-campaigns/MOC-format.md",
+    "reason": "The hit is the name or tagline of a real advertising campaign (\"Never Say No to Panda\", Panda Cheese 2010) quoted in a case-study reference, not an instruction to the agent."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/legendary-campaigns/MOC-index.md",
+    "reason": "The hit is the name or tagline of a real advertising campaign (\"Never Say No to Panda\", Panda Cheese 2010) quoted in a case-study reference, not an instruction to the agent."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/legendary-campaigns/MOC-industry.md",
+    "reason": "The hit is the name or tagline of a real advertising campaign (\"Never Say No to Panda\", Panda Cheese 2010) quoted in a case-study reference, not an instruction to the agent."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/legendary-campaigns/MOC-pattern.md",
+    "reason": "The hit is the name or tagline of a real advertising campaign (\"Never Say No to Panda\", Panda Cheese 2010) quoted in a case-study reference, not an instruction to the agent."
+  },
+  {
+    "skill": "global_config/creative-direction",
+    "id": "AR1",
+    "file": "references/legendary-campaigns/cards/panda-cheese-never-say-no-to-panda-2010.md",
+    "reason": "The hit is the name or tagline of a real advertising campaign (\"Never Say No to Panda\", Panda Cheese 2010) quoted in a case-study reference, not an instruction to the agent."
+  },
+  {
+    "skill": "basic/godmode-ui-ux",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is the <!-- aos:pack-index:start/end --> marker pair that scripts/build-pack-index.mjs uses to regenerate the pack skill list; the comments hold no directives."
   }
 ]
