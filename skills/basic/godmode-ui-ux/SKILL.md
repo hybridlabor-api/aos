@@ -10,6 +10,8 @@ This skill is the single source of truth for all design decisions. It replaces: 
 
 **Routing:** Component lookup order: the project's own design system and sources file first (its components, tokens, `DESIGN.md`); the BDB library (`@bdb` registry; version-pinned unpkg entry `https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json` in `components.json`) only when the project opts in; then the verified registries listed in the UI library's `docs/sources.md` (link-only entries are documentation links, never code sources).
 
+**Optional first step:** for a new visual identity or campaign direction, run `creative-direction` before this skill; its brief (insight, concept, constraints) is the input here.
+
 ## Plan first
 
 Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
