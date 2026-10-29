@@ -729,3 +729,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+
+---
+
+## smixs/creative-director-skill
+
+- **Upstream:** <https://github.com/smixs/creative-director-skill> (commit `ac06eb2`)
+- **License:** CC-BY-4.0 (Creative Commons Attribution 4.0 International). Full text in `skills/global_config/creative-direction/LICENSE`.
+- **Copyright:** Copyright (c) 2026 Serge Shima. Credit: Serge Shima — <https://t.me/aimastersme> · <https://sergeshima.com> · <https://aimasters.me>
+
+`skills/global_config/creative-direction/` is upstream `creative-director/` (SKILL.md, `references/`, `references/legendary-campaigns/` library, `assets/output-templates.md`, `scripts/`) with:
+
+- the skill renamed to `creative-direction` and its description rewritten for AOS routing (`design-ui-ux`);
+- `[[wikilinks]]` in SKILL.md converted to plain backtick paths so the AOS validator can check them;
+- an AOS handoff section (godmode-ui-ux, prototype, bdbdesignpro) added to SKILL.md;
+- the library README names the new skill.
+
+Method, scoring rubric and card contents are unchanged. The upstream `NOTICE` file ships alongside. The upstream README, README.ru.md and header images are not vendored.
