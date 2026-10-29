@@ -1,12 +1,12 @@
 ---
 name: pb-launch-video
 description: >-
-  Turn a live app or landing page into a short launch video: composition
+  Turn a live app, landing page, SaaS demo or product walkthrough into a short launch video (live URL): composition
   brief, render in Hyperframes or Remotion, ffprobe check, hand-off
   after GO.
 category: media-eventtech
 kind: playbook
-trigger: ["launch video", "video of the shipped app", "promo clip for the landing page"]
+trigger: ["launch video", "video of the shipped app", "promo clip for the landing page", "product walkthrough", "SaaS demo", "screen recording", "live URL"]
 inputs: [url, project, length, formats, render_tool]
 requires:
   skills: [brag, remotion, "hyperframes (external)", "ffprobe (external)"]
