@@ -56,7 +56,6 @@
     "pb-bug-fix",
     "pb-ci-fix",
     "pb-clip-from-moodboard",
-    "pb-content-studio",
     "pb-crew-call-sheet",
     "pb-deploy-saas",
     "pb-docs-site",
@@ -70,7 +69,6 @@
     "pb-inbox-zero",
     "pb-invoice-check",
     "pb-landing-page",
-    "pb-launch-video",
     "pb-machine-setup",
     "pb-master",
     "pb-meeting-actions",
@@ -87,8 +85,7 @@
     "pb-social-pack",
     "pb-todo",
     "pb-week-plan",
-    "pb-worktrees-land",
-    "pb-code-video"
+    "pb-worktrees-land"
   ],
   "packs": {
     "live-show": {
@@ -276,7 +273,8 @@
       "skills": [
         "pb-code-video",
         "pb-launch-video",
-        "pb-content-studio"
+        "pb-content-studio",
+        "creative-direction"
       ]
     },
     "business": {
