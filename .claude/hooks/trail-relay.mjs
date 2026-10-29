@@ -65,12 +65,29 @@ async function prepare(input, { agent, event, env }) {
   return JSON.stringify(ev);
 }
 
+// Windows caps a command line at 32767 chars, so bigger bodies cannot travel in argv.
+const ARGV_BODY_MAX = 30000;
+
+// The caller never holds a socket: a process that exits with a fetch in flight trips a libuv
+// assertion on Windows (#197). Bodies too big for argv go through a stdin pipe, except on
+// Windows, where they are dropped (best-effort telemetry; a pipe is a handle at exit too).
+function spawnWorker(body, env = process.env) {
+  const here = fileURLToPath(import.meta.url);
+  const opts = { detached: true, windowsHide: true, env };
+  if (body.length < ARGV_BODY_MAX) {
+    spawn(process.execPath, [here, '--relay-worker', '--relay-send', body], { ...opts, stdio: 'ignore' }).unref();
+  } else if (process.platform !== 'win32') {
+    const child = spawn(process.execPath, [here, '--relay-worker'], { ...opts, stdio: ['pipe', 'ignore', 'ignore'] });
+    child.stdin.end(body);
+    child.unref();
+  }
+}
+
 // In-process entry. No running map: returns before anything is imported, spawned or sent.
-export async function hook(input, { agent = 'claude', event, env = process.env, timeoutMs } = {}) {
+export async function hook(input, { agent = 'claude', event, env = process.env } = {}) {
   try {
-    const ports = relayPorts(env);
-    if (!ports.length || !input || typeof input !== 'object') return NONE;
-    await post(await prepare(input, { agent, event, env }), ports, timeoutMs);
+    if (!relayPorts(env).length || !input || typeof input !== 'object') return NONE;
+    spawnWorker(await prepare(input, { agent, event, env }), env);
   } catch {}
   return NONE;
 }
@@ -145,26 +162,6 @@ if (isMain()) {
   const body = await prepare(input, { agent: arg('--agent'), event: arg('--event'), env: process.env });
 
   // Detach slow network I/O: spawn a background worker so the hook returns immediately.
-  try {
-    const here = fileURLToPath(import.meta.url);
-    if (body.length < 65536) {
-      const child = spawn(process.execPath, [here, '--relay-worker', '--relay-send', body], {
-        detached: true,
-        windowsHide: true,
-        stdio: 'ignore',
-        env: process.env,
-      });
-      child.unref();
-    } else {
-      const child = spawn(process.execPath, [here, '--relay-worker'], {
-        detached: true,
-        windowsHide: true,
-        stdio: ['pipe', 'ignore', 'ignore'],
-        env: process.env,
-      });
-      child.stdin.end(body);
-      child.unref();
-    }
-  } catch {}
+  try { spawnWorker(body); } catch {}
   process.exit(0);
 }
