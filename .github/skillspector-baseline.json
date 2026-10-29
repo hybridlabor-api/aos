@@ -58,5 +58,41 @@
     "id": "P6",
     "file": "scripts/lib/plan-canvas/annotation/proxy.mjs",
     "reason": "The P6 hit is the word 'directives' in the cspWithNonce() Content-Security-Policy transform, a pure header rewrite in a proxy that listens only on 127.0.0.1 and guards every request with checkRequest()."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "RP1",
+    "file": "scripts/aos-project-doctor.mjs",
+    "reason": "RP1 triggers because 'aos project init' resembles a remote code execution command, but it is the name of our CLI subcommand."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "RA2",
+    "file": "SKILL.md",
+    "reason": "RA2 triggers because 'aos project init' matches patterns for shell command execution but it's referencing our own tool."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "PE3",
+    "file": "scripts/aos-project-doctor.mjs",
+    "reason": "PE3 triggers because 'aos project init' matches potential payload delivery names, but it is just documentation referencing our CLI command."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "AS1",
+    "file": "SKILL.md",
+    "reason": "AS1 triggers because of the use of 'aos project init' as a command pattern."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "PE3",
+    "file": "assets/openwikiignore.template",
+    "reason": "PE3 triggers on common ignore file templates but contains no malicious payloads."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "PE3",
+    "file": "SKILL.md",
+    "reason": "PE3 triggers because 'aos project init' matches potential payload delivery names, but it is just documentation referencing our CLI command."
   }
 ]

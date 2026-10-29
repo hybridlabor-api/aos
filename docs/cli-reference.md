@@ -72,6 +72,7 @@ aos <command> --help
 | `context` | `aos context [full\|orchestrator\|worker\|small]` | Show or set the context profile. |
 | `skills` | `aos skills [status\|lean\|smart [--refresh] [--top=N] [--groups=a,b]\|groups <a,b>\|full] [--dry-run]` | Show or set the skill library mode (lean routers, smart most-used, groups, full). |
 | `team` | `aos team [list\|show\|new] ...` | Manage and inspect agent teams (same as aos-team). |
+| `project` | `aos project init --files` | Project-specific rule file generation. |
 | `help` | `aos help [<cli>] [--all] [--json]` | Print help for aos, one CLI, or all CLIs (--all [--json]). |
 
 | Option | What it does |
