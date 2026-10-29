@@ -58,5 +58,11 @@
     "id": "P6",
     "file": "scripts/lib/plan-canvas/annotation/proxy.mjs",
     "reason": "The P6 hit is the word 'directives' in the cspWithNonce() Content-Security-Policy transform, a pure header rewrite in a proxy that listens only on 127.0.0.1 and guards every request with checkRequest()."
+  },
+  {
+    "skill": "playbooks/pb-idea-to-launch",
+    "id": "TM1",
+    "file": "SKILL.md",
+    "reason": "The TM1 hit is due to the phrase 'never any other visibility' which enforces private repo creation, it is a security control rather than evasion."
   }
 ]
