@@ -58,5 +58,47 @@
     "id": "P6",
     "file": "scripts/lib/plan-canvas/annotation/proxy.mjs",
     "reason": "The P6 hit is the word 'directives' in the cspWithNonce() Content-Security-Policy transform, a pure header rewrite in a proxy that listens only on 127.0.0.1 and guards every request with checkRequest()."
+  },
+  {
+    "skill": "basic/godmode-ui-ux",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "Upstream attribution comment"
+  },
+  {
+    "skill": "basic/godmode-shipping",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "Upstream attribution comment"
+  },
+  {
+    "skill": "basic/godmode-media-creation",
+    "id": "EA2",
+    "file": "SKILL.md",
+    "reason": "Description block marker"
+  },
+  {
+    "skill": "basic/godmode-media-creation",
+    "id": "RP1",
+    "file": "SKILL.md",
+    "reason": "Description block marker"
+  },
+  {
+    "skill": "basic/godmode-engineering",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "Upstream attribution comment"
+  },
+  {
+    "skill": "basic/bdb-eventagency-skill",
+    "id": "EA2",
+    "file": "SKILL.md",
+    "reason": "Description block marker"
+  },
+  {
+    "skill": "basic/bdb-eventagency-skill",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "Upstream attribution comment"
   }
 ]
