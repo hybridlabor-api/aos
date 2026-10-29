@@ -732,15 +732,15 @@ SOFTWARE.
 
 ## sohaibt/product-mode
 
-<https://github.com/sohaibt/product-mode> — MIT.
-Copyright (c) 2025 Sohaib Tariq.
+- **Upstream:** <https://github.com/sohaibt/product-mode>
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
 
-Adapted ideas for product framing (problem, scope, unknowns, success measure) in the `pb-code-video` playbook.
+Adapted Product framing methodology.
 
 ```
 MIT License
 
-Copyright (c) 2025 Sohaib Tariq
+Copyright (c) 2026 Sohaib Thiab
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -764,14 +764,14 @@ SOFTWARE.
 ## blixvip/NullMotion
 
 <https://github.com/blixvip/NullMotion> — MIT.
-Copyright (c) 2026 blixvip
+Copyright (c) 2026 blixvip and Null Motion contributors
 
 Adapted ideas for rough-versus-final review per section in the `pb-code-video` playbook.
 
 ```
 MIT License
 
-Copyright (c) 2026 blixvip
+Copyright (c) 2026 blixvip and Null Motion contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -795,14 +795,14 @@ SOFTWARE.
 ## cbrock84/headcount
 
 <https://github.com/cbrock84/headcount> — MIT.
-Copyright (c) 2026 cbrock84
+Copyright (c) 2026 Chris Brock
 
 Adapted ideas for namespaced domain groups in the `pb-code-video` playbook.
 
 ```
 MIT License
 
-Copyright (c) 2026 cbrock84
+Copyright (c) 2026 Chris Brock
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

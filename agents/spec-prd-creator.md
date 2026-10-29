@@ -25,4 +25,5 @@ Before handing the spec to the dispatcher, open it in the Plan Canvas for human 
 - Every user story carries acceptance criteria that a test could check; "works well" is not an acceptance criterion.
 - Open questions are listed, not resolved by guessing — an unresolved question in the spec is honest, an invented answer is a defect.
 - Read the existing codebase, `.openwiki/`, and prior specs before writing; a spec that contradicts the current architecture without saying so is a misread.
+- Include a Product framing section in the spec. Define the user and the problem. List scope in and scope out. Document trade-offs. Mark unknowns as assumptions. Define the success measure with a number.
 - The spec is a proposal until the user's GO; the dispatcher owns every next step, never this agent.
