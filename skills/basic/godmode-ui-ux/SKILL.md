@@ -10,6 +10,8 @@ This skill is the single source of truth for all design decisions. It replaces: 
 
 **Routing:** Component lookup order: the project's own design system and sources file first (its components, tokens, `DESIGN.md`); the BDB library (`@bdb` registry; version-pinned unpkg entry `https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json` in `components.json`) only when the project opts in; then the verified registries listed in the UI library's `docs/sources.md` (link-only entries are documentation links, never code sources).
 
+**Optional first step:** for a new visual identity or campaign direction, run `creative-direction` before this skill; its brief (insight, concept, constraints) is the input here.
+
 ## Plan first
 
 Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
@@ -197,6 +199,7 @@ Master orchestration skill for UI/UX design, enforcing high-agency design taste 
 - **web-performance-optimization** — Optimize website and web application performance including loading speed, Core Web Vitals, bundle size, caching strategies, and runtime performance
 - **wcag-audit-patterns** — Comprehensive guide to auditing web content against WCAG 2.2 guidelines with actionable remediation strategies.
 - **ux-persuasion-engineer** — Behavioral UX choice architecture, friction audits and commitment design to guide users without coercion. Use for conversion flows, onboarding or checkout.
+- **creative-direction** — Use before UI/UX, motion, visual identity or campaign work to find the insight and the idea, then hand one brief to godmode-ui-ux, prototype or bdbdesignpro. Not for final copy or media planning.
 - **seo** — Broad SEO audit across technical SEO, on-page, schema, sitemaps, content quality, AI readiness and GEO. Use as umbrella for a full SEO analysis or strategy.
 - **seo-audit** — Diagnose and audit SEO issues affecting crawlability, indexation, rankings, and organic performance.
 - **schema-markup** — Design, validate, and optimize schema.org structured data for eligibility, correctness, and measurable SEO impact.

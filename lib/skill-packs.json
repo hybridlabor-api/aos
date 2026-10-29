@@ -133,6 +133,7 @@
         "web-performance-optimization",
         "wcag-audit-patterns",
         "ux-persuasion-engineer",
+        "creative-direction",
         "seo",
         "seo-audit",
         "schema-markup",
@@ -273,8 +274,7 @@
       "skills": [
         "pb-code-video",
         "pb-launch-video",
-        "pb-content-studio",
-        "creative-direction"
+        "pb-content-studio"
       ]
     },
     "business": {

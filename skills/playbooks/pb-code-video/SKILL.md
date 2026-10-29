@@ -7,7 +7,7 @@ kind: playbook
 trigger: ["make a video", "create a demo", "generate a video", "render a reel", "edit a video", "animate a motion graphic", "screen recording", "launch film", "promo", "walkthrough", "explainer"]
 inputs: [goal, audience, duration, source_assets]
 requires:
-  skills: [pb-launch-video, pb-content-studio, remotion, brag, "creative-direction (external)", bdbdesignpro]
+  skills: [pb-launch-video, pb-content-studio, remotion, brag, creative-direction, bdbdesignpro]
   agents: []
   mcps: []
   store: []
