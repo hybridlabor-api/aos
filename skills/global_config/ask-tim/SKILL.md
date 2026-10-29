@@ -415,6 +415,12 @@ Hardware & PCB: KiCad, schematics, layouts, DRC, manufacturing (external skills)
 
 **Install:** `aos store install --pack hardware`
 
+### video
+
+Video creation and rendering: routes, engines and handoffs
+
+**Install:** `aos store install --pack video`
+
 ### business
 
 Agentur & Business: project management, research, automation, APIs, automation
