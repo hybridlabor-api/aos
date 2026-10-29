@@ -1653,7 +1653,7 @@ aos-uninstall --dry-run    # listar tudo, apagar nada
 - Uma skill é um diretório com `SKILL.md`; o frontmatter precisa de `name` (igual ao diretório), `description` e `category`. O `npm run validate` impõe o contrato, como o CI faz em cada push.
 - `npm test` corre o self-test do validador, a verificação do manifest de plugin e os testes do instalador, store, doctor e hooks entre harnesses.
 - `.claude-plugin/plugin.json` e `marketplace.json` são gerados por `npm run plugin:build` e verificados por `npm run plugin:check`. Existem hoje; o caminho de instalação pelo marketplace do Claude Code ainda está a ser finalizado, por isso o instalador acima continua a ser o caminho suportado.
-- Releases são cortados pelo release-please a partir de Conventional Commits; não bump o `package.json` à mão. `feat:` significa um bump minor.
+- Releases são cortados pelo release-please a partir de Conventional Commits; não bump o `package.json` à mão. Todo release é um patch (5.4.x), inclusive `feat:`; minor ou major só com um rodapé `Release-As:`.
 - Skills derivadas de outros projetos registam `source:` no frontmatter e uma entrada em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Encontrou um bug ou quer que se acrescente uma skill? [Abrir um issue](https://github.com/hybridlabor-api/aos/issues).

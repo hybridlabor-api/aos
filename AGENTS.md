@@ -147,8 +147,9 @@ watching — do not read the hook's silence as permission.
 
 `release-please` (`.github/workflows/release-please.yml`) opens a release PR
 by parsing commit messages since the last release; an unprefixed subject is
-invisible to it. `feat:` always triggers a **minor** bump no matter how small
-the change, so reserve it strictly:
+invisible to it. Versioning is `always-bump-patch`: every release is a patch
+(5.4.x), `feat:` included; a minor or major release only comes from an explicit
+`Release-As:` footer. Still reserve `feat:` strictly, it heads the changelog:
 
 | Prefix | Use for |
 |---|---|

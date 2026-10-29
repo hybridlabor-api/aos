@@ -1652,7 +1652,7 @@ aos-uninstall --dry-run    # alles listen, nichts löschen
 - Ein Skill ist ein Verzeichnis mit `SKILL.md`; das Frontmatter braucht `name` (gleich dem Verzeichnis), `description` und `category`. `npm run validate` erzwingt den Contract, ebenso CI bei jedem Push.
 - `npm test` führt den Validator-Selftest, den Plugin-Manifest-Check und die Installer-, Store-, Doctor- und Cross-Harness-Hook-Tests aus.
 - `.claude-plugin/plugin.json` und `marketplace.json` werden von `npm run plugin:build` generiert und von `npm run plugin:check` geprüft. Sie existieren heute; der Claude-Code-Marketplace-Installationsweg wird noch finalisiert, also bleibt der Installer oben der unterstützte Weg.
-- Releases werden von release-please aus Conventional Commits geschnitten; `package.json` nicht von Hand bumpen. `feat:` bedeutet einen Minor-Bump.
+- Releases werden von release-please aus Conventional Commits geschnitten; `package.json` nicht von Hand bumpen. Jedes Release ist ein Patch (5.4.x), auch bei `feat:`; Minor oder Major nur über einen `Release-As:`-Footer.
 - Skills, die aus anderen Projekten abgeleitet sind, vermerken `source:` im Frontmatter und einen Eintrag in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Einen Bug gefunden oder willst du einen Skill hinzugefügt haben? [Ein Issue öffnen](https://github.com/hybridlabor-api/aos/issues).
