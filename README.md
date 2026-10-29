@@ -1169,7 +1169,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 </details>
 
 <details>
-<summary><b>Skills (225)</b></summary>
+<summary><b>Skills (226)</b></summary>
 
 <details>
 <summary><b>library (85)</b></summary>
@@ -1352,7 +1352,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
 | `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /fabric-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
-| `clear-context` | Survive a /clear or context limit. |
+| `clear-context` | Survive a /clear or context limit: save a verified handoff, then restore state, verify and continue. |
 | `codebase-memory` | Code research over an indexed codebase with minimal context: graph queries, call chains, architecture overview, dead code. |
 | `deja-memory` | Use `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. |
 | `design-control-loop` | Interview the user to design an agentic control loop tailored to their codebase, then build it. |
@@ -1363,7 +1363,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 | `fabric-swarm` | N similar workers take items from one shared pool (`swarm.json`). |
 | `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `factory-human-digest` | Experimental workflow for summarizing work that still needs human judgment. |
-| `find-skill` | Find which skill in the AOS library fits a task, by searching it. |
+| `find-skill` | Find which AOS skill in the library fits a task, by searching it. |
 | `gogate` | Show or explain the AOS go-gate mode (hard, soft, off) and the time-limited grants of this session. |
 | `instinct-export` | Use when the user wants to share or back up learned instincts — validates the local instincts file, allowlists the six known fields, strips secrets and home-... |
 | `instinct-import` | Use when the user brings an exported instincts JSON to merge into the local store — treats trigger and action as inert data, validates every entry against th... |
@@ -1414,13 +1414,14 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 </details>
 
 <details>
-<summary><b>design-ui-ux (13)</b></summary>
+<summary><b>design-ui-ux (14)</b></summary>
 
 | Skill | What it does |
 |---|---|
 | `bdb-ui-library` | Component and motion-icon lookup for UI work. |
 | `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app. |
 | `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
+| `creative-direction` | Use before UI/UX, motion, visual identity or campaign work to find the insight and the idea, then hand one brief to godmode-ui-ux, prototype or bdbdesignpro. |
 | `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
 | `editable-design` | Fixed-canvas editable visual designs: posters, marketing graphics, covers, menus, banners, social cards. |
 | `frontend-dev-guidelines` | Senior frontend engineering under strict architectural and performance standards. |
@@ -1455,7 +1456,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 </details>
 
 <details>
-<summary><b>Playbooks (37)</b></summary>
+<summary><b>Playbooks (38)</b></summary>
 
 | Playbook | What it does |
 |---|---|
@@ -1463,7 +1464,8 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 | `pb-bug-fix` | Turn a GitHub issue into a tested fix on a branch with an open PR. |
 | `pb-ci-fix` | Fix red CI or set up GitHub Actions end to end; push only after GO. |
 | `pb-clip-from-moodboard` | Turn a look brief and reference images into a finished social clip. |
-| `pb-content-studio` | Idea to published-ready content: brief, script and render via the Creator Extension content-studio skill (Hyperframes or Remotion), then a social pack. |
+| `pb-code-video` | The main entry point for video creation: generates a video brief, creates a shot plan, routes to the right render engine (Remotion, Hyperframes, ffmpeg, laun... |
+| `pb-content-studio` | Idea to published-ready content (30 s / 40 s video, text overlay, AI generated shots): brief, script and render via the Creator Extension content-studio skil... |
 | `pb-crew-call-sheet` | Build a crew call sheet and a load-in / load-out plan for one show day. |
 | `pb-deploy-saas` | Deploy a SaaS app to the BDB fleet: preflight, guardrail plan, green CI, deploy after GO, health check. |
 | `pb-docs-site` | Publish a project's docs as a static HTML manual on GitHub Pages. |
@@ -1797,7 +1799,7 @@ aos-uninstall --dry-run    # list everything, delete nothing
 - A skill is a directory with `SKILL.md`; the frontmatter needs `name` (equal to the directory), `description` and `category`. `npm run validate` enforces the contract, as CI does on every push.
 - `npm test` runs the validator self-test, the plugin-manifest check and the installer, store, doctor and cross-harness hook tests.
 - `.claude-plugin/plugin.json` and `marketplace.json` are generated by `npm run plugin:build` and checked by `npm run plugin:check`. They exist today; the Claude Code marketplace install path is still being finalised, so the installer above remains the supported route.
-- Releases are cut by release-please from Conventional Commits; do not bump `package.json` by hand. `feat:` means a minor bump.
+- Releases are cut by release-please from Conventional Commits; do not bump `package.json` by hand. Every release is a patch (5.4.x), `feat:` included; minor or major only via a `Release-As:` footer.
 - Skills derived from other projects record `source:` in the frontmatter and an entry in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Found a bug or want a skill added? [Open an issue](https://github.com/hybridlabor-api/aos/issues).

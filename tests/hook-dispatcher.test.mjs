@@ -204,10 +204,10 @@ test('trail-relay with no running map sends nothing, imports nothing and spawns 
     fs.writeFileSync(path.join(emptyHome, '.aos', 'endpoints.json'), JSON.stringify({ schema: 1, agenttrail: [{ port: 59998, pid: 2 ** 22 + 12345 }] }));
     await relay.hook({ hook_event_name: 'PostToolUse', session_id: 's', cwd: os.tmpdir() }, { env });
     assert.equal(fetches, 0);
-    // a live map is posted to once, on its own port only
+    // a live map is never posted in-process (#197): the detached worker sends it (hook-budgets covers delivery)
     fs.writeFileSync(path.join(emptyHome, '.aos', 'endpoints.json'), JSON.stringify({ schema: 1, agenttrail: [{ port: 59998, pid: process.pid }] }));
     await relay.hook({ hook_event_name: 'PostToolUse', session_id: 's', cwd: os.tmpdir() }, { env });
-    assert.equal(fetches, 1);
+    assert.equal(fetches, 0);
   } finally {
     globalThis.fetch = realFetch;
   }

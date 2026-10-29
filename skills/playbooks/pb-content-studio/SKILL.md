@@ -1,12 +1,12 @@
 ---
 name: pb-content-studio
 description: >-
-  Idea to published-ready content: brief, script and render via the Creator
+  Idea to published-ready content (30 s / 40 s video, text overlay, AI generated shots): brief, script and render via the Creator
   Extension content-studio skill (Hyperframes or Remotion), then a social
   pack.
 category: media-eventtech
 kind: playbook
-trigger: ["make a reel", "idea to video", "content from this idea", "script and render a clip"]
+trigger: ["make a reel", "idea to video", "content from this idea", "script and render a clip", "30 s video", "40 s video", "text overlay"]
 inputs: [idea, platforms, length, formats, "source_url?"]
 requires:
   skills: [brag, remotion, pb-launch-video, pb-social-pack, "content-studio (external)", "hyperframes (external)", "ffprobe (external)"]

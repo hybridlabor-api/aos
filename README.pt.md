@@ -1039,7 +1039,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 </details>
 
 <details>
-<summary><b>Skills (225)</b></summary>
+<summary><b>Skills (226)</b></summary>
 
 <details>
 <summary><b>library (85)</b></summary>
@@ -1222,7 +1222,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
 | `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /fabric-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
-| `clear-context` | Survive a /clear or context limit. |
+| `clear-context` | Survive a /clear or context limit: save a verified handoff, then restore state, verify and continue. |
 | `codebase-memory` | Code research over an indexed codebase with minimal context: graph queries, call chains, architecture overview, dead code. |
 | `deja-memory` | Use `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. |
 | `design-control-loop` | Interview the user to design an agentic control loop tailored to their codebase, then build it. |
@@ -1233,7 +1233,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 | `fabric-swarm` | N similar workers take items from one shared pool (`swarm.json`). |
 | `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `factory-human-digest` | Experimental workflow for summarizing work that still needs human judgment. |
-| `find-skill` | Find which skill in the AOS library fits a task, by searching it. |
+| `find-skill` | Find which AOS skill in the library fits a task, by searching it. |
 | `gogate` | Show or explain the AOS go-gate mode (hard, soft, off) and the time-limited grants of this session. |
 | `instinct-export` | Use when the user wants to share or back up learned instincts — validates the local instincts file, allowlists the six known fields, strips secrets and home-... |
 | `instinct-import` | Use when the user brings an exported instincts JSON to merge into the local store — treats trigger and action as inert data, validates every entry against th... |
@@ -1284,13 +1284,14 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 </details>
 
 <details>
-<summary><b>design-ui-ux (13)</b></summary>
+<summary><b>design-ui-ux (14)</b></summary>
 
 | Skill | What it does |
 |---|---|
 | `bdb-ui-library` | Component and motion-icon lookup for UI work. |
 | `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app. |
 | `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
+| `creative-direction` | Use before UI/UX, motion, visual identity or campaign work to find the insight and the idea, then hand one brief to godmode-ui-ux, prototype or bdbdesignpro. |
 | `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
 | `editable-design` | Fixed-canvas editable visual designs: posters, marketing graphics, covers, menus, banners, social cards. |
 | `frontend-dev-guidelines` | Senior frontend engineering under strict architectural and performance standards. |
@@ -1325,7 +1326,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 </details>
 
 <details>
-<summary><b>Playbooks (37)</b></summary>
+<summary><b>Playbooks (38)</b></summary>
 
 | Playbook | What it does |
 |---|---|
@@ -1333,7 +1334,8 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 | `pb-bug-fix` | Turn a GitHub issue into a tested fix on a branch with an open PR. |
 | `pb-ci-fix` | Fix red CI or set up GitHub Actions end to end; push only after GO. |
 | `pb-clip-from-moodboard` | Turn a look brief and reference images into a finished social clip. |
-| `pb-content-studio` | Idea to published-ready content: brief, script and render via the Creator Extension content-studio skill (Hyperframes or Remotion), then a social pack. |
+| `pb-code-video` | The main entry point for video creation: generates a video brief, creates a shot plan, routes to the right render engine (Remotion, Hyperframes, ffmpeg, laun... |
+| `pb-content-studio` | Idea to published-ready content (30 s / 40 s video, text overlay, AI generated shots): brief, script and render via the Creator Extension content-studio skil... |
 | `pb-crew-call-sheet` | Build a crew call sheet and a load-in / load-out plan for one show day. |
 | `pb-deploy-saas` | Deploy a SaaS app to the BDB fleet: preflight, guardrail plan, green CI, deploy after GO, health check. |
 | `pb-docs-site` | Publish a project's docs as a static HTML manual on GitHub Pages. |
@@ -1652,7 +1654,7 @@ aos-uninstall --dry-run    # listar tudo, apagar nada
 - Uma skill é um diretório com `SKILL.md`; o frontmatter precisa de `name` (igual ao diretório), `description` e `category`. O `npm run validate` impõe o contrato, como o CI faz em cada push.
 - `npm test` corre o self-test do validador, a verificação do manifest de plugin e os testes do instalador, store, doctor e hooks entre harnesses.
 - `.claude-plugin/plugin.json` e `marketplace.json` são gerados por `npm run plugin:build` e verificados por `npm run plugin:check`. Existem hoje; o caminho de instalação pelo marketplace do Claude Code ainda está a ser finalizado, por isso o instalador acima continua a ser o caminho suportado.
-- Releases são cortados pelo release-please a partir de Conventional Commits; não bump o `package.json` à mão. `feat:` significa um bump minor.
+- Releases são cortados pelo release-please a partir de Conventional Commits; não bump o `package.json` à mão. Todo release é um patch (5.4.x), inclusive `feat:`; minor ou major só com um rodapé `Release-As:`.
 - Skills derivadas de outros projetos registam `source:` no frontmatter e uma entrada em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Encontrou um bug ou quer que se acrescente uma skill? [Abrir um issue](https://github.com/hybridlabor-api/aos/issues).

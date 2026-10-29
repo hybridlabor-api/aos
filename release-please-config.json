@@ -79,7 +79,8 @@
           "path": ".claude-plugin/marketplace.json",
           "jsonpath": "$.plugins[4].version"
         }
-      ]
+      ],
+      "versioning": "always-bump-patch"
     }
   }
 }

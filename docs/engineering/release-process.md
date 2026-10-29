@@ -8,8 +8,9 @@ Process as of 5.3.0, verified from CI config, scripts and git history. Repo:
 - `.github/workflows/release-please.yml` runs
   `googleapis/release-please-action` (pinned to the v4 sha) on `main` with
   `release-please-config.json` and `.release-please-manifest.json`.
-- Version bumps come from Conventional Commits only: `feat:` forces a minor
-  bump regardless of size; `fix:` a patch; `chore:`/`docs:`/`refactor:` are
+- Version bumps come from Conventional Commits only, with `"versioning":
+  "always-bump-patch"`: `feat:` and `fix:` both cut a patch release (5.4.x);
+  a minor or major release needs an explicit `Release-As: x.y.z` footer; `chore:`/`docs:`/`refactor:` are
   invisible to the bump math (docs: no changelog line either). This is why
   subject prefixes matter — an unprefixed subject is invisible to the bot
   (AGENTS.md "Release automation").
