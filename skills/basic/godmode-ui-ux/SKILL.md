@@ -183,10 +183,10 @@ Master orchestration skill for UI/UX design, enforcing high-agency design taste 
 ## Web design Pack Skills
 
 <!-- aos:pack-index:start -->
-- **bdbdesignpro** — >-
-- **bdb-ui-library** — >-
-- **editable-design** — >-
-- **bdb-visual-edit** — >-
+- **bdbdesignpro** — Choose animation engines, define DTCG motion tokens, add scroll effects and audit motion accessibility. Use for motion design work.
+- **bdb-ui-library** — Component and motion-icon lookup for UI work. In BDB projects routes to the BDB motion library first. Use when building UI, motion icons or loaders.
+- **editable-design** — Fixed-canvas editable visual designs: posters, banners, covers with HTML/PNG output and a Design Replay. Use for poster.json projects, not websites.
+- **bdb-visual-edit** — Edit the source of a locally running app after a visual-edit item from plan-canvas. Posts a diff plan, edits one file after a yes. Not for remote sites.
 - **senior-frontend** — Use when building React components, optimizing Next.js performance, implementing accessibility, or reviewing frontend code quality for modern web applications.
 - **shadcn** — Use when adding, customizing, or troubleshooting shadcn/ui components to build modern, accessible design systems.
 - **tailwind-patterns** — Use when styling components with Tailwind CSS v4, managing CSS-first configurations, writing container queries, or implementing design token architecture.

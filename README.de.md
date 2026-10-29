@@ -1038,7 +1038,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Skills (219)</b></summary>
+<summary><b>Skills (225)</b></summary>
 
 <details>
 <summary><b>library (85)</b></summary>
@@ -1152,14 +1152,14 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `dispatching-parallel-agents` | Use when facing 2+ independent tasks that can be worked on without shared state. |
 | `domain-modeling` | Build and sharpen a project's domain model. |
 | `executing-plans` | Execute a written implementation plan in a separate session with review checkpoints. |
-| `factory` | >- |
-| `factory-babysit-pr` | >- |
+| `factory` | Configure an autonomous software delivery factory. |
+| `factory-babysit-pr` | Monitor one explicitly authorized pull request. |
 | `factory-collect` | Experimental workflow for collecting and triaging product feedback, telemetry, runtime errors, and issue reports. |
 | `factory-lookback` | Experimental workflow for auditing recurring feedback, telemetry, and errors to find systemic fixes. |
-| `factory-recover` | >- |
+| `factory-recover` | Find interrupted coding runs and report resume candidates. |
 | `factory-review-prs` | Experimental workflow for reviewing configured repositories' pull requests. |
-| `factory-ship` | >- |
-| `factory-watchdog` | >- |
+| `factory-ship` | Experimental workflow for publishing and completing configured software delivery work. |
+| `factory-watchdog` | Monitor explicitly authorized delivery tasks and report stalled work. |
 | `finishing-a-development-branch` | Decide how to integrate finished work once implementation is complete and tests pass. |
 | `github-actions-generator` | Create, generate, or scaffold GitHub Actions workflows and CI/CD pipelines. |
 | `github-actions-validator` | Validate, lint, audit, fix GitHub Actions workflows. |
@@ -1197,10 +1197,11 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>bdb-core (45)</b></summary>
+<summary><b>bdb-core (51)</b></summary>
 
 | Skill | What it does |
 |---|---|
+| `advisor` | Read-only second opinion at the three advisor call points: verdict and at most 10 findings, never writes. |
 | `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions with cron-friendly scheduling. |
 | `agent-memory-mcp` | Hybrid memory system: persistent, searchable knowledge management for AI agents. |
 | `agent-pipeline` | Reference for the seven-node dispatcher graph that /fabric-graph runs. |
@@ -1211,23 +1212,31 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `aos-project-init` | Interview a project folder into AOS: slug and domain, OpenWiki, memB, Synapse map, AGENTS.md. |
 | `aos-setup` | Bring a machine to a complete, verified AOS installation. |
 | `aos-store` | Browse, preview, and install AOS Core, ECC and Scenario skills and agents from a local web UI. |
+| `aos-update` | Update the installed AOS: check for a new version, preview, run the update and verify. |
 | `ask-tim` | Ask which skill or flow fits your situation. |
 | `bdb-aos` | Entry point for the BDB Agent OS suite installed as a Claude Code plugin. |
 | `bdb-deploy` | Build and deploy a project to a real server via rsync over SSH. |
 | `bdb-memb-mcp` | Model Context Protocol interface to the memB persistent agent memory layer. |
-| `aos-update` | Update the installed AOS: check for a new version, preview, run the update and verify. |
 | `bdb-updater` | Alias of `aos-update`. |
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
 | `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /fabric-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
-| `codebase-memory` | >- |
+| `clear-context` | Survive a /clear or context limit. |
+| `codebase-memory` | Code research over an indexed codebase with minimal context: graph queries, call chains, architecture overview, dead code. |
 | `deja-memory` | Use `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. |
 | `design-control-loop` | Interview the user to design an agentic control loop tailored to their codebase, then build it. |
+| `fabric` | Master entry for the fabric family: picks the fitting mode for the task and says why. |
+| `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
+| `fabric-loop` | Repeat-until-done mode with an exit check and round limits. |
+| `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
+| `fabric-swarm` | N similar workers take items from one shared pool (`swarm.json`). |
+| `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `factory-human-digest` | Experimental workflow for summarizing work that still needs human judgment. |
+| `find-skill` | Find which skill in the AOS library fits a task, by searching it. |
 | `gogate` | Show or explain the AOS go-gate mode (hard, soft, off) and the time-limited grants of this session. |
-| `instinct-export` | >- |
-| `instinct-import` | >- |
-| `instinct-status` | >- |
+| `instinct-export` | Use when the user wants to share or back up learned instincts — validates the local instincts file, allowlists the six known fields, strips secrets and home-... |
+| `instinct-import` | Use when the user brings an exported instincts JSON to merge into the local store — treats trigger and action as inert data, validates every entry against th... |
+| `instinct-status` | Use when the user wants to see what learned instincts exist, their confidence scores and how current they are — reads the local instincts file under ~/.aos/i... |
 | `loop-templates` | Repeat a task on a schedule or until a condition holds (CI until green, follow a PR to merge). |
 | `master-session` | One Claude Code session supervises several others: roster, status requests, GO board, idle notices, GO-token protocol. |
 | `mcsc` | Delegate a task to another installed CLI harness (agy, OpenCode, Codex) from inside an AOS repo. |
@@ -1238,13 +1247,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `plan-arbiter` | Compare, cross-review, merge, or arbitrate competing plans from multiple agents. |
 | `plan-canvas` | Open plans and HTML artifacts in a local browser canvas where the human annotates, chats, and approves. |
 | `quick-recap` | End each agent response with a red/yellow/green status line. |
-| `skill-create` | >- |
-| `fabric` | Master entry for the fabric family: picks the fitting mode for the task and says why. |
-| `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
-| `fabric-loop` | Repeat-until-done mode with an exit check and round limits. |
-| `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
-| `fabric-swarm` | N similar workers take items from one shared pool (`swarm.json`). |
-| `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
+| `skill-create` | Use when the user wants to capture a real repo's working patterns as a reusable skill — analyzes the local git log and diffs the agent runs itself and drafts... |
 | `stay-within-limits` | Respect 5-hour and weekly usage limits by checking usage between waves and pausing near the cap. |
 | `subagent-setup` | Configure and synchronize multi-harness subagents with optional per-harness model overrides. |
 | `synapse-integration-skill` | BDB Synapse (3D Codebase Visualizer) integration. |
@@ -1284,7 +1287,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 
 | Skill | What it does |
 |---|---|
-| `bdb-ui-library` | >- |
+| `bdb-ui-library` | Component and motion-icon lookup for UI work. |
 | `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app. |
 | `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
 | `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
@@ -1329,7 +1332,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `pb-bug-fix` | Turn a GitHub issue into a tested fix on a branch with an open PR. |
 | `pb-ci-fix` | Fix red CI or set up GitHub Actions end to end; push only after GO. |
 | `pb-clip-from-moodboard` | Turn a look brief and reference images into a finished social clip. |
-| `pb-content-studio` | >- |
+| `pb-content-studio` | Idea to published-ready content: brief, script and render via the Creator Extension content-studio skill (Hyperframes or Remotion), then a social pack. |
 | `pb-crew-call-sheet` | Build a crew call sheet and a load-in / load-out plan for one show day. |
 | `pb-deploy-saas` | Deploy a SaaS app to the BDB fleet: preflight, guardrail plan, green CI, deploy after GO, health check. |
 | `pb-docs-site` | Publish a project's docs as a static HTML manual on GitHub Pages. |

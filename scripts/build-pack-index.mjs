@@ -79,14 +79,17 @@ function readSkillDescription(skillName) {
   const map = getSkillMap();
   const loc = map[skillName];
   if (loc && fs.existsSync(loc)) {
-    const content = fs.readFileSync(loc, 'utf-8');
-    const match = content.match(/^---\n([\s\S]*?)\n---/);
-    if (match) {
-      const frontmatter = match[1];
-      const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
-      if (descMatch) {
-        return descMatch[1].trim().replace(/^["']|["']$/g, '');
+    const text = fs.readFileSync(loc, 'utf-8');
+    const m = text.match(new RegExp(`^description:[ \\t]*(.*)$`, 'm'));
+    if (m) {
+      let v = m[1].trim();
+      if (/^[>|][-+]?$/.test(v)) {
+        const rest = text.slice(m.index + m[0].length).split(/\r?\n/).slice(1);
+        const lines = [];
+        for (const l of rest) { if (/^\s+\S/.test(l)) lines.push(l.trim()); else break; }
+        v = lines.join(' ');
       }
+      return v.replace(/^["']|["']$/g, '');
     }
   }
 
