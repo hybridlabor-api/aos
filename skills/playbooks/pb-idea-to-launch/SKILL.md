@@ -43,7 +43,7 @@ On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The
 
 ## Steps
 1. Preflight — one probe `check_comfyui_health` on `comfyui-mcp` (MCP tools may be deferred in the harness: try to load the tool once via the harness MCP list before declaring it missing) → run log header — tool not loaded, call errors, or `status` is not `"online"` → log "Availability: needs the comfyui-mcp server configured in the harness (no config is shipped). Start ComfyUI and check `mcpServers.comfyui-mcp`." and mark step 5 to stop; steps 2 to 4 still run
-2. bdbrainstorm or grill-me — idea → `production_artifacts/pb-idea-to-launch-<date>/spec.md` — spec written, open questions listed
+2. bdbrainstorm or grill-me — idea → `production_artifacts/pb-idea-to-launch-<date>/spec.md` — spec written, Product framing step completed (user, problem, scope in, scope out, trade-offs, unknowns as assumptions, success measure with a number), open questions listed
 3. plan-canvas (Plan Builder mode) — the workflow and the planned prototype screens → `plan.md` in the same folder — stops for approval
 4. prototype, then fabric (architect, techlead, reviewer; no subagent support → the main session reads agents/reviewer.md and runs the review inline, using only the diff and the contract, never the session's reasoning) — spec and plan → prototype in the repo with chosen stack (Vite SPA, Go service, or Rust/Tauri desktop app; a new project: a new local directory, no remote yet) — reviewer reports no open `blocking` finding
    - Commit: a new project gets `git init` first; the reviewed prototype files are staged by explicit path (never `git add -A`) and committed — SHA in the run log; the working tree has no uncommitted product files afterwards
