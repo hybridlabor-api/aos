@@ -87,7 +87,8 @@
     "pb-social-pack",
     "pb-todo",
     "pb-week-plan",
-    "pb-worktrees-land"
+    "pb-worktrees-land",
+    "pb-code-video"
   ],
   "packs": {
     "live-show": {
@@ -115,7 +116,8 @@
         "bdb-blender-mcp",
         "brag",
         "design-spells",
-        "live-preview-canvas"
+        "live-preview-canvas",
+        "video-shotcraft"
       ]
     },
     "web-design": {
@@ -269,6 +271,19 @@
         "schematic-reverse-engineering"
       ],
       "external": true
+    },
+    "video": {
+      "description": "Video creation and rendering: routes, engines and handoffs",
+      "skills": [
+        "pb-code-video",
+        "pb-launch-video",
+        "pb-content-studio",
+        "remotion",
+        "brag",
+        "video-shotcraft",
+        "creative-direction",
+        "bdbdesignpro"
+      ]
     },
     "business": {
       "description": "Agentur & Business: project management, research, automation, APIs, automation",

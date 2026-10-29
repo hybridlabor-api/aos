@@ -1,6 +1,6 @@
 ---
 name: godmode-media-creation
-description: "Video timelines, motion graphics, media creation. Remotion, OpenMontage, TouchDesigner, audio/visuals."
+description: "Video timelines, motion graphics, media creation, animation, exact timelines, local project. Remotion, OpenMontage, TouchDesigner, audio/visuals."
 category: media-eventtech
 ---
 
@@ -206,6 +206,11 @@ Godmode Media Creation orchestrates video rendering, code-driven motion graphics
 - Assuming desktop GUI apps are running in headless CLI environments without checking availability.
 - Rendering videos without specifying explicit output path and format.
 - Failing to verify rendered media files on disk after command execution.
+
+## Execution record
+End each run with a "Loaded skills: " line naming the exact skills loaded and misses.
+Also record the chosen engine and why it was chosen, output paths, and review status.
+Never claim a skill was loaded when it was not.
 
 ## Verification
 
