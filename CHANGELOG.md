@@ -1,5 +1,30 @@
 # Changelog
 
+## [5.4.3](https://github.com/hybridlabor-api/aos/compare/v5.4.2...v5.4.3) (2026-10-29)
+
+
+### Features
+
+* **skills:** add creative-direction skill ([7777d45](https://github.com/hybridlabor-api/aos/commit/7777d4552899449ad2e33474222185ecb629b58c))
+* **skills:** add creative-direction skill (adapted from smixs/creative-director-skill) ([cb3b1c0](https://github.com/hybridlabor-api/aos/commit/cb3b1c00d3b0005324316dca9797482c598563d5))
+* **skills:** add pb-code-video entry point and video routing ([444f68a](https://github.com/hybridlabor-api/aos/commit/444f68a38a675aaf91c79d6983356eb6949a21da))
+* **skills:** add pb-code-video entry point and video routing ([fe0f883](https://github.com/hybridlabor-api/aos/commit/fe0f883886ef4c5f56a883d29ba05a959ae9c728))
+* **skills:** add pb-code-video entry point and video routing ([1b30b0f](https://github.com/hybridlabor-api/aos/commit/1b30b0f85502520e07dbfd02086251042bf0ab40))
+* **skills:** add product framing step before builds ([2118275](https://github.com/hybridlabor-api/aos/commit/2118275a32e7c7d6433f4607f466b454555077ab))
+* **skills:** add product framing step before builds ([713f926](https://github.com/hybridlabor-api/aos/commit/713f92687afdc2891b656e3efcb9d0276dadbf3b))
+* **skills:** add product framing step before builds ([18848ee](https://github.com/hybridlabor-api/aos/commit/18848ee9890133207b07c29b26c81cb5e6701423))
+* **skills:** fix test failure in pb-code-video entry point ([ae0ecf1](https://github.com/hybridlabor-api/aos/commit/ae0ecf16a254a9dd996dd66cfef7900906104544))
+* **skills:** fix test failure related to missing video-shotcraft and remotion definitions in index ([4237ec6](https://github.com/hybridlabor-api/aos/commit/4237ec6b29ee553ea503838777715e5beaef9583))
+* **skills:** move video playbooks from base to video pack ([1f55e7a](https://github.com/hybridlabor-api/aos/commit/1f55e7ae93a4c720aa1fb42dddda2009c977851d))
+
+
+### Bug Fixes
+
+* **fabric:** brief says artifacts are file paths only ([0b1f0f6](https://github.com/hybridlabor-api/aos/commit/0b1f0f6829ed51d5297b41d67f2c9c4b9f016e36))
+* **hooks:** trail relay never holds a socket in the hook dispatcher ([bd29df2](https://github.com/hybridlabor-api/aos/commit/bd29df29884c577ae3da0180a6e2e20a0cc34833))
+* **hooks:** trail relay never holds a socket in the hook dispatcher ([ccafc27](https://github.com/hybridlabor-api/aos/commit/ccafc276fa6f300858121096d69bc22a48116441)), closes [#197](https://github.com/hybridlabor-api/aos/issues/197)
+* openwiki daemon opt-in auto-commit, fabric brief artifacts as file paths ([b919886](https://github.com/hybridlabor-api/aos/commit/b9198865a0d0ccd1180860c43d807c3f0e7b7fb2))
+
 ## [5.4.2](https://github.com/hybridlabor-api/aos/compare/v5.4.2-beta.1...v5.4.2) (2026-10-28)
 
 

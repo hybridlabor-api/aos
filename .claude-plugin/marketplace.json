@@ -12,31 +12,31 @@
       "name": "bdb-aos",
       "source": "./plugins/bdb-aos",
       "description": "Full BDB Agent OS suite: 200+ curated skills, 46 subagents and the fabric pipelines for Claude Code. Gate hooks and MCP servers are installed by the AOS installer.",
-      "version": "5.4.2"
+      "version": "5.4.3"
     },
     {
       "name": "bdb-aos-fleet",
       "source": "./plugins/bdb-aos-fleet",
       "description": "Fleet band for Claude Code: which AOS sessions work or need you, context weather, read-only go-gate panel",
-      "version": "5.4.2"
+      "version": "5.4.3"
     },
     {
       "name": "bdb-aos-sessions",
       "source": "./plugins/bdb-aos-sessions",
       "description": "AOS sessions viewer for Claude Code: every session of every harness plus the ACP workers (read-only, uses the aos-sessions CLI)",
-      "version": "5.4.2"
+      "version": "5.4.3"
     },
     {
       "name": "bdb-aos-alert",
       "source": "./plugins/bdb-aos-alert",
       "description": "Alert mod for Claude Code: blinks a red bar around the prompt when the session needs you (go-gate block, permission request, question)",
-      "version": "5.4.2"
+      "version": "5.4.3"
     },
     {
       "name": "bdb-aos-control",
       "source": "./plugins/bdb-aos-control",
       "description": "AOS Control mod for Claude Code: unified cockpit for fleet, pipeline, git worktree stages and AOS settings",
-      "version": "5.4.2"
+      "version": "5.4.3"
     }
   ]
 }
