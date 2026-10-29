@@ -49,7 +49,7 @@ if (!tags.length) {
 
 const blobIds = new Set();
 for (const tag of tags) {
-    const out = execFileSync('git', ['ls-tree', '-r', tag], { cwd: root, encoding: 'utf8' });
+    const out = execFileSync('git', ['ls-tree', '-r', tag], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     for (const line of out.split('\n')) {
         const m = /^\d+ blob (\S+)\t(.*)$/.exec(line);
         if (!m) continue;
