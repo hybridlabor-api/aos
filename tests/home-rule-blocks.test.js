@@ -29,13 +29,15 @@ test('injectHarnessRules writes the managed blocks into HOME files when run from
     assert.deepEqual(fs.readdirSync(cwd), [], 'nothing written into the cwd');
 });
 
-test('a HOME without AGENTS.md does not get one created (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
+test('a HOME without AGENTS.md gets one created with managed blocks (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-a4-home-'));
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-a4-repo-'));
     const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(INSTALLER)}).injectHarnessRules()`], {
         cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_PLUGIN_CLI: 'off' }, encoding: 'utf8', timeout: 120000,
     });
     assert.equal(r.status, 0, r.stderr);
-    assert.ok(!fs.existsSync(path.join(home, 'AGENTS.md')));
-    assert.ok(!fs.readFileSync(path.join(home, 'CLAUDE.md'), 'utf8').includes(routing.START));
+    assert.ok(fs.existsSync(path.join(home, 'AGENTS.md')));
+    const agents = fs.readFileSync(path.join(home, 'AGENTS.md'), 'utf8');
+    assert.ok(agents.includes(routing.START), 'routing block should be present');
+    assert.ok(agents.includes(destructive.START), 'destructive block should be present');
 });
