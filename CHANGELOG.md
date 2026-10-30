@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.4.5](https://github.com/hybridlabor-api/aos/compare/v5.4.4...v5.4.5) (2026-10-30)
+
+
+### Features
+
+* **cli:** add aos project init --files to create missing rule files ([99d9c62](https://github.com/hybridlabor-api/aos/commit/99d9c620d37e8f74e532779a2f8f8b0db09830b2))
+
+
+### Bug Fixes
+
+* **cli:** aos project stops on unknown forms, tests use a temp HOME ([df51e13](https://github.com/hybridlabor-api/aos/commit/df51e137384a568f57b8592374cca3ec1e1d1d7d))
+* **scripts:** parse folded YAML descriptions in catalogue generators ([411a5f8](https://github.com/hybridlabor-api/aos/commit/411a5f8d8e3595c8a7291ddc698a842c2524bc2a))
+* **update:** switch to stable only on explicit consent, never on dry run ([e6d930f](https://github.com/hybridlabor-api/aos/commit/e6d930f4da8a252663af28188eb87b8bb5338a86))
+* **update:** update from beta to stable release properly, add force hint ([5826555](https://github.com/hybridlabor-api/aos/commit/58265551764493a41457dc787ab02f600801ebd3))
+* **update:** update from beta to stable release properly, add force hint ([3bb76b1](https://github.com/hybridlabor-api/aos/commit/3bb76b12e4eec26aff8e5e4efa62e33ca0262ccf))
+
 ## [5.4.4](https://github.com/hybridlabor-api/aos/compare/v5.4.3...v5.4.4) (2026-10-29)
 
 
