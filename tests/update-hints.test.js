@@ -126,3 +126,23 @@ test('npm missing or offline: no npm-global hint, update still succeeds', async 
     assert.strictEqual(code, 0);
     assert.doesNotMatch(m.text(), /npm uninstall -g/);
 });
+
+test('a same-version reinstall without --force logs a hint if drift is detected', async () => {
+    const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+
+    // Simulate manifest drift for kernel package.
+    m.host.detectManifestDrift = () => ({ drifted: true, reason: 'modified bin/aos' });
+    // Same version remote so it doesn't normally update
+    const opts = m.opts({ npmView: async () => runningVersion });
+
+    m.host.loadInstallManifest = () => ({
+        [path.join(m.home, 'bin', 'aos')]: { version: runningVersion, sha256: 'oldhash' }
+    });
+    fs.mkdirSync(path.join(m.home, 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(m.home, 'bin', 'aos'), 'new content');
+
+    const plan = await menu.planUpdate(m.host, opts);
+    const kRow = plan.find((p) => p.id === 'kernel');
+    assert.strictEqual(kRow.changed, true);
+    assert.strictEqual(kRow.reason, 'modified aos; same-version reinstall still needs --force');
+});
