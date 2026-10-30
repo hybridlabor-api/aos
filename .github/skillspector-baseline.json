@@ -160,5 +160,41 @@
     "id": "AS1",
     "file": "scripts/openwiki_daemon.py",
     "reason": "The path is a fallback location of the skill's own openwiki_helper.py under ~/.gemini/config/skills/; no agent config is read."
+  },
+  {
+    "skill": "basic/bdb-eventagency-skill",
+    "id": "EA2",
+    "file": "SKILL.md",
+    "reason": "The EA2 hit is due to the word OVERDUE in the feedback layer documentation."
+  },
+  {
+    "skill": "basic/bdbmediastorm",
+    "id": "EA2",
+    "file": "SKILL.md",
+    "reason": "The EA2 hit is triggered by standard workflow instructions."
+  },
+  {
+    "skill": "basic/godmode-engineering",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is the <!-- aos:pack-index:start/end --> marker pair that scripts/build-pack-index.mjs uses to regenerate the pack skill list."
+  },
+  {
+    "skill": "basic/godmode-media-creation",
+    "id": "RP1",
+    "file": "SKILL.md",
+    "reason": "The RP1 hits are valid commands to render video using remotion inside the workspace."
+  },
+  {
+    "skill": "basic/godmode-media-creation",
+    "id": "EA2",
+    "file": "SKILL.md",
+    "reason": "The EA2 hit is a valid check against headless CLI environments."
+  },
+  {
+    "skill": "basic/godmode-shipping",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is the <!-- aos:pack-index:start/end --> marker pair that scripts/build-pack-index.mjs uses to regenerate the pack skill list."
   }
 ]
