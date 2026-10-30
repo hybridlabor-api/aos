@@ -281,10 +281,10 @@ Channel attribution is **inherently imperfect** — most attendees meet several 
 - **deep-research** — Run autonomous research tasks that plan, search, read, and synthesize information into comprehensive reports.
 - **obsidian-markdown** — Obsidian Flavored Markdown: wikilinks, embeds, callouts, properties. .md files, frontmatter, tags.
 - **openapi-spec-generation** — OpenAPI 3.1 specs from code, design-first approach. API docs, SDKs, contract compliance.
-- **browser-automation** — >-
+- **browser-automation** — Browser automation for web testing, scraping and AI agent interactions. Use for selectors, waiting strategies, and anti-detection patterns.
 - **apify-lead-generation** — Scrape leads from multiple platforms using Apify Actors.
 - **apify-ultimate-scraper** — AI-driven data extraction from 55+ Actors across all major platforms. This skill automatically selects the best Actor for your task.
-- **firecrawl** — |
+- **firecrawl** — Search, scrape, and interact with the web via the Firecrawl CLI. Use this skill whenever the user wants to search the web, find articles, research a topic, look something up online, scrape a webpage, grab content from a URL, get data from a website, crawl documentation, download a site, or interact with pages that need clicks or logins. Also use when they say "fetch this page", "pull the content from", "get the page at https://", or reference external websites. This provides real-time web search with full page content and interact capabilities — beyond what an agent session can do natively with built-in tools. Do NOT trigger for local file operations, git commands, deployments, or code editing tasks.
 - **firecrawl-sdk** — Integrate Firecrawl into product code: SDK setup and FIRECRAWL_API_KEY onboarding, /scrape, /search and /interact endpoints. Use for app code, not the agent.
 
 **Install:** `aos store install --pack ops`

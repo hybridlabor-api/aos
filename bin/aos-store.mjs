@@ -2,9 +2,8 @@
 
 import '../lib/cli-help-guard.mjs';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
 import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAX_BYTES, aosInstalledExact, fetchSkillFiles, readAosFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rankSearch, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
@@ -40,6 +39,10 @@ const localSkillNames = () => new Set(localSkills(ROOT).keys());
 const localAgentNames = () => new Set(localAgents(ROOT).keys());
 
 function printItems(items) {
+  let packsData = null;
+  try {
+    packsData = JSON.parse(readFileSync(new URL('../lib/skill-packs.json', import.meta.url), 'utf8'));
+  } catch { /* ignore */ }
   if (items.length === 0) {
     console.log('No store items found.');
     return;
@@ -47,10 +50,9 @@ function printItems(items) {
   for (const { name, item, type, src } of items) {
     const kind = type === 'skills' ? 'skill' : 'agent';
     let group = item.category;
-    try {
-      const packsData = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '../lib/skill-packs.json'), 'utf8'));
+    if (packsData && packsData.packs) {
       group = Object.entries(packsData.packs).find(([_, p]) => p.skills && p.skills.includes(name) || p.groups && Object.values(p.groups).flat().includes(name))?.[0] || item.category;
-    } catch { /* ignore */ }
+    }
     console.log(`${kind}\t${name}\t${group}\t${src.label}\t${item.description}`);
   }
   console.log(`\n${items.length} item(s).`);

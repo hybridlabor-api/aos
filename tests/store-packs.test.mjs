@@ -23,13 +23,13 @@ test('aos store packs lists every pack with descriptions', () => {
   const home = tmpHome();
   const r = store(home, ['packs']);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /pack\tlive-show\t8 skill\(s\)/);
-  assert.match(r.stdout, /pack\thardware\t\d+ skill\(s\)\texternal/);
+  assert.match(r.stdout, /pack\tmedia-eventtech\t18 skill\(s\)/);
+  assert.match(r.stdout, /pack\thardware\t\d+ skill\(s\)/);
 });
 
 test('install --pack copies every pack skill into every harness dir, offline, from the package fallback', () => {
   const home = tmpHome();
-  const r = store(home, ['install', '--pack', 'live-show']);
+  const r = store(home, ['install', '--pack', 'media-eventtech']);
   assert.equal(r.status, 0, r.stderr);
   for (const name of ['bdb-grandma3-mcp', 'bdb-resolume-mcp', 'mcp-manage']) {
     for (const dir of roots(home)) {
@@ -38,14 +38,14 @@ test('install --pack copies every pack skill into every harness dir, offline, fr
     }
   }
   const entries = logLines(home).filter((e) => e.kind === 'skill');
-  assert.ok(entries.length >= 8);
-  assert.ok(entries.every((e) => e.pack === 'live-show' && e.source === 'aos' && Array.isArray(e.targets) && e.targets.length));
+  assert.ok(entries.length >= 18);
+  assert.ok(entries.every((e) => e.pack === 'media-eventtech' && e.source === 'aos' && Array.isArray(e.targets) && e.targets.length));
   // No stored pack selection existed: installing a pack must not start deselecting.
   assert.ok(!existsSync(join(home, '.aos', 'v5-settings.json')));
   // Idempotent rerun: everything already installed.
-  const again = store(home, ['install', '--pack', 'live-show']);
+  const again = store(home, ['install', '--pack', 'media-eventtech']);
   assert.equal(again.status, 0, again.stderr);
-  assert.match(again.stdout, /0 installed, 8 skipped/);
+  assert.match(again.stdout, /0 installed, 18 skipped/);
 });
 
 test('install --pack prefers a fresh library copy and records from=library', () => {
@@ -80,7 +80,7 @@ test('external pack skills missing from library and package are skipped with a r
 
 test('remove --pack parks the copies (never deletes), keeps user skills, updates a stored selection', () => {
   const home = tmpHome();
-  assert.equal(store(home, ['install', '--pack', 'live-show']).status, 0);
+  assert.equal(store(home, ['install', '--pack', 'media-eventtech']).status, 0);
   // A user-edited copy with no store log entry of its own: kept.
   const userDir = join(home, '.cursor', 'skills', 'mcp-manage');
   rmSync(userDir, { recursive: true, force: true });
@@ -114,7 +114,7 @@ test('remove --pack parks the copies (never deletes), keeps user skills, updates
 
 test('remove --pack dry-run lists without touching anything', () => {
   const home = tmpHome();
-  assert.equal(store(home, ['install', '--pack', 'live-show']).status, 0);
+  assert.equal(store(home, ['install', '--pack', 'media-eventtech']).status, 0);
   const d = store(home, ['remove', '--pack', 'live-show', '--dry-run']);
   assert.equal(d.status, 0, d.stderr);
   assert.match(d.stdout, /dry-run/);

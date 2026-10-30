@@ -111,19 +111,19 @@ The release report is not a deployment. If the user wants the product live on th
 - **clean-code** — This skill embodies the principles of \"Clean Code\" by Robert C. Martin (Uncle Bob). Use it to transform \"code that works\" into \"code that is clean.\"
 - **concise-planning** — Use when a user asks for a plan for a coding task, to generate a clear, actionable, and atomic checklist.
 - **planning-with-files** — Work like Manus: Use persistent markdown files as your \"working memory on disk.\"
-- **subagent-driven-development** — >-
-- **dispatching-parallel-agents** — >-
-- **using-git-worktrees** — >-
+- **subagent-driven-development** — Dispatch a fresh subagent per task: implementation plans with independent tasks, two-stage review each: spec compliance, then quality.
+- **dispatching-parallel-agents** — Dispatch one subagent per independent task slice. Use with 2+ tasks: parallel work, unrelated failures or shared state; no shared state needed.
+- **using-git-worktrees** — Use for feature work needing isolation or before executing a plan: ensure an isolated worktree via native tools or git worktrees.
 - **finishing-a-development-branch** — Use when implementation is complete, all tests pass, and you need to decide how to integrate the work
 - **architect-review** — Master software architect specializing in modern architecture
 - **bdb-security-audit** — Comprehensive security auditing, diff analysis, defensive checklists, and vulnerability testing.
-- **bdbresilience** — >-
+- **bdbresilience** — CI/CD error recovery, distributed file-based locking, diagnostic triage and GO-gate resilience for BDB Agent OS multi-agent pipelines.
 - **bdb-shipping-skill** — Pre-flight shipping decisions: problem-framing, one/two-way door classification, ADR logging, outcome loop. Complements godmode-shipping and bdbresilience.
 - **webapp-testing** — To test local web applications, write native Python Playwright scripts.
 - **playwright-skill** — Use when a task needs custom Playwright code: end-to-end testing, scraping a JS-rendered page, or driving a browser interactively via a universal executor.
 - **github** — Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries.
 - **github-repo** — Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill.
-- **ci-pipeline** — >-
+- **ci-pipeline** — Set up CI/CD: detect the stack, generate GitHub Actions workflows, Dockerfile and Makefile. Use when asked to set up CI or automate builds.
 - **github-actions-generator** — Create, generate, or scaffold GitHub Actions workflows, action.yml, or .github/workflows CI/CD pipelines.
 - **github-actions-validator** — Validate, lint, audit, fix GitHub Actions workflows (.github/workflows).
 - **requesting-code-review** — Use when completing tasks, implementing major features, or before merging to verify work meets requirements
@@ -132,39 +132,19 @@ The release report is not a deployment. If the user wants the product live on th
 - **pr-recap** — Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts.
 - **typescript-pro** — Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns.
 - **modern-javascript-patterns** — Modern JavaScript: ES6+, functional patterns, best practices. Clean, maintainable, performant code.
-- **docker-expert** — >-
-- **bdb-deploy** — >-
+- **docker-expert** — Docker containerization. Use for optimization, security hardening, multi-stage builds, orchestration patterns, and production deployment strategies.
+- **bdb-deploy** — Deploy a project to a real server via rsync over SSH. Use when the user says deploy this or push it live. Not for git push or CI pipelines.
 - **golive** — Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
 - **vercel-deployment** — Expert knowledge for deploying to Vercel with Next.js
 - **cloudflare-workers-expert** — Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage.
-- **prisma-expert** — Prisma ORM expertise: schema design, migrations, query optimization, relations modeling and database operations across PostgreSQL, MySQL and SQLite.
-- **drizzle-orm-expert** — >-
-- **postgres-best-practices** — Supabase Postgres performance best practices. Use when writing, reviewing or optimizing Postgres queries, schema designs or database configurations.
-- **neon-postgres** — >-
-- **database-design** — Database design principles and decision-making. Schema design, indexing strategy, ORM selection, serverless databases.
-- **vector-database-engineer** — Vector databases, embedding strategies and semantic search with Pinecone, Weaviate, Qdrant, Milvus, pgvector for RAG and recommendation systems.
-- **python-pro** — Modern Python 3.12+ expertise: async, performance, production practices and the latest ecosystem tooling (uv, ruff, pydantic, FastAPI).
-- **golang-pro** — Master Go 1.21+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices.
-- **go-concurrency-patterns** — Go concurrency: goroutines, channels, sync primitives, context. Worker pools, race condition debugging.
-- **rust-pro** — Use when writing, debugging or structuring Rust: ownership and borrow-checker errors, error handling, async/tokio, cargo workflow, unsafe code, or Tauri v2 backends.
-- **tauri-pilot** — Use when driving or testing a running Tauri v2 app via CLI or MCP: inspect the UI, click and fill elements, assert state, record and replay sessions, and run TOML scenarios over a local socket.
-- **tanstack-query-expert** — TanStack Query (React Query) expertise: data fetching, stale time, mutations, optimistic updates, Next.js SSR. Use for async state management.
-- **zustand-store-ts** — Create Zustand stores following established patterns with proper TypeScript types and middleware.
-- **turborepo-caching** — Configure Turborepo with local and remote caching. Use when setting up Turborepo, optimizing build pipelines or implementing distributed caching.
-- **monorepo-management** — Build efficient, scalable monorepos that enable code sharing, consistent tooling, and atomic changes across multiple packages and applications.
-- **makefile-pro** — Generate, scaffold, validate and lint Makefiles and .mk files: .PHONY targets, build automation, common mistakes. Use for any Makefile work.
-- **microservices-patterns** — Microservices architecture: boundaries, communication, data management, resilience patterns.
-- **bash-linux** — Bash/Linux terminal patterns. Critical commands, piping, error handling, scripting. Use when working on macOS or Linux systems.
-- **posix-shell-pro** — Strict POSIX sh scripting for maximum portability across Unix-like systems; scripts that run on dash, ash, sh or bash --posix alike.
-- **tmux** — Expert tmux session, window, and pane management for terminal multiplexing, persistent remote workflows, and shell scripting automation.
-- **agent-tool-builder** — >-
-- **agentic-harness-patterns** — >-
+- **agent-tool-builder** — Design tools for AI agents. Use when building agent tools: covers schema, error handling, and avoiding hallucination and silent failure.
+- **agentic-harness-patterns** — Harness patterns for coding agents — memory, permissions, context engineering, delegation, skills, hooks, bootstrap.
 - **llm-app-patterns** — Production-ready patterns for building LLM applications, inspired by [Dify](https://github.com/langgenius/dify) and industry best practices.
-- **llm-structured-output** — >
+- **llm-structured-output** — Get reliable JSON, enums, and typed objects from LLMs using response_format, tool_use, and schema-constrained decoding across OpenAI, Anthropic, and Google APIs.
 - **local-llm-expert** — Local LLM inference: model selection, VRAM optimization. Ollama, llama.cpp, vLLM, LM Studio, quantization.
 - **rag-implementation** — RAG implementation workflow: embedding selection, vector database setup, chunking strategies and retrieval optimization.
 - **prompt-engineer** — Transforms user prompts into optimized prompts using frameworks (RTF, RISEN, Chain of Thought, RODES, Chain of Density, RACE, RISE, STAR, SOAP, CLEAR, GROW)
-- **crewai** — >-
+- **crewai** — Expert in CrewAI - the leading role-based multi-agent framework used by 60% of Fortune 500 companies.
 - **vercel-ai-sdk-expert** — Vercel AI SDK expertise: Core API, UI hooks (useChat, useCompletion), tool calling and streaming UI with React and Next.js.
 - **gemini-api-integration** — Use when integrating Google Gemini API into projects. Covers model selection, multimodal inputs, streaming, function calling, and production best practices.
 - **n8n-code-javascript** — JavaScript in n8n Code nodes. $input/$json/$node, HTTP requests, DateTime, error troubleshooting.
@@ -175,17 +155,16 @@ The release report is not a deployment. If the user wants the product live on th
 - **agent-manager-skill** — Use when manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling.
 - **agent-memory-mcp** — Use when a hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions).
 - **subagent-setup** — Configure multi-harness subagents (Claude Code, Antigravity, OpenCode, Codex) with per-harness overrides and a single source in .aos/pipeline.json.
-- **factory-babysit-pr** — >-
-- **factory-collect** — >-
-- **factory-lookback** — >-
-- **factory-recover** — >-
-- **factory-review-prs** — >-
-- **factory-ship** — >-
-- **factory-watchdog** — >-
-- **git-advanced-workflows** — Master advanced Git techniques to maintain clean history, collaborate effectively, and recover from any situation with confidence.
-- **git-pr-review** — Generate a concise and structured PR description from commit history with minimal token usage
-- **pb-aos-e2e** — >-
-- **pb-tauri-e2e** — >-
+- **instinct-export** — Use when the user wants to share or back up learned instincts — validates the local instincts file, allowlists the six known fields, strips secrets and home-directory paths, and writes a sanitized JSON artifact the user names. Never modifies the instincts file itself.
+- **instinct-import** — Use when the user brings an exported instincts JSON to merge into the local store — treats trigger and action as inert data, validates every entry against the shared format and its bounds, drops invalid ones loudly, and never overwrites an existing instinct without asking the user first.
+- **instinct-status** — Use when the user wants to see what learned instincts exist, their confidence scores and how current they are — reads the local instincts file under ~/.aos/instincts/ and reports it. Read-only.
+- **token-saver-config** — Configure and diagnose token-saver compression settings. Use when the user asks about adjusting compression levels, checking processor status, debugging hook issues, or reviewing savings statistics.
+- **synapse-integration-skill** — Use when global skill for BDB Synapse (3D Codebase Visualizer) integration.
+- **design-control-loop** — Interview the user to design an agentic control loop (sensor, controller, actuator) tailored to their codebase, then build it locally.
+- **reverse-engineer-anything** — Reverse engineer native, managed, Electron, packaged, firmware or browser targets with REA. Skip for ordinary source repo analysis.
+- **bdbhtmlmanueldocs** — Enterprise-grade developer docs and user manuals. HTML template, GitHub Pages hosting, neutral design system.
+- **documentation** — Documentation generation workflow covering API docs, architecture docs, README files, code comments, and technical writing.
+- **readme** — Write an absurdly thorough README.md as an expert technical writer. Use when creating or rewriting project README documentation.
 
 **Install:** `aos store install --pack engineering`
 <!-- aos:pack-index:end -->

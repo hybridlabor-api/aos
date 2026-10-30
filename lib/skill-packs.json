@@ -90,10 +90,10 @@
   "packs": {
     "engineering": {
       "domain": "engineering",
-      "description": "Backend, Architecture & Deployment: testing, debugging, CI/CD, security, shipping",
+      "description": "Application development, infrastructure, and software engineering.",
       "aliases": [
         "app-dev",
-        "stacks",
+        "harness-engineering",
         "agents-automation"
       ],
       "skills": [
@@ -130,26 +130,6 @@
         "golive",
         "vercel-deployment",
         "cloudflare-workers-expert",
-        "prisma-expert",
-        "drizzle-orm-expert",
-        "postgres-best-practices",
-        "neon-postgres",
-        "database-design",
-        "vector-database-engineer",
-        "python-pro",
-        "golang-pro",
-        "go-concurrency-patterns",
-        "rust-pro",
-        "tauri-pilot",
-        "tanstack-query-expert",
-        "zustand-store-ts",
-        "turborepo-caching",
-        "monorepo-management",
-        "makefile-pro",
-        "microservices-patterns",
-        "bash-linux",
-        "posix-shell-pro",
-        "tmux",
         "agent-tool-builder",
         "agentic-harness-patterns",
         "llm-app-patterns",
@@ -168,22 +148,49 @@
         "agent-manager-skill",
         "agent-memory-mcp",
         "subagent-setup",
-        "factory-babysit-pr",
-        "factory-collect",
-        "factory-lookback",
-        "factory-recover",
-        "factory-review-prs",
-        "factory-ship",
-        "factory-watchdog",
-        "git-advanced-workflows",
-        "git-pr-review",
-        "pb-aos-e2e",
-        "pb-tauri-e2e"
+        "instinct-export",
+        "instinct-import",
+        "instinct-status",
+        "token-saver-config",
+        "synapse-integration-skill",
+        "design-control-loop",
+        "reverse-engineer-anything",
+        "bdbhtmlmanueldocs",
+        "documentation",
+        "readme"
+      ]
+    },
+    "media-eventtech": {
+      "domain": "media-eventtech",
+      "description": "Live shows, event technology, and media production.",
+      "aliases": [
+        "live-show",
+        "creator"
+      ],
+      "skills": [
+        "bdb-grandma3-mcp",
+        "bdb-resolume-mcp",
+        "bdb-touchdesigner-mcp",
+        "bdb-unreal-mcp",
+        "bdb-vectorworks-mcp",
+        "bdb-rhino-mcp",
+        "mcp-manage",
+        "bdb-computer-use-mcp",
+        "remotion",
+        "threejs-skills",
+        "spline-3d-integration",
+        "bdb-after-effects-mcp",
+        "bdb-adobe-suite-mcp",
+        "bdb-davinci-mcp",
+        "bdb-blender-mcp",
+        "brag",
+        "design-spells",
+        "live-preview-canvas"
       ]
     },
     "design-ui-ux": {
       "domain": "design-ui-ux",
-      "description": "Design & Frontend: React, Next.js, TailwindCSS, UI components, accessibility",
+      "description": "UI/UX design, web design, and creative direction.",
       "aliases": [
         "web-design"
       ],
@@ -211,37 +218,9 @@
         "copywriting"
       ]
     },
-    "media-eventtech": {
-      "domain": "media-eventtech",
-      "description": "Event & Live Tech, Motion, Content, 3D & Video",
-      "aliases": [
-        "live-show",
-        "creator"
-      ],
-      "skills": [
-        "bdb-grandma3-mcp",
-        "bdb-resolume-mcp",
-        "bdb-touchdesigner-mcp",
-        "bdb-unreal-mcp",
-        "bdb-vectorworks-mcp",
-        "bdb-rhino-mcp",
-        "mcp-manage",
-        "bdb-computer-use-mcp",
-        "remotion",
-        "threejs-skills",
-        "spline-3d-integration",
-        "bdb-after-effects-mcp",
-        "bdb-adobe-suite-mcp",
-        "bdb-davinci-mcp",
-        "bdb-blender-mcp",
-        "brag",
-        "design-spells",
-        "live-preview-canvas"
-      ]
-    },
     "ops": {
       "domain": "ops",
-      "description": "Agentur & Business: project management, research, automation, APIs, automation",
+      "description": "Business operations and project administration.",
       "aliases": [
         "business"
       ],
@@ -265,28 +244,14 @@
     },
     "docs": {
       "domain": "docs",
-      "description": "Harness Configuration & AOS Engineering: skills, memory, state, documentation",
-      "aliases": [
-        "harness-engineering"
-      ],
-      "skills": [
-        "instinct-export",
-        "instinct-import",
-        "instinct-status",
-        "token-saver-config",
-        "synapse-integration-skill",
-        "design-control-loop",
-        "reverse-engineer-anything",
-        "bdbhtmlmanueldocs",
-        "documentation",
-        "readme",
-        "bdb-memb-mcp",
-        "factory-human-digest"
-      ]
+      "description": "Documentation and technical writing.",
+      "aliases": [],
+      "skills": []
     },
     "video": {
       "domain": "video",
-      "description": "Video creation and rendering: routes, engines and handoffs",
+      "description": "Video production and post-production.",
+      "aliases": [],
       "skills": [
         "pb-code-video",
         "pb-launch-video",
@@ -295,8 +260,8 @@
     },
     "hardware": {
       "domain": "hardware",
-      "description": "Hardware & PCB: KiCad, schematics, layouts, DRC, manufacturing (external skills)",
-      "external": true,
+      "description": "Hardware design and PCB layout.",
+      "aliases": [],
       "skills": [
         "code-first-hardware-design",
         "pcb-constraint-definition",
@@ -305,6 +270,45 @@
         "schematic-datasheet-analysis",
         "schematic-reverse-engineering"
       ]
+    },
+    "stacks": {
+      "description": "Language & Framework Stack Specifics (choose: db, python, go, rust, react, repo, shell)",
+      "groups": {
+        "db": [
+          "prisma-expert",
+          "drizzle-orm-expert",
+          "postgres-best-practices",
+          "neon-postgres",
+          "database-design",
+          "vector-database-engineer"
+        ],
+        "python": [
+          "python-pro"
+        ],
+        "go": [
+          "golang-pro",
+          "go-concurrency-patterns"
+        ],
+        "rust": [
+          "rust-pro",
+          "tauri-pilot"
+        ],
+        "react": [
+          "tanstack-query-expert",
+          "zustand-store-ts"
+        ],
+        "repo": [
+          "turborepo-caching",
+          "monorepo-management",
+          "makefile-pro",
+          "microservices-patterns"
+        ],
+        "shell": [
+          "bash-linux",
+          "posix-shell-pro",
+          "tmux"
+        ]
+      }
     }
   },
   "mergeCandidates": [

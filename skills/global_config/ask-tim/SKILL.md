@@ -370,52 +370,58 @@ If none of the intents above match your task, look for the closest general libra
 
 ### engineering
 
-Backend, Architecture & Deployment: testing, debugging, CI/CD, security, shipping
+Application development, infrastructure, and software engineering.
 
 **Install:** `aos store install --pack engineering`
 
-### design-ui-ux
-
-Design & Frontend: React, Next.js, TailwindCSS, UI components, accessibility
-
-**Install:** `aos store install --pack design-ui-ux`
-
 ### media-eventtech
 
-Event & Live Tech, Motion, Content, 3D & Video
+Live shows, event technology, and media production.
 
 **Install:** `aos store install --pack media-eventtech`
 
+### design-ui-ux
+
+UI/UX design, web design, and creative direction.
+
+**Install:** `aos store install --pack design-ui-ux`
+
 ### ops
 
-Agentur & Business: project management, research, automation, APIs, automation
+Business operations and project administration.
 
 **Install:** `aos store install --pack ops`
 
 ### docs
 
-Harness Configuration & AOS Engineering: skills, memory, state, documentation
+Documentation and technical writing.
 
 **Install:** `aos store install --pack docs`
 
 ### video
 
-Video creation and rendering: routes, engines and handoffs
+Video production and post-production.
 
 **Install:** `aos store install --pack video`
 
 ### hardware
 
-Hardware & PCB: KiCad, schematics, layouts, DRC, manufacturing (external skills)
+Hardware design and PCB layout.
 
 **Install:** `aos store install --pack hardware`
+
+### stacks
+
+Language & Framework Stack Specifics (choose: db, python, go, rust, react, repo, shell)
+
+**Install:** `aos store install --pack stacks`
 
 ## Roles (Preset Pack Combinations)
 
 - **Eventagentur / Veranstalter**: ops, media-eventtech
 - **Event- und Live-Technik**: media-eventtech, hardware
 - **Motion- und Content-Design**: media-eventtech, design-ui-ux
-- **Web- und App-Entwicklung**: design-ui-ux, engineering
+- **Web- und App-Entwicklung**: design-ui-ux, engineering, stacks
 - **Agents und Automationen**: engineering
 - **Harness-Engineering**: all packs
 <!-- aos:pack-index:end -->

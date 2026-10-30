@@ -174,10 +174,10 @@ Godmode 3D Creation generates 3D assets, meshes, and CAD models using local Pyth
 - **threejs-skills** — Create 3D scenes, interactive experiences and visual effects with Three.js. Use for 3D graphics, WebGL, animations or interactive 3D elements.
 - **spline-3d-integration** — Use when adding interactive 3D scenes from Spline.design to web projects, including React embedding and runtime control API.
 - **bdb-after-effects-mcp** — Utilizes the After Effects MCP servers (after-effects-mcp and ae-mcp) to create compositions, layers, masks, keyframe animations, and run ExtendScript.
-- **bdb-adobe-suite-mcp** — >-
+- **bdb-adobe-suite-mcp** — Automate Photoshop, Illustrator, Premiere Pro and After Effects via the Adobe Suite MCP servers (ExtendScript and UXP WebSocket bridges).
 - **bdb-davinci-mcp** — Utilizes the DaVinci Resolve MCP servers to control timeline editing, media analysis, color grading, and Fusion/Fairlight scripting.
 - **bdb-blender-mcp** — Utilizes the Blender MCP server and addon to build 3D assets, apply materials, inspect scenes, and script bpy.
-- **brag** — >-
+- **brag** — Turn the project website into a launch video with Hyperframes. Use when someone says /brag or wants a video to showcase a shipment.
 - **design-spells** — Use when adding curated micro-interactions, delightful animations, and subtle design details that add magic and personality to web and mobile apps.
 - **live-preview-canvas** — A prototyping skill that generates a local HTML mock with a built-in feedback layer, allowing users to drop visual comments (red dots) for UI fixes.
 
