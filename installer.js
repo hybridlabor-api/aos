@@ -6050,8 +6050,8 @@ function injectHarnessRules() {
             const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
             installStep(`sync ${homeAgentsPath}`, () => {
                 if (!fs.existsSync(homeAgentsPath)) {
-                    log.step(`${homeAgentsPath} does not exist: not created, only existing files get the managed blocks.`);
-                    return;
+                    fs.writeFileSync(homeAgentsPath, '# Global Agent Rules\n\n');
+                    log.step(`Created missing ${homeAgentsPath}`);
                 }
                 const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
                 let next = agentsContent;
@@ -8621,6 +8621,42 @@ async function main() {
     }
     if (args[0] === 'skills') {
         process.exitCode = await leanSkills.command(args.slice(1), module.exports, { home: homeDir, dryRun: DRY_RUN });
+        return;
+    }
+    // Any other `aos project ...` form must stop here, never fall through to the full install (F8).
+    if (args[0] === 'project' && !(args[1] === 'init' && args.includes('--files'))) {
+        console.error('aos project: only `aos project init --files` exists. Nothing was changed.');
+        process.exitCode = 2;
+        return;
+    }
+    if (args[0] === 'project') {
+        const pAgents = path.join(currentDir, 'AGENTS.md');
+        const pClaude = path.join(currentDir, 'CLAUDE.md');
+        const pGemini = path.join(currentDir, 'GEMINI.md');
+        const tmplPath = path.join(srcDir, 'skills', 'global_config', 'aos-project-init', 'assets', 'AGENTS.template.md');
+        if (!fs.existsSync(pAgents)) {
+            const template = fs.existsSync(tmplPath) ? fs.readFileSync(tmplPath, 'utf8') : '# Agents\n';
+            fs.writeFileSync(pAgents, template.replace('<PROJECT NAME>', path.basename(currentDir)));
+            log.step(`Wrote ${pAgents}`);
+        } else {
+            log.step(`Skipped ${pAgents} (already exists)`);
+        }
+        for (const pt of [pClaude, pGemini]) {
+            if (fs.existsSync(pt)) {
+                log.step(`Skipped ${pt} (already exists)`);
+            } else {
+                if (process.platform === 'win32') {
+                    fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
+                } else {
+                    try {
+                        fs.symlinkSync('AGENTS.md', pt);
+                    } catch (e) {
+                        fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
+                    }
+                }
+                log.step(`Wrote ${pt} pointer to AGENTS.md`);
+            }
+        }
         return;
     }
     if (args[0] === 'context') {

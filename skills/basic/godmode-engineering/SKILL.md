@@ -105,19 +105,19 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 - **clean-code** — This skill embodies the principles of \"Clean Code\" by Robert C. Martin (Uncle Bob). Use it to transform \"code that works\" into \"code that is clean.\"
 - **concise-planning** — Use when a user asks for a plan for a coding task, to generate a clear, actionable, and atomic checklist.
 - **planning-with-files** — Work like Manus: Use persistent markdown files as your \"working memory on disk.\"
-- **subagent-driven-development** — >-
-- **dispatching-parallel-agents** — >-
-- **using-git-worktrees** — >-
+- **subagent-driven-development** — Dispatch a fresh subagent per task: implementation plans with independent tasks, two-stage review each: spec compliance, then quality.
+- **dispatching-parallel-agents** — Dispatch one subagent per independent task slice. Use with 2+ tasks: parallel work, unrelated failures or shared state; no shared state needed.
+- **using-git-worktrees** — Use for feature work needing isolation or before executing a plan: ensure an isolated worktree via native tools or git worktrees.
 - **finishing-a-development-branch** — Use when implementation is complete, all tests pass, and you need to decide how to integrate the work
 - **architect-review** — Master software architect specializing in modern architecture
 - **bdb-security-audit** — Comprehensive security auditing, diff analysis, defensive checklists, and vulnerability testing.
-- **bdbresilience** — >-
+- **bdbresilience** — CI/CD error recovery, distributed file-based locking, diagnostic triage and GO-gate resilience for BDB Agent OS multi-agent pipelines.
 - **bdb-shipping-skill** — Pre-flight shipping decisions: problem-framing, one/two-way door classification, ADR logging, outcome loop. Complements godmode-shipping and bdbresilience.
 - **webapp-testing** — To test local web applications, write native Python Playwright scripts.
 - **playwright-skill** — Use when a task needs custom Playwright code: end-to-end testing, scraping a JS-rendered page, or driving a browser interactively via a universal executor.
 - **github** — Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries.
 - **github-repo** — Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill.
-- **ci-pipeline** — >-
+- **ci-pipeline** — Set up CI/CD: detect the stack, generate GitHub Actions workflows, Dockerfile and Makefile. Use when asked to set up CI or automate builds.
 - **github-actions-generator** — Create, generate, or scaffold GitHub Actions workflows, action.yml, or .github/workflows CI/CD pipelines.
 - **github-actions-validator** — Validate, lint, audit, fix GitHub Actions workflows (.github/workflows).
 - **requesting-code-review** — Use when completing tasks, implementing major features, or before merging to verify work meets requirements
@@ -126,8 +126,8 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 - **pr-recap** — Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts.
 - **typescript-pro** — Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns.
 - **modern-javascript-patterns** — Modern JavaScript: ES6+, functional patterns, best practices. Clean, maintainable, performant code.
-- **docker-expert** — >-
-- **bdb-deploy** — >-
+- **docker-expert** — Docker containerization. Use for optimization, security hardening, multi-stage builds, orchestration patterns, and production deployment strategies.
+- **bdb-deploy** — Deploy a project to a real server via rsync over SSH. Use when the user says deploy this or push it live. Not for git push or CI pipelines.
 - **golive** — Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
 - **vercel-deployment** — Expert knowledge for deploying to Vercel with Next.js
 - **cloudflare-workers-expert** — Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage.
@@ -140,9 +140,9 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 ### Db
 
 - **prisma-expert** — Prisma ORM expertise: schema design, migrations, query optimization, relations modeling and database operations across PostgreSQL, MySQL and SQLite.
-- **drizzle-orm-expert** — >-
+- **drizzle-orm-expert** — Drizzle ORM for TypeScript. Use when building type-safe database layers with Drizzle: schema design, migrations, and serverless integration.
 - **postgres-best-practices** — Supabase Postgres performance best practices. Use when writing, reviewing or optimizing Postgres queries, schema designs or database configurations.
-- **neon-postgres** — >-
+- **neon-postgres** — Expert patterns for Neon serverless Postgres, branching, connection pooling, and Prisma/Drizzle integration
 - **database-design** — Database design principles and decision-making. Schema design, indexing strategy, ORM selection, serverless databases.
 - **vector-database-engineer** — Vector databases, embedding strategies and semantic search with Pinecone, Weaviate, Qdrant, Milvus, pgvector for RAG and recommendation systems.
 
@@ -183,14 +183,14 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 
 ### Agents automation Pack Skills
 
-- **agent-tool-builder** — >-
-- **agentic-harness-patterns** — >-
+- **agent-tool-builder** — Design tools for AI agents. Use when building agent tools: covers schema, error handling, and avoiding hallucination and silent failure.
+- **agentic-harness-patterns** — Harness patterns for coding agents — memory, permissions, context engineering, delegation, skills, hooks, bootstrap.
 - **llm-app-patterns** — Production-ready patterns for building LLM applications, inspired by [Dify](https://github.com/langgenius/dify) and industry best practices.
-- **llm-structured-output** — >
+- **llm-structured-output** — Get reliable JSON, enums, and typed objects from LLMs using response_format, tool_use, and schema-constrained decoding across OpenAI, Anthropic, and Google APIs.
 - **local-llm-expert** — Local LLM inference: model selection, VRAM optimization. Ollama, llama.cpp, vLLM, LM Studio, quantization.
 - **rag-implementation** — RAG implementation workflow: embedding selection, vector database setup, chunking strategies and retrieval optimization.
 - **prompt-engineer** — Transforms user prompts into optimized prompts using frameworks (RTF, RISEN, Chain of Thought, RODES, Chain of Density, RACE, RISE, STAR, SOAP, CLEAR, GROW)
-- **crewai** — >-
+- **crewai** — Expert in CrewAI - the leading role-based multi-agent framework used by 60% of Fortune 500 companies.
 - **vercel-ai-sdk-expert** — Vercel AI SDK expertise: Core API, UI hooks (useChat, useCompletion), tool calling and streaming UI with React and Next.js.
 - **gemini-api-integration** — Use when integrating Google Gemini API into projects. Covers model selection, multimodal inputs, streaming, function calling, and production best practices.
 - **n8n-code-javascript** — JavaScript in n8n Code nodes. $input/$json/$node, HTTP requests, DateTime, error troubleshooting.

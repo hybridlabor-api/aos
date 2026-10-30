@@ -160,5 +160,47 @@
     "id": "AS1",
     "file": "scripts/openwiki_daemon.py",
     "reason": "The path is a fallback location of the skill's own openwiki_helper.py under ~/.gemini/config/skills/; no agent config is read."
+  },
+  {
+    "skill": "basic/bdb-eventagency-skill",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is the <!-- aos:pack-index:start/end --> marker pair that scripts/build-pack-index.mjs uses to regenerate the pack skill list; the comments hold no directives."
+  },
+  {
+    "skill": "basic/godmode-engineering",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is the <!-- aos:pack-index:start/end --> marker pair that scripts/build-pack-index.mjs uses to regenerate the pack skill list; the comments hold no directives."
+  },
+  {
+    "skill": "basic/godmode-shipping",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "The P2 hit is the <!-- aos:pack-index:start/end --> marker pair that scripts/build-pack-index.mjs uses to regenerate the pack skill list; the comments hold no directives."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "PE3",
+    "file": "SKILL.md",
+    "reason": "The .env hit is setup prose telling the user that openwiki provider credentials live in ~/.openwiki/.env; the skill never reads or sends that file."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "PE3",
+    "file": "assets/openwikiignore.template",
+    "reason": "The .env hit is an ignore pattern in the shipped .openwikiignore template, which keeps .env files out of the wiki index."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "PE3",
+    "file": "scripts/aos-project-doctor.mjs",
+    "reason": "The .env hits are a read-only check that .gitignore covers .env and a hint naming ~/.openwiki/.env; the doctor never opens a .env file."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "AS1",
+    "file": "SKILL.md",
+    "reason": "The ~/.gemini/config hit is the path of the shipped memb_ingest.py script that the skill tells the agent to run; no agent config is read."
   }
 ]

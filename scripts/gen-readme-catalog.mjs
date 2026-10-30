@@ -14,8 +14,16 @@ const START = '<details>\n<summary><b>Skills (';
 const END = '<!-- END GENERATED CATALOG -->';
 
 const front = (text, key) => {
-    const m = text.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
-    return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+    const m = text.match(new RegExp(`^${key}:[ \\t]*(.*)$`, 'm'));
+    if (!m) return '';
+    let v = m[1].trim();
+    if (/^[>|][-+]?$/.test(v)) {
+        const rest = text.slice(m.index + m[0].length).split(/\r?\n/).slice(1);
+        const lines = [];
+        for (const l of rest) { if (/^\s+\S/.test(l)) lines.push(l.trim()); else break; }
+        v = lines.join(' ');
+    }
+    return v.replace(/^["']|["']$/g, '');
 };
 const short = (d) => {
     const s = d.replace(/\s+/g, ' ').replace(/\|/g, '\\|');
@@ -74,6 +82,12 @@ for (const f of FILES) {
     if (a < 0 || b < a) throw new Error(`${f}: catalog markers not found`);
     const old = text.slice(a, b);
     const curated = new Map([...old.matchAll(/^\| (`[^`]+`) \| (.+) \|$/gm)].map((m) => [m[1], m[2]]));
+    // Do not use curated descriptions if they are just the YAML folding markers
+    for (const [key, val] of curated.entries()) {
+        if (/^[>|][-+]?$/.test(val.trim())) {
+            curated.delete(key);
+        }
+    }
     const next = text.slice(0, a) + render(src, curated) + '\n' + text.slice(b);
     if (next !== text) { stale++; if (!check) writeFileSync(path, next); }
 }
