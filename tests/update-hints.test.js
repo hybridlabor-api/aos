@@ -126,3 +126,23 @@ test('npm missing or offline: no npm-global hint, update still succeeds', async 
     assert.strictEqual(code, 0);
     assert.doesNotMatch(m.text(), /npm uninstall -g/);
 });
+
+test('dry-run beta update with a newer stable version does not switch channels or spawn', async () => {
+    const m = machine({ localKernel: `${runningVersion}-beta.1` });
+    const childProcess = require('child_process');
+    const originalSpawnSync = childProcess.spawnSync;
+    const spawned = [];
+    childProcess.spawnSync = (...args) => { spawned.push(args); return { status: 0 }; };
+    try {
+        const code = await menu.update(m.host, m.opts({
+            dryRun: true,
+            argv: ['--dry-run'],
+            npmView: async (name) => name.endsWith('/aos') ? runningVersion : '2.4.0',
+        }));
+        assert.ok(Number.isInteger(code));
+        assert.deepStrictEqual(spawned, []);
+        assert.doesNotMatch(m.text(), /Switching channel to latest/);
+    } finally {
+        childProcess.spawnSync = originalSpawnSync;
+    }
+});
