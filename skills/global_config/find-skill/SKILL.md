@@ -22,7 +22,7 @@ aos store search <words>
 
 ## Use the match
 
-1. Take the top row. Output columns: kind, name, category, source, description.
+1. Take the top row. Output columns: kind, name, pack/group, source, description.
 2. Open `SKILL.md` of that skill. For an installed skill it is in your harness skills directory.
 3. If the skill is not installed (lean skill library: only router skills are installed), run `aos store install <name>` (add `--dry-run` first to see the plan; `--harness=claude` limits it to one harness), then read `~/.aos/library/skills/<name>/SKILL.md` right away. The current session can use the skill without a restart.
 4. If two rows look alike, or nothing fits, do not guess: use `ask-tim`, which maps the main flows and explains which of several overlapping skills to pick.

@@ -12,14 +12,14 @@ const PACK_INDEX_END = '<!-- aos:pack-index:end -->';
 
 // Map of godmode/head skills to their pack names
 const godmodeHeads = {
-  'godmode-eventtech': 'live-show',
-  'bdbmediastorm': 'live-show',
-  'godmode-media-creation': 'creator',
-  'godmode-3d-creation': 'creator',
-  'godmode-ui-ux': 'web-design',
-  'godmode-engineering': ['app-dev', 'stacks', 'agents-automation'],
-  'godmode-shipping': 'app-dev',
-  'bdb-eventagency-skill': 'business',
+  'godmode-eventtech': 'media-eventtech',
+  'bdbmediastorm': 'media-eventtech',
+  'godmode-media-creation': 'media-eventtech',
+  'godmode-3d-creation': 'media-eventtech',
+  'godmode-ui-ux': 'design-ui-ux',
+  'godmode-engineering': ['engineering'],
+  'godmode-shipping': 'engineering',
+  'bdb-eventagency-skill': 'ops',
   'godmode-hardware-pcb': 'hardware',
   'ask-tim': 'all'
 };
@@ -141,11 +141,11 @@ function generateAllPacksCatalogue(packs) {
 
   lines.push('## Roles (Preset Pack Combinations)');
   lines.push('');
-  lines.push('- **Eventagentur / Veranstalter**: business, creator');
-  lines.push('- **Event- und Live-Technik**: live-show, hardware, creator');
-  lines.push('- **Motion- und Content-Design**: creator, web-design');
-  lines.push('- **Web- und App-Entwicklung**: web-design, app-dev, stacks');
-  lines.push('- **Agents und Automationen**: agents-automation, app-dev');
+  lines.push('- **Eventagentur / Veranstalter**: ops, media-eventtech');
+  lines.push('- **Event- und Live-Technik**: media-eventtech, hardware');
+  lines.push('- **Motion- und Content-Design**: media-eventtech, design-ui-ux');
+  lines.push('- **Web- und App-Entwicklung**: design-ui-ux, engineering');
+  lines.push('- **Agents und Automationen**: engineering');
   lines.push('- **Harness-Engineering**: all packs');
   lines.push('');
 

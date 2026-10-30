@@ -137,6 +137,55 @@ The release report is not a deployment. If the user wants the product live on th
 - **golive** — Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
 - **vercel-deployment** — Expert knowledge for deploying to Vercel with Next.js
 - **cloudflare-workers-expert** — Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage.
+- **prisma-expert** — Prisma ORM expertise: schema design, migrations, query optimization, relations modeling and database operations across PostgreSQL, MySQL and SQLite.
+- **drizzle-orm-expert** — >-
+- **postgres-best-practices** — Supabase Postgres performance best practices. Use when writing, reviewing or optimizing Postgres queries, schema designs or database configurations.
+- **neon-postgres** — >-
+- **database-design** — Database design principles and decision-making. Schema design, indexing strategy, ORM selection, serverless databases.
+- **vector-database-engineer** — Vector databases, embedding strategies and semantic search with Pinecone, Weaviate, Qdrant, Milvus, pgvector for RAG and recommendation systems.
+- **python-pro** — Modern Python 3.12+ expertise: async, performance, production practices and the latest ecosystem tooling (uv, ruff, pydantic, FastAPI).
+- **golang-pro** — Master Go 1.21+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices.
+- **go-concurrency-patterns** — Go concurrency: goroutines, channels, sync primitives, context. Worker pools, race condition debugging.
+- **rust-pro** — Use when writing, debugging or structuring Rust: ownership and borrow-checker errors, error handling, async/tokio, cargo workflow, unsafe code, or Tauri v2 backends.
+- **tauri-pilot** — Use when driving or testing a running Tauri v2 app via CLI or MCP: inspect the UI, click and fill elements, assert state, record and replay sessions, and run TOML scenarios over a local socket.
+- **tanstack-query-expert** — TanStack Query (React Query) expertise: data fetching, stale time, mutations, optimistic updates, Next.js SSR. Use for async state management.
+- **zustand-store-ts** — Create Zustand stores following established patterns with proper TypeScript types and middleware.
+- **turborepo-caching** — Configure Turborepo with local and remote caching. Use when setting up Turborepo, optimizing build pipelines or implementing distributed caching.
+- **monorepo-management** — Build efficient, scalable monorepos that enable code sharing, consistent tooling, and atomic changes across multiple packages and applications.
+- **makefile-pro** — Generate, scaffold, validate and lint Makefiles and .mk files: .PHONY targets, build automation, common mistakes. Use for any Makefile work.
+- **microservices-patterns** — Microservices architecture: boundaries, communication, data management, resilience patterns.
+- **bash-linux** — Bash/Linux terminal patterns. Critical commands, piping, error handling, scripting. Use when working on macOS or Linux systems.
+- **posix-shell-pro** — Strict POSIX sh scripting for maximum portability across Unix-like systems; scripts that run on dash, ash, sh or bash --posix alike.
+- **tmux** — Expert tmux session, window, and pane management for terminal multiplexing, persistent remote workflows, and shell scripting automation.
+- **agent-tool-builder** — >-
+- **agentic-harness-patterns** — >-
+- **llm-app-patterns** — Production-ready patterns for building LLM applications, inspired by [Dify](https://github.com/langgenius/dify) and industry best practices.
+- **llm-structured-output** — >
+- **local-llm-expert** — Local LLM inference: model selection, VRAM optimization. Ollama, llama.cpp, vLLM, LM Studio, quantization.
+- **rag-implementation** — RAG implementation workflow: embedding selection, vector database setup, chunking strategies and retrieval optimization.
+- **prompt-engineer** — Transforms user prompts into optimized prompts using frameworks (RTF, RISEN, Chain of Thought, RODES, Chain of Density, RACE, RISE, STAR, SOAP, CLEAR, GROW)
+- **crewai** — >-
+- **vercel-ai-sdk-expert** — Vercel AI SDK expertise: Core API, UI hooks (useChat, useCompletion), tool calling and streaming UI with React and Next.js.
+- **gemini-api-integration** — Use when integrating Google Gemini API into projects. Covers model selection, multimodal inputs, streaming, function calling, and production best practices.
+- **n8n-code-javascript** — JavaScript in n8n Code nodes. $input/$json/$node, HTTP requests, DateTime, error troubleshooting.
+- **n8n-code-python** — Python in n8n Code nodes. _input/_json/_node syntax, standard library, limitations.
+- **n8n-expression-syntax** — n8n expression syntax validation. {{}} syntax, $json/$node variables, expression errors, webhook data.
+- **n8n-mcp-tools-expert** — n8n-mcp tools: nodes, configs, templates, workflows. Tool guidance, parameters, patterns.
+- **n8n-workflow-patterns** — Proven architectural patterns for building n8n workflows.
+- **agent-manager-skill** — Use when manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling.
+- **agent-memory-mcp** — Use when a hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions).
+- **subagent-setup** — Configure multi-harness subagents (Claude Code, Antigravity, OpenCode, Codex) with per-harness overrides and a single source in .aos/pipeline.json.
+- **factory-babysit-pr** — >-
+- **factory-collect** — >-
+- **factory-lookback** — >-
+- **factory-recover** — >-
+- **factory-review-prs** — >-
+- **factory-ship** — >-
+- **factory-watchdog** — >-
+- **git-advanced-workflows** — Master advanced Git techniques to maintain clean history, collaborate effectively, and recover from any situation with confidence.
+- **git-pr-review** — Generate a concise and structured PR description from commit history with minimal token usage
+- **pb-aos-e2e** — >-
+- **pb-tauri-e2e** — >-
 
-**Install:** `aos store install --pack app-dev`
+**Install:** `aos store install --pack engineering`
 <!-- aos:pack-index:end -->

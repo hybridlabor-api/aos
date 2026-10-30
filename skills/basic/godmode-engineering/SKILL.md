@@ -96,8 +96,6 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 ## App dev Pack Skills
 
 <!-- aos:pack-index:start -->
-### App dev Pack Skills
-
 - **software-architecture** — Quality-focused architecture guidance (Clean Architecture, DDD). Use when designing architecture, writing or analyzing code in projects.
 - **api-design-principles** — Master REST and GraphQL API design principles to build intuitive, scalable, and maintainable APIs that delight developers and stand the test of time.
 - **test-driven-development** — Use when implementing any feature or bugfix, before writing implementation code
@@ -131,58 +129,26 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 - **golive** — Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
 - **vercel-deployment** — Expert knowledge for deploying to Vercel with Next.js
 - **cloudflare-workers-expert** — Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage.
-
-**Install:** `aos store install --pack app-dev`
-
-
-### Stacks Pack Skills
-
-### Db
-
 - **prisma-expert** — Prisma ORM expertise: schema design, migrations, query optimization, relations modeling and database operations across PostgreSQL, MySQL and SQLite.
 - **drizzle-orm-expert** — >-
 - **postgres-best-practices** — Supabase Postgres performance best practices. Use when writing, reviewing or optimizing Postgres queries, schema designs or database configurations.
 - **neon-postgres** — >-
 - **database-design** — Database design principles and decision-making. Schema design, indexing strategy, ORM selection, serverless databases.
 - **vector-database-engineer** — Vector databases, embedding strategies and semantic search with Pinecone, Weaviate, Qdrant, Milvus, pgvector for RAG and recommendation systems.
-
-### Python
-
 - **python-pro** — Modern Python 3.12+ expertise: async, performance, production practices and the latest ecosystem tooling (uv, ruff, pydantic, FastAPI).
-
-### Go
-
 - **golang-pro** — Master Go 1.21+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices.
 - **go-concurrency-patterns** — Go concurrency: goroutines, channels, sync primitives, context. Worker pools, race condition debugging.
-
-### Rust
-
 - **rust-pro** — Use when writing, debugging or structuring Rust: ownership and borrow-checker errors, error handling, async/tokio, cargo workflow, unsafe code, or Tauri v2 backends.
 - **tauri-pilot** — Use when driving or testing a running Tauri v2 app via CLI or MCP: inspect the UI, click and fill elements, assert state, record and replay sessions, and run TOML scenarios over a local socket.
-
-### React
-
 - **tanstack-query-expert** — TanStack Query (React Query) expertise: data fetching, stale time, mutations, optimistic updates, Next.js SSR. Use for async state management.
 - **zustand-store-ts** — Create Zustand stores following established patterns with proper TypeScript types and middleware.
-
-### Repo
-
 - **turborepo-caching** — Configure Turborepo with local and remote caching. Use when setting up Turborepo, optimizing build pipelines or implementing distributed caching.
 - **monorepo-management** — Build efficient, scalable monorepos that enable code sharing, consistent tooling, and atomic changes across multiple packages and applications.
 - **makefile-pro** — Generate, scaffold, validate and lint Makefiles and .mk files: .PHONY targets, build automation, common mistakes. Use for any Makefile work.
 - **microservices-patterns** — Microservices architecture: boundaries, communication, data management, resilience patterns.
-
-### Shell
-
 - **bash-linux** — Bash/Linux terminal patterns. Critical commands, piping, error handling, scripting. Use when working on macOS or Linux systems.
 - **posix-shell-pro** — Strict POSIX sh scripting for maximum portability across Unix-like systems; scripts that run on dash, ash, sh or bash --posix alike.
 - **tmux** — Expert tmux session, window, and pane management for terminal multiplexing, persistent remote workflows, and shell scripting automation.
-
-**Install:** `aos store install --pack stacks`
-
-
-### Agents automation Pack Skills
-
 - **agent-tool-builder** — >-
 - **agentic-harness-patterns** — >-
 - **llm-app-patterns** — Production-ready patterns for building LLM applications, inspired by [Dify](https://github.com/langgenius/dify) and industry best practices.
@@ -201,6 +167,17 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 - **agent-manager-skill** — Use when manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling.
 - **agent-memory-mcp** — Use when a hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions).
 - **subagent-setup** — Configure multi-harness subagents (Claude Code, Antigravity, OpenCode, Codex) with per-harness overrides and a single source in .aos/pipeline.json.
+- **factory-babysit-pr** — >-
+- **factory-collect** — >-
+- **factory-lookback** — >-
+- **factory-recover** — >-
+- **factory-review-prs** — >-
+- **factory-ship** — >-
+- **factory-watchdog** — >-
+- **git-advanced-workflows** — Master advanced Git techniques to maintain clean history, collaborate effectively, and recover from any situation with confidence.
+- **git-pr-review** — Generate a concise and structured PR description from commit history with minimal token usage
+- **pb-aos-e2e** — >-
+- **pb-tauri-e2e** — >-
 
-**Install:** `aos store install --pack agents-automation`
+**Install:** `aos store install --pack engineering`
 <!-- aos:pack-index:end -->

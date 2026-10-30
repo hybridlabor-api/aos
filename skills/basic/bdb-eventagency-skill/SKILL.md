@@ -287,5 +287,5 @@ Channel attribution is **inherently imperfect** — most attendees meet several 
 - **firecrawl** — |
 - **firecrawl-sdk** — Integrate Firecrawl into product code: SDK setup and FIRECRAWL_API_KEY onboarding, /scrape, /search and /interact endpoints. Use for app code, not the agent.
 
-**Install:** `aos store install --pack business`
+**Install:** `aos store install --pack ops`
 <!-- aos:pack-index:end -->

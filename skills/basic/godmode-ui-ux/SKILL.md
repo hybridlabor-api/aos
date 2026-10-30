@@ -207,5 +207,5 @@ Master orchestration skill for UI/UX design, enforcing high-agency design taste 
 - **programmatic-seo** — Design and evaluate programmatic SEO strategies for creating SEO-driven pages at scale using templates and structured data.
 - **copywriting** — Write rigorous, conversion-focused marketing copy for landing pages and emails. Enforces brief confirmation and strict no-fabrication rules.
 
-**Install:** `aos store install --pack web-design`
+**Install:** `aos store install --pack design-ui-ux`
 <!-- aos:pack-index:end -->
