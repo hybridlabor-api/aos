@@ -89,7 +89,7 @@ function checkAosConfig() {
 function checkAgentDocs() {
   const agents = p('AGENTS.md');
   add('docs', 'AGENTS.md', existsSync(agents), existsSync(agents) ? `${readFileSync(agents, 'utf8').split('\n').length} lines` : 'missing — no repo-specific agent rules',
-    'Write AGENTS.md (see the /aos-project-init template).');
+    'Run `aos project init --files` or write AGENTS.md manually.');
 
   for (const alias of ['CLAUDE.md', 'RULES.md', 'CODEX.md']) {
     const f = p(alias);
@@ -102,7 +102,7 @@ function checkAgentDocs() {
       ok = (isLink && path.basename(target) === 'AGENTS.md') || isPointer;
       detail = isLink ? `-> ${target}` : (isPointer ? 'pointer to AGENTS.md' : 'a real file without AGENTS.md pointer (will drift from AGENTS.md)');
     }
-    add('docs', alias, ok, detail, `point ${alias} to AGENTS.md`);
+    add('docs', alias, ok, detail, `Run \`aos project init --files\` or point ${alias} to AGENTS.md`);
   }
 }
 
