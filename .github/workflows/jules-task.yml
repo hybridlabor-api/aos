@@ -1,4 +1,4 @@
-name: Jules Skill Implementer
+name: Jules Task Dispatcher
 
 on:
   issues:
@@ -9,38 +9,64 @@ permissions:
   issues: read
 
 jobs:
-  jules-skill:
-    name: Implement requested skill via Google Labs Jules
-    # Hardened guards:
-    # 1. Private fork confinement: refuse to run in public hybridlabor-api/aos
-    # 2. Label trigger filter: run only when labeled with aos-skill-request
-    # 3. Access control: run only if triggered by an OWNER or MEMBER
+  jules-bug:
+    name: Dispatch maintainer bug report to Google Labs Jules
     if: |
       github.repository == vars.JULES_ALLOWED_REPO &&
-      github.event.label.name == 'aos-skill-request' &&
+      github.event.label.name == 'aos-bug' &&
       (github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Build Jules task prompt
         id: prompt
-        # Environment variables prevent shell injection; never interpolate ${{ github.event.issue }} inside run
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          PLAN_RULES: |
+            All issues: Read AGENTS.md first. Make the smallest complete change. Use Conventional Commits and no AI attribution. Never run the installer against the real HOME; tests must use a temporary HOME. Run npm test or relevant node --test files and npm run validate; all must pass. Create one PR per issue, link the issue in the PR body, and list tests run.
+
+            Bug: Reproduce first. Add a failing test, then fix the root cause in shared code after grepping all callers. Preserve error handling and mention the root cause in the PR.
         run: |
           delimiter="EOF_JULES_PROMPT_$(date +%s)"
           {
             echo "task<<$delimiter"
-            echo "AOS Skill Implementation Request"
+            echo "AOS Bug Fix Request"
+            printf '%s\n' "$PLAN_RULES"
             echo "Title: $ISSUE_TITLE"
             echo ""
             echo "$ISSUE_BODY"
             echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
-
       - name: Dispatch task to Google Jules
-        uses: google-labs-code/jules-action@bff7875eaa123cac6742b7cfc51005b95ba4d566 # v1.0.0
-        with:
-          prompt: ${{ steps.prompt.outputs.task }}
-          jules_api_key: ${{ secrets.JULES_API_KEY }}
+        env:
+          JULES_PROMPT: ${{ steps.prompt.outputs.task }}
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          want=$(printf '%s\n' "$ISSUE_BODY" | sed -n 's/^Target-Repo:[[:space:]]*\([A-Za-z0-9._/-]*\).*/\1/p' | head -1)
+          if [ -z "$want" ]; then
+            want=$(printf '%s\n' "$ISSUE_BODY" | awk 'prev { if ($0 ~ /^[[:space:]]*$/) next; gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit } /^### Target repo[[:space:]]*$/ { prev=1 }' | sed 's/[^A-Za-z0-9._/-].*$//')
+          fi
+          if [ -n "$want" ]; then
+            case "$want" in hybridlabor-api/aos) REPO="$want"; BRANCH=main ;; *) echo "::error::Target-Repo $want is not allowed"; exit 1 ;; esac
+          fi
+          wantb=$(printf '%s\n' "$ISSUE_BODY" | sed -n 's/^Target-Branch:[[:space:]]*\([A-Za-z0-9._/-]*\).*/\1/p' | head -1)
+          if [ -n "$want" ] && [ -n "$wantb" ]; then BRANCH="$wantb"; fi
+          echo "Jules target: $REPO ($BRANCH)"
+          jq -n --arg prompt "$JULES_PROMPT" --arg repo "$REPO" --arg branch "$BRANCH" '{
+            prompt: $prompt,
+            sourceContext: { source: "sources/github/\($repo)", githubRepoContext: { startingBranch: $branch } },
+            requirePlanApproval: false,
+            automationMode: "AUTO_CREATE_PR"
+          }' > jules_payload.json
+          status=$(curl -sS -o jules_response.json -w '%{http_code}' 'https://jules.googleapis.com/v1alpha/sessions' \
+            -X POST -H "Content-Type: application/json" -H "X-Goog-Api-Key: $JULES_API_KEY" -d @jules_payload.json)
+          echo "Jules API answered HTTP $status"
+          jq '{name, id, state, url, error}' jules_response.json || cat jules_response.json
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::Jules did not create a session (HTTP $status)"
+            exit 1
+          fi
