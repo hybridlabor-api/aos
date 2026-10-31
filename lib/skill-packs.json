@@ -88,62 +88,14 @@
     "pb-worktrees-land"
   ],
   "packs": {
-    "live-show": {
-      "description": "Event & Live Tech: grandMA3, Resolume, TouchDesigner, Unreal, spatial design",
-      "skills": [
-        "bdb-grandma3-mcp",
-        "bdb-resolume-mcp",
-        "bdb-touchdesigner-mcp",
-        "bdb-unreal-mcp",
-        "bdb-vectorworks-mcp",
-        "bdb-rhino-mcp",
-        "mcp-manage",
-        "bdb-computer-use-mcp"
-      ]
-    },
-    "creator": {
-      "description": "Motion, Content, 3D & Video: After Effects, DaVinci, Blender, Spline, Three.js",
-      "skills": [
-        "remotion",
-        "threejs-skills",
-        "spline-3d-integration",
-        "bdb-after-effects-mcp",
-        "bdb-adobe-suite-mcp",
-        "bdb-davinci-mcp",
-        "bdb-blender-mcp",
-        "brag",
-        "design-spells",
-        "live-preview-canvas"
-      ]
-    },
-    "web-design": {
-      "description": "Design & Frontend: React, Next.js, TailwindCSS, UI components, accessibility",
-      "skills": [
-        "bdbdesignpro",
-        "bdb-ui-library",
-        "editable-design",
-        "bdb-visual-edit",
-        "senior-frontend",
-        "shadcn",
-        "tailwind-patterns",
-        "react-best-practices",
-        "nextjs-best-practices",
-        "landing-page-generator",
-        "web-artifacts-builder",
-        "web-performance-optimization",
-        "wcag-audit-patterns",
-        "ux-persuasion-engineer",
-        "creative-direction",
-        "seo",
-        "seo-audit",
-        "schema-markup",
-        "geo-fundamentals",
-        "programmatic-seo",
-        "copywriting"
-      ]
-    },
-    "app-dev": {
-      "description": "Backend, Architecture & Deployment: testing, debugging, CI/CD, security, shipping",
+    "engineering": {
+      "domain": "engineering",
+      "description": "Application development, infrastructure, and software engineering.",
+      "aliases": [
+        "app-dev",
+        "harness-engineering",
+        "agents-automation"
+      ],
       "skills": [
         "software-architecture",
         "api-design-principles",
@@ -177,7 +129,146 @@
         "bdb-deploy",
         "golive",
         "vercel-deployment",
-        "cloudflare-workers-expert"
+        "cloudflare-workers-expert",
+        "agent-tool-builder",
+        "agentic-harness-patterns",
+        "llm-app-patterns",
+        "llm-structured-output",
+        "local-llm-expert",
+        "rag-implementation",
+        "prompt-engineer",
+        "crewai",
+        "vercel-ai-sdk-expert",
+        "gemini-api-integration",
+        "n8n-code-javascript",
+        "n8n-code-python",
+        "n8n-expression-syntax",
+        "n8n-mcp-tools-expert",
+        "n8n-workflow-patterns",
+        "agent-manager-skill",
+        "agent-memory-mcp",
+        "subagent-setup",
+        "instinct-export",
+        "instinct-import",
+        "instinct-status",
+        "token-saver-config",
+        "synapse-integration-skill",
+        "design-control-loop",
+        "reverse-engineer-anything",
+        "bdbhtmlmanueldocs",
+        "documentation",
+        "readme"
+      ]
+    },
+    "media-eventtech": {
+      "domain": "media-eventtech",
+      "description": "Live shows, event technology, and media production.",
+      "aliases": [
+        "live-show",
+        "creator"
+      ],
+      "skills": [
+        "bdb-grandma3-mcp",
+        "bdb-resolume-mcp",
+        "bdb-touchdesigner-mcp",
+        "bdb-unreal-mcp",
+        "bdb-vectorworks-mcp",
+        "bdb-rhino-mcp",
+        "mcp-manage",
+        "bdb-computer-use-mcp",
+        "remotion",
+        "threejs-skills",
+        "spline-3d-integration",
+        "bdb-after-effects-mcp",
+        "bdb-adobe-suite-mcp",
+        "bdb-davinci-mcp",
+        "bdb-blender-mcp",
+        "brag",
+        "design-spells",
+        "live-preview-canvas"
+      ]
+    },
+    "design-ui-ux": {
+      "domain": "design-ui-ux",
+      "description": "UI/UX design, web design, and creative direction.",
+      "aliases": [
+        "web-design"
+      ],
+      "skills": [
+        "bdbdesignpro",
+        "bdb-ui-library",
+        "editable-design",
+        "bdb-visual-edit",
+        "senior-frontend",
+        "shadcn",
+        "tailwind-patterns",
+        "react-best-practices",
+        "nextjs-best-practices",
+        "landing-page-generator",
+        "web-artifacts-builder",
+        "web-performance-optimization",
+        "wcag-audit-patterns",
+        "ux-persuasion-engineer",
+        "creative-direction",
+        "seo",
+        "seo-audit",
+        "schema-markup",
+        "geo-fundamentals",
+        "programmatic-seo",
+        "copywriting"
+      ]
+    },
+    "ops": {
+      "domain": "ops",
+      "description": "Business operations and project administration.",
+      "aliases": [
+        "business"
+      ],
+      "skills": [
+        "product-manager-toolkit",
+        "domain-modeling",
+        "to-spec",
+        "triage",
+        "wayfinder",
+        "executing-plans",
+        "grill-with-docs",
+        "deep-research",
+        "obsidian-markdown",
+        "openapi-spec-generation",
+        "browser-automation",
+        "apify-lead-generation",
+        "apify-ultimate-scraper",
+        "firecrawl",
+        "firecrawl-sdk"
+      ]
+    },
+    "docs": {
+      "domain": "docs",
+      "description": "Documentation and technical writing.",
+      "aliases": [],
+      "skills": []
+    },
+    "video": {
+      "domain": "video",
+      "description": "Video production and post-production.",
+      "aliases": [],
+      "skills": [
+        "pb-code-video",
+        "pb-launch-video",
+        "pb-content-studio"
+      ]
+    },
+    "hardware": {
+      "domain": "hardware",
+      "description": "Hardware design and PCB layout.",
+      "aliases": [],
+      "skills": [
+        "code-first-hardware-design",
+        "pcb-constraint-definition",
+        "pcb-layout-routing-automation",
+        "pcb-validation-dfm-signoff",
+        "schematic-datasheet-analysis",
+        "schematic-reverse-engineering"
       ]
     },
     "stacks": {
@@ -218,84 +309,6 @@
           "tmux"
         ]
       }
-    },
-    "agents-automation": {
-      "description": "Custom Agents, Workflows & LLM Apps: RAG, n8n, prompt engineering, multi-agent",
-      "skills": [
-        "agent-tool-builder",
-        "agentic-harness-patterns",
-        "llm-app-patterns",
-        "llm-structured-output",
-        "local-llm-expert",
-        "rag-implementation",
-        "prompt-engineer",
-        "crewai",
-        "vercel-ai-sdk-expert",
-        "gemini-api-integration",
-        "n8n-code-javascript",
-        "n8n-code-python",
-        "n8n-expression-syntax",
-        "n8n-mcp-tools-expert",
-        "n8n-workflow-patterns",
-        "agent-manager-skill",
-        "agent-memory-mcp",
-        "subagent-setup"
-      ]
-    },
-    "harness-engineering": {
-      "description": "Harness Configuration & AOS Engineering: skills, memory, state, documentation",
-      "skills": [
-        "instinct-export",
-        "instinct-import",
-        "instinct-status",
-        "token-saver-config",
-        "synapse-integration-skill",
-        "design-control-loop",
-        "reverse-engineer-anything",
-        "bdbhtmlmanueldocs",
-        "documentation",
-        "readme"
-      ]
-    },
-    "hardware": {
-      "description": "Hardware & PCB: KiCad, schematics, layouts, DRC, manufacturing (external skills)",
-      "skills": [
-        "code-first-hardware-design",
-        "pcb-constraint-definition",
-        "pcb-layout-routing-automation",
-        "pcb-validation-dfm-signoff",
-        "schematic-datasheet-analysis",
-        "schematic-reverse-engineering"
-      ],
-      "external": true
-    },
-    "video": {
-      "description": "Video creation and rendering: routes, engines and handoffs",
-      "skills": [
-        "pb-code-video",
-        "pb-launch-video",
-        "pb-content-studio"
-      ]
-    },
-    "business": {
-      "description": "Agentur & Business: project management, research, automation, APIs, automation",
-      "skills": [
-        "product-manager-toolkit",
-        "domain-modeling",
-        "to-spec",
-        "triage",
-        "wayfinder",
-        "executing-plans",
-        "grill-with-docs",
-        "deep-research",
-        "obsidian-markdown",
-        "openapi-spec-generation",
-        "browser-automation",
-        "apify-lead-generation",
-        "apify-ultimate-scraper",
-        "firecrawl",
-        "firecrawl-sdk"
-      ]
     }
   },
   "mergeCandidates": [

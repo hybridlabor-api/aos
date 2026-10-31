@@ -137,6 +137,34 @@ The release report is not a deployment. If the user wants the product live on th
 - **golive** — Ship app from repo to production on user accounts. Auth, payments, email, DNS. Approval gates, verification evidence.
 - **vercel-deployment** — Expert knowledge for deploying to Vercel with Next.js
 - **cloudflare-workers-expert** — Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage.
+- **agent-tool-builder** — Design tools for AI agents. Use when building agent tools: covers schema, error handling, and avoiding hallucination and silent failure.
+- **agentic-harness-patterns** — Harness patterns for coding agents — memory, permissions, context engineering, delegation, skills, hooks, bootstrap.
+- **llm-app-patterns** — Production-ready patterns for building LLM applications, inspired by [Dify](https://github.com/langgenius/dify) and industry best practices.
+- **llm-structured-output** — Get reliable JSON, enums, and typed objects from LLMs using response_format, tool_use, and schema-constrained decoding across OpenAI, Anthropic, and Google APIs.
+- **local-llm-expert** — Local LLM inference: model selection, VRAM optimization. Ollama, llama.cpp, vLLM, LM Studio, quantization.
+- **rag-implementation** — RAG implementation workflow: embedding selection, vector database setup, chunking strategies and retrieval optimization.
+- **prompt-engineer** — Transforms user prompts into optimized prompts using frameworks (RTF, RISEN, Chain of Thought, RODES, Chain of Density, RACE, RISE, STAR, SOAP, CLEAR, GROW)
+- **crewai** — Expert in CrewAI - the leading role-based multi-agent framework used by 60% of Fortune 500 companies.
+- **vercel-ai-sdk-expert** — Vercel AI SDK expertise: Core API, UI hooks (useChat, useCompletion), tool calling and streaming UI with React and Next.js.
+- **gemini-api-integration** — Use when integrating Google Gemini API into projects. Covers model selection, multimodal inputs, streaming, function calling, and production best practices.
+- **n8n-code-javascript** — JavaScript in n8n Code nodes. $input/$json/$node, HTTP requests, DateTime, error troubleshooting.
+- **n8n-code-python** — Python in n8n Code nodes. _input/_json/_node syntax, standard library, limitations.
+- **n8n-expression-syntax** — n8n expression syntax validation. {{}} syntax, $json/$node variables, expression errors, webhook data.
+- **n8n-mcp-tools-expert** — n8n-mcp tools: nodes, configs, templates, workflows. Tool guidance, parameters, patterns.
+- **n8n-workflow-patterns** — Proven architectural patterns for building n8n workflows.
+- **agent-manager-skill** — Use when manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling.
+- **agent-memory-mcp** — Use when a hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions).
+- **subagent-setup** — Configure multi-harness subagents (Claude Code, Antigravity, OpenCode, Codex) with per-harness overrides and a single source in .aos/pipeline.json.
+- **instinct-export** — Use when the user wants to share or back up learned instincts — validates the local instincts file, allowlists the six known fields, strips secrets and home-directory paths, and writes a sanitized JSON artifact the user names. Never modifies the instincts file itself.
+- **instinct-import** — Use when the user brings an exported instincts JSON to merge into the local store — treats trigger and action as inert data, validates every entry against the shared format and its bounds, drops invalid ones loudly, and never overwrites an existing instinct without asking the user first.
+- **instinct-status** — Use when the user wants to see what learned instincts exist, their confidence scores and how current they are — reads the local instincts file under ~/.aos/instincts/ and reports it. Read-only.
+- **token-saver-config** — Configure and diagnose token-saver compression settings. Use when the user asks about adjusting compression levels, checking processor status, debugging hook issues, or reviewing savings statistics.
+- **synapse-integration-skill** — Use when global skill for BDB Synapse (3D Codebase Visualizer) integration.
+- **design-control-loop** — Interview the user to design an agentic control loop (sensor, controller, actuator) tailored to their codebase, then build it locally.
+- **reverse-engineer-anything** — Reverse engineer native, managed, Electron, packaged, firmware or browser targets with REA. Skip for ordinary source repo analysis.
+- **bdbhtmlmanueldocs** — Enterprise-grade developer docs and user manuals. HTML template, GitHub Pages hosting, neutral design system.
+- **documentation** — Documentation generation workflow covering API docs, architecture docs, README files, code comments, and technical writing.
+- **readme** — Write an absurdly thorough README.md as an expert technical writer. Use when creating or rewriting project README documentation.
 
-**Install:** `aos store install --pack app-dev`
+**Install:** `aos store install --pack engineering`
 <!-- aos:pack-index:end -->

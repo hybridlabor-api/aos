@@ -162,6 +162,14 @@ Godmode 3D Creation generates 3D assets, meshes, and CAD models using local Pyth
 ## Creator Pack Skills
 
 <!-- aos:pack-index:start -->
+- **bdb-grandma3-mcp** — Utilizes the grandMA3 MCP server to patch fixtures, execute console commands, and trigger macros via OSC.
+- **bdb-resolume-mcp** — Utilizes the Resolume Arena MCP server to trigger clips, clear layers, adjust speeds, and query composition status via the Resolume REST API.
+- **bdb-touchdesigner-mcp** — Utilizes the TouchDesigner MCP servers (tdmcp and touchdesigner-mcp) to create TOP/CHOP chains, script operators, inspect parameters, and debug node networks.
+- **bdb-unreal-mcp** — Utilizes the Unreal Engine MCP server to control UE5 via a native C++ Automation Bridge plugin.
+- **bdb-vectorworks-mcp** — Utilizes the Vectorworks RAG + MCP server to search and retrieve Python and VectorScript API documentation.
+- **bdb-rhino-mcp** — Utilizes the Rhino MCP servers (RhinoMCP and golem-rhino-mcp) to create and manipulate 3D models and run Grasshopper graphs.
+- **mcp-manage** — Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner.
+- **bdb-computer-use-mcp** — Utilizes native Rust/Node and Python-based computer-use-mcp servers to control macOS, Windows, and Linux desktops.
 - **remotion** — Generate walkthrough videos from Stitch projects using Remotion with smooth transitions, zooming, and text overlays
 - **threejs-skills** — Create 3D scenes, interactive experiences and visual effects with Three.js. Use for 3D graphics, WebGL, animations or interactive 3D elements.
 - **spline-3d-integration** — Use when adding interactive 3D scenes from Spline.design to web projects, including React embedding and runtime control API.
@@ -173,5 +181,5 @@ Godmode 3D Creation generates 3D assets, meshes, and CAD models using local Pyth
 - **design-spells** — Use when adding curated micro-interactions, delightful animations, and subtle design details that add magic and personality to web and mobile apps.
 - **live-preview-canvas** — A prototyping skill that generates a local HTML mock with a built-in feedback layer, allowing users to drop visual comments (red dots) for UI fixes.
 
-**Install:** `aos store install --pack creator`
+**Install:** `aos store install --pack media-eventtech`
 <!-- aos:pack-index:end -->

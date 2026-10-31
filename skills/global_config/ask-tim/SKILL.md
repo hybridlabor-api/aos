@@ -368,29 +368,47 @@ If none of the intents above match your task, look for the closest general libra
 <!-- aos:pack-index:start -->
 ## Available Packs
 
-### live-show
+### engineering
 
-Event & Live Tech: grandMA3, Resolume, TouchDesigner, Unreal, spatial design
+Application development, infrastructure, and software engineering.
 
-**Install:** `aos store install --pack live-show`
+**Install:** `aos store install --pack engineering`
 
-### creator
+### media-eventtech
 
-Motion, Content, 3D & Video: After Effects, DaVinci, Blender, Spline, Three.js
+Live shows, event technology, and media production.
 
-**Install:** `aos store install --pack creator`
+**Install:** `aos store install --pack media-eventtech`
 
-### web-design
+### design-ui-ux
 
-Design & Frontend: React, Next.js, TailwindCSS, UI components, accessibility
+UI/UX design, web design, and creative direction.
 
-**Install:** `aos store install --pack web-design`
+**Install:** `aos store install --pack design-ui-ux`
 
-### app-dev
+### ops
 
-Backend, Architecture & Deployment: testing, debugging, CI/CD, security, shipping
+Business operations and project administration.
 
-**Install:** `aos store install --pack app-dev`
+**Install:** `aos store install --pack ops`
+
+### docs
+
+Documentation and technical writing.
+
+**Install:** `aos store install --pack docs`
+
+### video
+
+Video production and post-production.
+
+**Install:** `aos store install --pack video`
+
+### hardware
+
+Hardware design and PCB layout.
+
+**Install:** `aos store install --pack hardware`
 
 ### stacks
 
@@ -398,43 +416,13 @@ Language & Framework Stack Specifics (choose: db, python, go, rust, react, repo,
 
 **Install:** `aos store install --pack stacks`
 
-### agents-automation
-
-Custom Agents, Workflows & LLM Apps: RAG, n8n, prompt engineering, multi-agent
-
-**Install:** `aos store install --pack agents-automation`
-
-### harness-engineering
-
-Harness Configuration & AOS Engineering: skills, memory, state, documentation
-
-**Install:** `aos store install --pack harness-engineering`
-
-### hardware
-
-Hardware & PCB: KiCad, schematics, layouts, DRC, manufacturing (external skills)
-
-**Install:** `aos store install --pack hardware`
-
-### video
-
-Video creation and rendering: routes, engines and handoffs
-
-**Install:** `aos store install --pack video`
-
-### business
-
-Agentur & Business: project management, research, automation, APIs, automation
-
-**Install:** `aos store install --pack business`
-
 ## Roles (Preset Pack Combinations)
 
-- **Eventagentur / Veranstalter**: business, creator
-- **Event- und Live-Technik**: live-show, hardware, creator
-- **Motion- und Content-Design**: creator, web-design
-- **Web- und App-Entwicklung**: web-design, app-dev, stacks
-- **Agents und Automationen**: agents-automation, app-dev
+- **Eventagentur / Veranstalter**: ops, media-eventtech
+- **Event- und Live-Technik**: media-eventtech, hardware
+- **Motion- und Content-Design**: media-eventtech, design-ui-ux
+- **Web- und App-Entwicklung**: design-ui-ux, engineering, stacks
+- **Agents und Automationen**: engineering
 - **Harness-Engineering**: all packs
 <!-- aos:pack-index:end -->
 

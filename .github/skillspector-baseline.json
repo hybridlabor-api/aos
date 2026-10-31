@@ -202,5 +202,29 @@
     "id": "AS1",
     "file": "SKILL.md",
     "reason": "The ~/.gemini/config hit is the path of the shipped memb_ingest.py script that the skill tells the agent to run; no agent config is read."
+  },
+  {
+    "skill": "global_config/find-skill",
+    "id": "EA2",
+    "file": "SKILL.md",
+    "reason": "This is safe because it only reads from lib/skill-packs.json and searches the local disk, it does not execute unknown payloads."
+  },
+  {
+    "skill": "global_config/find-skill",
+    "id": "P2",
+    "file": "SKILL.md",
+    "reason": "This is safe because it only reads from lib/skill-packs.json and searches the local disk, it does not execute unknown payloads."
+  },
+  {
+    "skill": "global_config/find-skill",
+    "id": "RP1",
+    "file": "SKILL.md",
+    "reason": "This is safe because it only reads from lib/skill-packs.json and searches the local disk, it does not execute unknown payloads."
+  },
+  {
+    "skill": "global_config/find-skill",
+    "id": "RA2",
+    "file": "SKILL.md",
+    "reason": "This is safe because it only reads from lib/skill-packs.json and searches the local disk, it does not execute unknown payloads."
   }
 ]

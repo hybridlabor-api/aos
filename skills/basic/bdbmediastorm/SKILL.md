@@ -148,6 +148,16 @@ BDB MediaStorm is the master ideation and brainstorming engine for live show-con
 - **bdb-rhino-mcp** — Utilizes the Rhino MCP servers (RhinoMCP and golem-rhino-mcp) to create and manipulate 3D models and run Grasshopper graphs.
 - **mcp-manage** — Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner.
 - **bdb-computer-use-mcp** — Utilizes native Rust/Node and Python-based computer-use-mcp servers to control macOS, Windows, and Linux desktops.
+- **remotion** — Generate walkthrough videos from Stitch projects using Remotion with smooth transitions, zooming, and text overlays
+- **threejs-skills** — Create 3D scenes, interactive experiences and visual effects with Three.js. Use for 3D graphics, WebGL, animations or interactive 3D elements.
+- **spline-3d-integration** — Use when adding interactive 3D scenes from Spline.design to web projects, including React embedding and runtime control API.
+- **bdb-after-effects-mcp** — Utilizes the After Effects MCP servers (after-effects-mcp and ae-mcp) to create compositions, layers, masks, keyframe animations, and run ExtendScript.
+- **bdb-adobe-suite-mcp** — Automate Photoshop, Illustrator, Premiere Pro and After Effects via the Adobe Suite MCP servers (ExtendScript and UXP WebSocket bridges).
+- **bdb-davinci-mcp** — Utilizes the DaVinci Resolve MCP servers to control timeline editing, media analysis, color grading, and Fusion/Fairlight scripting.
+- **bdb-blender-mcp** — Utilizes the Blender MCP server and addon to build 3D assets, apply materials, inspect scenes, and script bpy.
+- **brag** — Turn the project website into a launch video with Hyperframes. Use when someone says /brag or wants a video to showcase a shipment.
+- **design-spells** — Use when adding curated micro-interactions, delightful animations, and subtle design details that add magic and personality to web and mobile apps.
+- **live-preview-canvas** — A prototyping skill that generates a local HTML mock with a built-in feedback layer, allowing users to drop visual comments (red dots) for UI fixes.
 
-**Install:** `aos store install --pack live-show`
+**Install:** `aos store install --pack media-eventtech`
 <!-- aos:pack-index:end -->
