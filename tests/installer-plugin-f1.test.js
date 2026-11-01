@@ -188,6 +188,36 @@ test('retireCodexSkillCopies: module skills matching ~/.agents/skills are backed
   assert.equal(fs.readFileSync(backedUpM1, 'utf8'), '# CFHD original');
 });
 
+test('retireAgySkillCopies retires manifest-owned module skill copies when the plugin is active', () => {
+  const root = path.join(home, '.gemini', 'config', 'skills');
+  const f = path.join(root, 'module-skill', 'SKILL.md');
+  fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'AOS copy');
+  const canonical = path.join(home, '.agents', 'skills', 'module-skill', 'SKILL.md');
+  fs.mkdirSync(path.dirname(canonical), { recursive: true }); fs.writeFileSync(canonical, 'AOS copy');
+  fs.mkdirSync(path.join(home, '.gemini', 'config', 'plugins', 'bdb-aos'), { recursive: true });
+  const manifest = { [f]: { path: f, sha256: sha('AOS copy') } };
+  inst.retireAgySkillCopies(manifest, { home });
+  assert.ok(!fs.existsSync(f));
+  assert.ok(fs.existsSync(canonical));
+  assert.ok(fs.readdirSync(path.join(home, '.agents', 'backups')).some((n) => n.startsWith('plugin-migration-agy-skills-')));
+});
+
+test('retireOpencodeSkillCopies retires manifest-owned copies only after shared skills are configured', () => {
+  const cfg = path.join(home, '.config', 'opencode');
+  fs.mkdirSync(cfg, { recursive: true });
+  fs.writeFileSync(path.join(cfg, 'opencode.json'), JSON.stringify({ skills: { paths: [path.join(home, '.agents', 'skills')] } }));
+  const f = path.join(cfg, 'skills', 'module-skill', 'SKILL.md');
+  fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'AOS copy');
+  const manifest = { [f]: { path: f, sha256: sha('AOS copy') } };
+  inst.retireOpencodeSkillCopies(manifest, { home });
+  assert.ok(!fs.existsSync(f));
+  assert.ok(fs.readdirSync(path.join(home, '.agents', 'backups')).some((n) => n.startsWith('plugin-migration-opencode-skills-')));
+});
+
+test('Cursor global skill target is ~/.cursor/skills', () => {
+  assert.equal(inst.resolveTargetPaths('3', null).targetSkillDir, path.join(home, '.cursor', 'skills'));
+});
+
 test('retireCodexSkillCopies: retires stale copies even when pluginMigrationMode() is off (F2 decoupled)', () => {
   const codexRoot = path.join(home, '.codex', 'skills');
   const mkCodex = (rel, text) => {

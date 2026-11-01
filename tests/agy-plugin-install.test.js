@@ -41,7 +41,7 @@ function fakeRunner(home, { installedVersion = null, enabled = true, missing = f
         calls.push(args.join(' ').replace(/validate --strict \S*aos-agy-\S+/, 'validate --strict STAGE').replace(/install \S*aos-agy-\S+/, 'install STAGE'));
         if (missing) return { status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawn agy ENOENT'), { code: 'ENOENT' }) };
         if (failOn === args[1]) return { status: 1, stdout: '', stderr: 'boom', error: null };
-        if (args[1] === 'list') return { status: 0, stdout: installedVersion ? JSON.stringify({ imports: [{ name: 'bdb-aos' }] }) : 'No imported plugins.\n', stderr: '' };
+        if (args[1] === 'list') return { status: 0, stdout: fs.existsSync(path.join(pdir, 'plugin.json')) ? JSON.stringify({ imports: [{ name: 'bdb-aos' }] }) : 'No imported plugins.\n', stderr: '' };
         if (args[1] === 'validate') return { status: 0, stdout: 'ok\n', stderr: '' };
         if (args[1] === 'install') {
             const staged = JSON.parse(fs.readFileSync(path.join(args[2], 'plugin.json'), 'utf8'));
@@ -52,7 +52,7 @@ function fakeRunner(home, { installedVersion = null, enabled = true, missing = f
             assert.ok(fs.existsSync(path.join(args[2], 'mcp_config.json')));
             assert.ok(fs.existsSync(path.join(args[2], 'rules', 'AGENTS.md')));
             fs.mkdirSync(pdir, { recursive: true });
-            fs.writeFileSync(path.join(pdir, 'plugin.json'), JSON.stringify({ version: staged.version }));
+            fs.cpSync(args[2], pdir, { recursive: true, force: true });
         }
         return { status: 0, stdout: '', stderr: '' };
     };
@@ -160,12 +160,17 @@ test('uninstall failure keeps the record and warns', () => {
 
 test('real package stages commands, agents, skills, hooks, mcp, and rules', () => {
     const dest = mk('stage');
-    agy.stagePlugin(ROOT, dest);
+    const home = mk('h-stage');
+    agy.stagePlugin(ROOT, dest, { home });
     assert.ok(fs.existsSync(path.join(dest, 'skills')));
     assert.ok(fs.existsSync(path.join(dest, 'agents')));
     assert.ok(fs.existsSync(path.join(dest, 'hooks.json')));
     assert.ok(fs.existsSync(path.join(dest, 'mcp_config.json')));
     assert.ok(fs.existsSync(path.join(dest, 'rules', 'AGENTS.md')));
+    const firstSkill = fs.readdirSync(path.join(dest, 'skills'))[0];
+    assert.ok(firstSkill, 'selected skills staged');
+    const staged = path.join(dest, 'skills', firstSkill);
+    assert.ok(fs.lstatSync(staged).isSymbolicLink() || fs.existsSync(path.join(staged, 'SKILL.md')), 'skill link or copy fallback created');
 });
 
 function oldPluginSkills(home) {
@@ -175,20 +180,33 @@ function oldPluginSkills(home) {
     return sk;
 }
 
-test('update moves bundled plugin skills to a backup and keeps user skills in config/skills', () => {
+test('current installed plugin skills survive a same-version run', () => {
     const home = mk('h-mig');
     const user = path.join(home, '.gemini', 'config', 'skills', 'my-own');
     fs.mkdirSync(user, { recursive: true });
     fs.writeFileSync(path.join(user, 'SKILL.md'), 'mine');
     const { runner } = fakeRunner(home, { installedVersion: '1.0.0' });
     const sk = oldPluginSkills(home);
-    const out = logs();
-    agy.run({ srcDir: fakePkg('1.0.0'), home, runner, log: out.log });
-    assert.ok(!fs.existsSync(sk));
-    const bk = fs.readdirSync(path.join(home, '.agents', 'backups')).find((n) => n.startsWith('agy-plugin-skills-'));
-    assert.strictEqual(fs.readFileSync(path.join(home, '.agents', 'backups', bk, 'skills', 'alpha', 'SKILL.md'), 'utf8'), 'old');
+    const result = agy.run({ srcDir: fakePkg('1.0.0'), home, runner, log: logs().log });
+    assert.strictEqual(result.status, 'current', 'no recorded fingerprint: same version is current');
+    assert.ok(fs.existsSync(sk), 'installed plugin skills remain intact until replacement');
     assert.strictEqual(fs.readFileSync(path.join(user, 'SKILL.md'), 'utf8'), 'mine');
-    assert.ok(out.l.some((m) => /moved the bundled skills/.test(m)));
+});
+
+test('selected skill picks and changed contents refresh without a version bump', () => {
+    const home = mk('h-picks');
+    const srcDir = fakePkg('1.0.0');
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ skillLibrary: 'smart', skillPicks: ['beta'] }));
+    const { runner, calls } = fakeRunner(home);
+    assert.strictEqual(agy.run({ srcDir, home, runner, log: logs().log }).status, 'installed');
+    const pdir = path.join(home, '.gemini', 'config', 'plugins', 'bdb-aos');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(pdir, 'plugin.json'))).aosSelectedSkills, ['beta']);
+    assert.deepStrictEqual(fs.readdirSync(path.join(pdir, 'skills')), ['beta']);
+    calls.length = 0;
+    assert.strictEqual(agy.run({ srcDir, home, runner, log: logs().log }).status, 'current');
+    fs.writeFileSync(path.join(srcDir, 'skills', 'beta', 'SKILL.md'), 'changed');
+    assert.strictEqual(agy.run({ srcDir, home, runner, log: logs().log }).status, 'updated');
 });
 
 test('check mode leaves bundled plugin skills in place; a symlinked skills dir is never followed', () => {
@@ -201,8 +219,9 @@ test('check mode leaves bundled plugin skills in place; a symlinked skills dir i
     fakeRunner(home2, { installedVersion: '1.0.0' });
     const real = mk('elsewhere'); fs.writeFileSync(path.join(real, 'keep'), 'x');
     fs.symlinkSync(real, path.join(home2, '.gemini', 'config', 'plugins', 'bdb-aos', 'skills'));
-    assert.strictEqual(agy.retirePluginSkills({ home: home2 }).status, 'refused');
+    assert.strictEqual(agy.retirePluginSkills({ home: home2 }).status, 'none');
     assert.ok(fs.existsSync(path.join(real, 'keep')));
+    assert.ok(fs.existsSync(path.join(home2, '.gemini', 'config', 'plugins', 'bdb-aos', 'skills')), 'plugin skill directory remains');
 });
 
 test('E2E with the real agy CLI in a sandbox HOME (AOS_E2E_CLI=1)', { skip: process.env.AOS_E2E_CLI !== '1' }, () => {

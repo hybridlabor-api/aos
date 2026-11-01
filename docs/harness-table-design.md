@@ -41,6 +41,8 @@ Example rows:
 ```
 
 Notes: Antigravity has two candidate global paths in code; the table lists both and marks the live one only after a check. `verified.status`: `full` | `partial` | `none`. Only `full` rows may be written.
+
+Cursor currently uses `~/.cursor/skills` as its copy destination. Cursor may later read `~/.agents/skills` natively, at which point the native path can replace this destination. The former `<cwd>/.cursor/bdb-skills` location is project-relative and may contain user data from unrelated projects; the installer does not sweep it automatically. Existing copies should be retired from their owning project only after manifest ownership is established, with user-edited files retained.
 ## How the code reads the table
 
 1. Load and validate once: unique ids, known tokens, `format` in `json|jsonc|toml|yaml`.

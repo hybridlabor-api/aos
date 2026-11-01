@@ -42,6 +42,7 @@
    "skills_dir":"~/.cursor/skills",
    "skills_mode":"copy",
    "plugin":"none",
+   "notes":"Cursor currently uses ~/.cursor/skills; native ~/.agents/skills support may replace this path later.",
    "verified":true,
    "source":"docs/mcp-gateway.md harness table (earlier work; no vendor URL recorded)"},
   {"id":"cursor-app",
