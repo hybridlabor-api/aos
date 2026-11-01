@@ -27,7 +27,7 @@ function fixture() {
 const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 
 test('alternates of a gateway server count as covered; unrelated names do not', () => {
-    assert.ok(gatewayCovered('bdb_after_effects_mcp_fallback'));
+    assert.ok(gatewayCovered('bdb_blender_official_mcp'));
     assert.ok(gatewayCovered('github'));
     assert.ok(!gatewayCovered('deja'));
     assert.ok(!gatewayCovered('memb_mcp'));
@@ -37,8 +37,8 @@ test('alternates of a gateway server count as covered; unrelated names do not', 
 
 test('the built ae-mcp binary is AOS-owned; a binary outside mcps/ is not', () => {
     const fx = fixture();
-    assert.ok(sec.isAosOwned('bdb_after_effects_mcp_fallback', fx.aeBin, undefined, shipped));
-    assert.ok(!sec.isAosOwned('bdb_after_effects_mcp_fallback', { command: '/opt/ae-mcp', args: [] }, undefined, shipped));
+    assert.ok(sec.isAosOwned('bdb_blender_official_mcp', fx.aeBin, undefined, shipped));
+    assert.ok(!sec.isAosOwned('bdb_blender_official_mcp', { command: '/opt/ae-mcp', args: [] }, undefined, shipped));
 });
 
 test('enable strips duplicates top-level and per project; disable puts each back where it was', () => {
@@ -47,7 +47,7 @@ test('enable strips duplicates top-level and per project; disable puts each back
     assert.ok(!rep[0].error, rep[0].error);
     let j = read(fx.file);
     assert.equal(j.mcpServers.github, undefined);
-    assert.equal(j.mcpServers.bdb_after_effects_mcp_fallback, undefined);
+    assert.equal(j.mcpServers.bdb_blender_official_mcp, undefined);
     assert.ok(j.mcpServers.mine && j.mcpServers.aos);
     assert.equal(j.projects['/p/one'].mcpServers.github, undefined);
     assert.ok(j.projects['/p/one'].mcpServers.keep);
@@ -56,7 +56,7 @@ test('enable strips duplicates top-level and per project; disable puts each back
     harness.disable({ home: fx.home, files: fx.files, now: 2000 });
     j = read(fx.file);
     assert.deepEqual(j.mcpServers.github, fx.github);
-    assert.deepEqual(j.mcpServers.bdb_after_effects_mcp_fallback, fx.aeBin);
+    assert.deepEqual(j.mcpServers.bdb_blender_official_mcp, fx.aeBin);
     assert.deepEqual(j.projects['/p/one'].mcpServers.github, fx.github);
     assert.equal(j.mcpServers.aos, undefined);
 });
@@ -107,7 +107,7 @@ function withGateway() {
     fs.writeFileSync(fx.file, JSON.stringify(d, null, 2));
     const toml = path.join(fx.home, '.codex', 'config.toml');
     fs.mkdirSync(path.dirname(toml), { recursive: true });
-    fs.writeFileSync(toml, `[mcp_servers.aos]\nurl = "${harness.GATEWAY_URL}"\n\n[mcp_servers.bdb_after_effects_mcp_fallback]\ncommand = ${JSON.stringify(fx.aeBin.command)}\nargs = []\n\n[mcp_servers.mine]\ncommand = "x"\n`);
+    fs.writeFileSync(toml, `[mcp_servers.aos]\nurl = "${harness.GATEWAY_URL}"\n\n[mcp_servers.bdb_blender_official_mcp]\ncommand = ${JSON.stringify(fx.aeBin.command)}\nargs = []\n\n[mcp_servers.mine]\ncommand = "x"\n`);
     return { ...fx, toml, files: [...fx.files, { file: toml, kind: 'toml' }] };
 }
 
@@ -116,11 +116,11 @@ test('doctor reports per-project and Codex TOML duplicates red', () => {
     const checks = doctor.gatewayChecks({ home: fx.home, files: fx.files, shipped, platform: 'linux' });
     const dup = (f) => checks.find((c) => c.name === `gateway duplicates in ${f}`);
     assert.equal(dup(fx.file).ok, false);
-    assert.match(dup(fx.file).detail, /bdb_after_effects_mcp_fallback/);
+    assert.match(dup(fx.file).detail, /bdb_blender_official_mcp/);
     assert.match(dup(fx.file).detail, /github \(project \/p\/one\)/);
     assert.equal(checks.find((c) => c.name === `gateway entry in ${fx.toml}`).ok, true);
     assert.equal(dup(fx.toml).ok, false);
-    assert.match(dup(fx.toml).detail, /bdb_after_effects_mcp_fallback/);
+    assert.match(dup(fx.toml).detail, /bdb_blender_official_mcp/);
     assert.doesNotMatch(dup(fx.toml).detail, /mine/);
 });
 

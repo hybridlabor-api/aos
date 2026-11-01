@@ -112,7 +112,7 @@ if (comp && comp instanceof CompItem) {
   ```json
   "AfterEffectsMCP": {
     "command": "node",
-    "args": ["<your-home-directory>/.gemini/config/mcps/after-effects-mcp/build/index.js"]
+    "args": ["__MCPS_DIR__/after-effects-mcp/build/index.js"]
   }
   ```
 
