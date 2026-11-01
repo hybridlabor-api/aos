@@ -204,7 +204,7 @@ describe('firecrawl pick: opt-in, never registered by default', () => {
         const e = s.firecrawl_mcp;
         assert.ok(e);
         assert.equal(e.command, 'npx');
-        assert.ok(e.args.join(' ').includes('firecrawl-mcp@3.28.2'));
+        assert.ok(e.args.join(' ').includes('firecrawl-mcp@3.36.0'));
     });
     test('wrong opt-in value stays off (exact match)', () => {
         assert.ok(!secrets.shippedServers(ROOT, { env: { AOS_FIRECRAWL_MCP: '1' } }).firecrawl_mcp);
