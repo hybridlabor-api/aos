@@ -45,12 +45,12 @@ describe('one-MCP-per-app pick (mcp_picks.json group)', () => {
         assert.equal(group.candidates.length, 1, 'single candidate');
         assert.equal(group.candidates[0].name, 'codebase_memory_mcp');
         assert.deepEqual(group.candidates[0].requires, { app: 'codebase-memory' });
-        assert.deepEqual(group.candidates[0].entry, { command: 'codebase-memory-mcp', args: [] });
+        assert.deepEqual(group.candidates[0].entry, { command: 'npx', args: [ '-y', 'codebase_memory_mcp@0.12.1' ] });
     });
     test('binary present -> entry registered', () => {
         const detect = (app) => (app === 'codebase-memory' ? { path: '/usr/local/bin/codebase-memory-mcp' } : null);
         const r = applyPicks({}, picks, detect, {});
-        assert.deepEqual(r.servers.codebase_memory_mcp, { command: 'codebase-memory-mcp', args: [] });
+        assert.deepEqual(r.servers.codebase_memory_mcp, { command: 'npx', args: [ '-y', 'codebase_memory_mcp@0.12.1' ] });
         assert.deepEqual(r.retired, []);
     });
     test('binary absent -> nothing registered', () => {
