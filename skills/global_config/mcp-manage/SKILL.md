@@ -38,7 +38,7 @@ You are the authoritative skill for managing and utilizing the specialized Model
 9. **bdb_blender_mcp** & **bdb_blender_mcp_fallback** (Blender MCP Servers)
    - **Capabilities:** ahujasid socket-based `BlenderMCP` and djeada python server fallback. Scene inspection, material control, object manipulation, rendering.
 
-10. **bdb_after_effects_mcp** & **bdb_after_effects_mcp_fallback** (After Effects MCP Servers)
+10. **bdb_after_effects_mcp** (After Effects MCP Servers)
     - **Capabilities:** Dakkshin Node server and sunqirui1987 Go+ fallback. Compositions creation, layers styling, solid/shape preset renders, and ExtendScript triggers.
 
 11. **bdb_vectorworks_mcp** (Vectorworks CAD/BIM)

@@ -24,8 +24,8 @@ The **TouchDesigner MCP (MindDesigner)** server enables AI models to programmati
 
 | Server | Use for | Fallback when |
 | :--- | :--- | :--- |
-| `bdb_td_minddesigner` (tdmcp, port 9980) | Primary: high-level creative generation and structured inspection/edit tools. | Undocumented. |
-| `bdb_td_backup` (touchdesigner-mcp, port 9981) | Atomic node CRUD and low-level scripting. | `bdb_td_minddesigner` is unavailable (pair labelled primary/fallback; no other trigger documented). |
+| `bdb_td_minddesigner` (Derivative's official TDMCP 1.1.56, port 9980) | Primary: high-level creative generation and structured inspection/edit tools. (Note: Custom License) | Undocumented. |
+| `bdb_td_backup` (touchdesigner-mcp-server 2.2.0, port 9981) | Atomic node CRUD and low-level scripting. (Note: Ensure .tox is re-imported if updating) | `bdb_td_minddesigner` is unavailable (pair labelled primary/fallback; no other trigger documented). |
 
 ---
 

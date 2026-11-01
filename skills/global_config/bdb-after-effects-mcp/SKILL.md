@@ -23,8 +23,7 @@ The **After Effects MCP Server** integrations enable AI assistants to programmat
 
 | Server | Use for | Fallback when |
 | :--- | :--- | :--- |
-| `bdb_after_effects_mcp` (`@kumoproductions/mcp-aftereffects`, Node >= 24) | Primary. This skill's tool table documents the older `after-effects-mcp`, not this package. | Undocumented. |
-| `bdb_after_effects_mcp_fallback` (Go `ae-mcp`, needs `go`) | Layer wrappers plus `generate-manim-render` for Manim equation clips. | `bdb_after_effects_mcp` is unavailable (pair labelled primary/fallback; no other trigger documented). |
+| `bdb_after_effects_mcp` (`@kumoproductions/mcp-aftereffects@0.3.2`, Node >= 24) | Primary server for After Effects automation. |
 
 ---
 

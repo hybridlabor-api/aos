@@ -79,19 +79,20 @@
     },
     "bdb_after_effects_mcp": {
       "command": "npx",
-      "args": ["-y", "@kumoproductions/mcp-aftereffects@0.3.1"]
-    },
-    "bdb_after_effects_mcp_fallback": {
-      "command": "go",
-      "args": ["-C", "__MCPS_DIR__/ae-mcp", "run", "./cmd/ae-mcp"]
+      "args": ["-y", "@kumoproductions/mcp-aftereffects@0.3.2"]
+
     },
     "bdb_td_minddesigner": {
       "command": "node",
-      "args": ["__MCPS_DIR__/tdmcp/dist/index.js"]
+      "args": ["__MCPS_DIR__/tdmcp/dist/index.js"],
+      "env": {
+        "TDMCP_HOST": "127.0.0.1",
+        "TDMCP_BRIDGE_TOKEN": "__TDMCP_BRIDGE_TOKEN__"
+      }
     },
     "bdb_td_backup": {
-      "command": "node",
-      "args": ["__MCPS_DIR__/touchdesigner-mcp/dist/cli.js", "--stdio"]
+      "command": "npx",
+      "args": ["-y", "touchdesigner-mcp-server@2.2.0", "--stdio"]
     },
     "zavora_computer_use": {
       "command": "npx",

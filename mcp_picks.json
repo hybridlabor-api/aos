@@ -61,20 +61,6 @@
       "group": "after_effects",
       "candidates": [
         {
-          "name": "bdb_after_effects_mcp_legacy",
-          "requires": {
-            "env": {
-              "AOS_AE_MCP": "legacy"
-            }
-          },
-          "entry": {
-            "command": "node",
-            "args": [
-              "__MCPS_DIR__/after-effects-mcp/build/index.js"
-            ]
-          }
-        },
-        {
           "name": "bdb_after_effects_mcp"
         }
       ]
@@ -144,7 +130,11 @@
           },
           "entry": {
             "command": "npx",
-            "args": ["-y", "rea-agents@6.5.0", "mcp"]
+            "args": [
+              "-y",
+              "rea-agents@6.5.0",
+              "mcp"
+            ]
           }
         }
       ]
