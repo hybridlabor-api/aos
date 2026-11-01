@@ -13,7 +13,7 @@ Implemented in F7b: rows live in `lib/harnesses.json` (placeholders `URL` and `T
 Paths use tokens (`$HOME`, `$CODEX_HOME`, `$CLAUDE_CONFIG_DIR`, `$APPDATA`, `$CWD`). The caller resolves them. The table never reads env.
 
 Entry templates use `{url}`, `{headers}`, `{command}`, `{args}`, `{env}`. `headers` is `{"X-AOS-Token": "{token}"}`. 
-Row fields: `id`, `name`, `mcp.global[]`, `mcp.workspace[]` (each `{path, format, root}`), `entry.remote`, `entry.stdio`, `rules {file, write}` (`write` default `"never"`), `skills` (dir or null), `hooks` (`yes`|`no`|`unverified`), `verified {status, source, date}`. 
+Row fields: `id`, `name`, `mcp.global[]`, `mcp.workspace[]` (each `{path, format, root}`), `entry.remote`, `entry.stdio`, `rules` / `rules_file` (e.g. `CLAUDE.md`, `AGENTS.md`, `.roomodes`, null), `skills` / `skills_dir` (target directory or null), `skills_mode` (`native` | `plugin` | `symlink` | `copy` | `none`), `plugin` (`none` | `commands+agents` | `hooks` | `full`), `verified` (boolean or object).
 Example rows:
 
 ```json

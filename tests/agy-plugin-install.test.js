@@ -38,15 +38,19 @@ function fakeRunner(home, { installedVersion = null, enabled = true, missing = f
         fs.writeFileSync(cfg, JSON.stringify({ plugins: { 'bdb-aos': { enabled } } }));
     }
     const runner = (args) => {
-        calls.push(args.join(' ').replace(/install \S*aos-agy-\S+/, 'install STAGE'));
+        calls.push(args.join(' ').replace(/validate --strict \S*aos-agy-\S+/, 'validate --strict STAGE').replace(/install \S*aos-agy-\S+/, 'install STAGE'));
         if (missing) return { status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawn agy ENOENT'), { code: 'ENOENT' }) };
         if (failOn === args[1]) return { status: 1, stdout: '', stderr: 'boom', error: null };
         if (args[1] === 'list') return { status: 0, stdout: installedVersion ? JSON.stringify({ imports: [{ name: 'bdb-aos' }] }) : 'No imported plugins.\n', stderr: '' };
+        if (args[1] === 'validate') return { status: 0, stdout: 'ok\n', stderr: '' };
         if (args[1] === 'install') {
             const staged = JSON.parse(fs.readFileSync(path.join(args[2], 'plugin.json'), 'utf8'));
-            assert.ok(!fs.existsSync(path.join(args[2], 'skills')), 'plugin carries no skills: ~/.gemini/config/skills is the single source');
+            assert.ok(fs.existsSync(path.join(args[2], 'skills')), 'plugin carries skills');
             assert.ok(fs.existsSync(path.join(args[2], 'agents', 'reviewer.md')));
             assert.ok(fs.existsSync(path.join(args[2], 'commands', 'setup.md')));
+            assert.ok(fs.existsSync(path.join(args[2], 'hooks.json')));
+            assert.ok(fs.existsSync(path.join(args[2], 'mcp_config.json')));
+            assert.ok(fs.existsSync(path.join(args[2], 'rules', 'AGENTS.md')));
             fs.mkdirSync(pdir, { recursive: true });
             fs.writeFileSync(path.join(pdir, 'plugin.json'), JSON.stringify({ version: staged.version }));
         }
@@ -63,7 +67,7 @@ test('installs when missing, records state, removes its staging dir', () => {
     const { runner, calls } = fakeRunner(home); const { l, log } = logs();
     const r = agy.run({ srcDir, home, runner, log });
     assert.strictEqual(r.status, 'installed');
-    assert.deepStrictEqual(calls, ['plugin list', 'plugin install STAGE']);
+    assert.deepStrictEqual(calls, ['plugin list', 'plugin validate --strict STAGE', 'plugin install STAGE']);
     assert.ok(stateOf(home));
     assert.strictEqual(l.length, 1);
 });
@@ -71,7 +75,7 @@ test('installs when missing, records state, removes its staging dir', () => {
 test('updates when the version differs', () => {
     const home = mk('h2'); const { runner, calls } = fakeRunner(home, { installedVersion: '0.9.0' });
     assert.strictEqual(agy.run({ srcDir: fakePkg('1.0.0'), home, runner, log: logs().log }).status, 'updated');
-    assert.deepStrictEqual(calls, ['plugin list', 'plugin install STAGE']);
+    assert.deepStrictEqual(calls, ['plugin list', 'plugin validate --strict STAGE', 'plugin install STAGE']);
 });
 
 test('no-op when current and enabled; no state written', () => {
@@ -154,11 +158,14 @@ test('uninstall failure keeps the record and warns', () => {
     assert.ok(stateOf(home));
 });
 
-test('real package stages commands and agents but no skills', () => {
+test('real package stages commands, agents, skills, hooks, mcp, and rules', () => {
     const dest = mk('stage');
     agy.stagePlugin(ROOT, dest);
-    assert.ok(!fs.existsSync(path.join(dest, 'skills')));
+    assert.ok(fs.existsSync(path.join(dest, 'skills')));
     assert.ok(fs.existsSync(path.join(dest, 'agents')));
+    assert.ok(fs.existsSync(path.join(dest, 'hooks.json')));
+    assert.ok(fs.existsSync(path.join(dest, 'mcp_config.json')));
+    assert.ok(fs.existsSync(path.join(dest, 'rules', 'AGENTS.md')));
 });
 
 function oldPluginSkills(home) {
@@ -208,7 +215,7 @@ test('E2E with the real agy CLI in a sandbox HOME (AOS_E2E_CLI=1)', { skip: proc
     assert.match(go().stdout, /already installed/);
     const list = spawnSync('agy', ['plugin', 'list'], { env, encoding: 'utf8' });
     assert.match(list.stdout, /bdb-aos/);
-    assert.ok(!fs.existsSync(path.join(home, '.gemini', 'config', 'plugins', 'bdb-aos', 'skills')));
+    assert.ok(fs.existsSync(path.join(home, '.gemini', 'config', 'plugins', 'bdb-aos', 'skills')));
     spawnSync('agy', ['plugin', 'disable', 'bdb-aos'], { env });
     assert.match(go().stdout, /enabled bdb-aos/);
     assert.strictEqual(agy.uninstall({ home, runner: (a) => spawnSync('agy', a, { env, encoding: 'utf8' }), log: logs().log }).status, 'uninstalled');

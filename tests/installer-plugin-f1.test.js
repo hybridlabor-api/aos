@@ -188,3 +188,26 @@ test('retireCodexSkillCopies: module skills matching ~/.agents/skills are backed
   assert.equal(fs.readFileSync(backedUpM1, 'utf8'), '# CFHD original');
 });
 
+test('retireCodexSkillCopies: retires stale copies even when pluginMigrationMode() is off (F2 decoupled)', () => {
+  const codexRoot = path.join(home, '.codex', 'skills');
+  const mkCodex = (rel, text) => {
+    const f = path.join(codexRoot, rel);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, text);
+    return f;
+  };
+  const c1 = mkCodex('decoupled-skill/SKILL.md', '# Content');
+  const manifest = { [c1]: { path: c1, sha256: sha('# Content') } };
+  const prevEnv = process.env.AOS_PLUGIN_MIGRATION;
+  try {
+    process.env.AOS_PLUGIN_MIGRATION = 'off';
+    const res = inst.retireCodexSkillCopies(manifest);
+    assert.ok(!fs.existsSync(c1), 'stale copy should be retired even when AOS_PLUGIN_MIGRATION is off');
+    assert.equal(res.removed.length, 1);
+  } finally {
+    if (prevEnv === undefined) delete process.env.AOS_PLUGIN_MIGRATION;
+    else process.env.AOS_PLUGIN_MIGRATION = prevEnv;
+  }
+});
+
+
