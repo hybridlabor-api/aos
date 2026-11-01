@@ -93,7 +93,7 @@
             "command": "npx",
             "args": [
               "-y",
-              "firecrawl-mcp@3.28.2"
+              "firecrawl-mcp@3.36.0"
             ]
           }
         }
@@ -125,8 +125,11 @@
             "app": "codebase-memory"
           },
           "entry": {
-            "command": "codebase-memory-mcp",
-            "args": []
+            "command": "npx",
+            "args": [
+              "-y",
+              "codebase_memory_mcp@0.12.1"
+            ]
           }
         }
       ]
@@ -144,7 +147,11 @@
           },
           "entry": {
             "command": "npx",
-            "args": ["-y", "rea-agents@6.5.0", "mcp"]
+            "args": [
+              "-y",
+              "rea-agents@6.8.0",
+              "mcp"
+            ]
           }
         }
       ]

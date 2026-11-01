@@ -312,7 +312,7 @@ describe('pkg-gateway', () => {
         assert.ok(/<key>RunAtLoad<\/key>\s*<true\/>/.test(plist) && /<key>KeepAlive<\/key>\s*<true\/>/.test(plist));
         assert.ok(plist.includes('<key>HOME</key>') && plist.includes('<key>PATH</key>'));
 
-        assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
+        assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.39.7']);
         const presetCalls = calls.filter((c) => c[1] === 'preset');
         assert.ok(presetCalls.every((c) => c[0] === path.join(dir, 'node_modules', '.bin', '1mcp') && c[2] === 'create'));
         assert.deepEqual(presetCalls.filter((c) => c[3] === 'agy').map((c) => [c[3], c[5]]), [['agy', 'aos AND NOT bdb_davinci_mcp']]);
@@ -325,7 +325,7 @@ describe('pkg-gateway', () => {
     const pinnedOnDisk = (home) => {
         const d = path.join(cfg.gatewayDir(home), 'node_modules', '@1mcp', 'agent');
         fs.mkdirSync(d, { recursive: true });
-        fs.writeFileSync(path.join(d, 'package.json'), JSON.stringify({ version: '0.38.2' }));
+        fs.writeFileSync(path.join(d, 'package.json'), JSON.stringify({ version: '0.39.7' }));
     };
     const sideEffects = (calls) => calls.filter((c) => c[0] === 'npm' || c[0] === 'launchctl' || c[1] === 'preset').map((c) => c.join(' '));
 
@@ -367,7 +367,7 @@ describe('pkg-gateway', () => {
         const { ctx, calls } = mkCtx(home);
         const res = await pkg.update(ctx);
         assert.notEqual(res.unchanged, true);
-        assert.ok(sideEffects(calls).includes(`npm install --prefix ${cfg.gatewayDir(home)} --no-audit --no-fund @1mcp/agent@0.38.2`));
+        assert.ok(sideEffects(calls).includes(`npm install --prefix ${cfg.gatewayDir(home)} --no-audit --no-fund @1mcp/agent@0.39.7`));
         assert.ok(sideEffects(calls).includes('launchctl kickstart -k gui/501/com.bdb.aos.gateway'));
     });
 
@@ -1338,7 +1338,7 @@ test('update: gateway update messages reach the step line (F15)', async () => {
     const menu = require('../lib/v5/menu.js');
     const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
     const real = { detect: gw.detect, update: gw.update, verify: gw.verify };
-    gw.detect = () => ({ installed: true, version: '0.38.2' });
+    gw.detect = () => ({ installed: true, version: '0.39.7' });
     gw.update = async (c) => { c.log('harnesses left direct'); return { ok: true }; };
     gw.verify = async () => ({ ok: true });
     const home = tmp();
@@ -1346,14 +1346,14 @@ test('update: gateway update messages reach the step line (F15)', async () => {
     try {
         await menu.update(gwHost(home), { home, platform: 'linux', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
     } finally { Object.assign(gw, real); }
-    assert.match(out.join(''), /✔ MCP gateway[^\n]*0\.38\.2; harnesses left direct/);
+    assert.match(out.join(''), /✔ MCP gateway[^\n]*0\.39\.7; harnesses left direct/);
 });
 
 test('update: a failing gateway verify keeps the step messages in the error (F15b)', async () => {
     const menu = require('../lib/v5/menu.js');
     const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
     const real = { detect: gw.detect, update: gw.update, verify: gw.verify };
-    gw.detect = () => ({ installed: true, version: '0.38.2' });
+    gw.detect = () => ({ installed: true, version: '0.39.7' });
     gw.update = async (c) => { c.log('harnesses left direct'); return { ok: true }; };
     gw.verify = async () => ({ ok: false, detail: '1mcp not reachable on 7791 (ECONNREFUSED)' });
     const home = tmp();

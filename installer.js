@@ -4785,7 +4785,28 @@ function stashInlineSecrets(collector, file) {
 }
 
 // The launcher and the two lib files it needs; entries point at them, so they go in before any entry.
+
+function ensureCommonJsRoot(dir) {
+    if (DRY_RUN) return;
+    const pkg = path.join(dir, 'package.json');
+    try {
+        if (!fs.existsSync(pkg)) {
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(pkg, JSON.stringify({ type: "commonjs" }, null, 2) + '\n', { mode: 0o644 });
+        } else {
+            const existing = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+            if (existing.type !== 'commonjs') {
+                existing.type = 'commonjs';
+                fs.writeFileSync(pkg, JSON.stringify(existing, null, 2) + '\n', { mode: 0o644 });
+            }
+        }
+    } catch (e) {
+        logDebug(e, `ensureCommonJsRoot in ${dir}`);
+    }
+}
+
 function installMcpLauncher() {
+    ensureCommonJsRoot(path.join(homeDir, '.agents'));
     if (DRY_RUN) return true;
     const pairs = [
         [path.join(srcDir, 'bin', mcpSecrets.LAUNCHER_FILE), mcpSecrets.launcherPath(homeDir)],
@@ -6739,6 +6760,8 @@ function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
         copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(targetHome, '.agents', 'lib'));
+        ensureCommonJsRoot(path.join(targetHome, '.agents'));
+        ensureCommonJsRoot(path.join(targetHome, '.gemini', 'config'));
         // The gateway reads the shipped server list from ~/.agents/gateway/upstream_template.json (aosRoot); without these it serves nothing.
         const gatewayDir = path.join(targetHome, '.agents', 'gateway');
         fs.mkdirSync(gatewayDir, { recursive: true });

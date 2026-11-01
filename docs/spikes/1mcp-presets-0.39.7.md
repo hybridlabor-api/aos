@@ -1,4 +1,4 @@
-# 1mcp @1mcp/agent@0.38.2: per-upstream tags and presets
+# 1mcp @1mcp/agent@0.39.7: per-upstream tags and presets
 
 Method: `npm view` (registry `readme` field is empty), tarball extracted to
 scratchpad `1mcp-spike/x/package` and read only, never executed. Shell grep was

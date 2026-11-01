@@ -1,7 +1,9 @@
 {
   "presets": {
     "claude": "all",
-    "agy": ["bdb_davinci_mcp"],
+    "agy": [
+      "bdb_davinci_mcp"
+    ],
     "opencode": "all",
     "codex": "all",
     "roo": "all",
@@ -36,89 +38,167 @@
   "mcpServers": {
     "github": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github@2025.4.8"]
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github@2025.4.8"
+      ]
     },
     "chrome-devtools": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-puppeteer@2025.5.12"]
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer@2025.5.12"
+      ]
     },
     "bdb_unreal_mcp": {
       "command": "node",
-      "args": ["__MCPS_DIR__/unreal_mcp/dist/cli.js"]
+      "args": [
+        "__MCPS_DIR__/unreal_mcp/dist/cli.js"
+      ]
     },
     "bdb_rhino_mcp": {
       "command": "node",
-      "args": ["__MCPS_DIR__/RhinoMCP/shared/router-launcher.mjs", "--default-version", "8"]
+      "args": [
+        "__MCPS_DIR__/RhinoMCP/shared/router-launcher.mjs",
+        "--default-version",
+        "8"
+      ]
     },
     "bdb_rhino_mcp_fallback": {
       "command": "uv",
-      "args": ["--directory", "__MCPS_DIR__/golem-rhino-mcp", "run", "-m", "mcp_server"],
+      "args": [
+        "--directory",
+        "__MCPS_DIR__/golem-rhino-mcp",
+        "run",
+        "-m",
+        "mcp_server"
+      ],
       "env": {
         "SETUPTOOLS_SCM_PRETEND_VERSION": "0.1.0"
       }
     },
     "bdb_davinci_mcp": {
       "command": "uv",
-      "args": ["run", "--with-requirements", "__MCPS_DIR__/davinci-resolve-mcp-free/requirements.txt", "__MCPS_DIR__/davinci-resolve-mcp-free/src/resolve_mcp_bridge.py"]
+      "args": [
+        "run",
+        "--with-requirements",
+        "__MCPS_DIR__/davinci-resolve-mcp-free/requirements.txt",
+        "__MCPS_DIR__/davinci-resolve-mcp-free/src/resolve_mcp_bridge.py"
+      ]
     },
     "bdb_grandma3_mcp": {
       "command": "uv",
-      "args": ["run", "--with", "mcp>=1.0.0,<2.0.0", "__MCPS_DIR__/grandma3_mcp.py", "--ip", "127.0.0.1", "--port", "8081", "--mode", "webapi_only"]
+      "args": [
+        "run",
+        "--with",
+        "mcp>=1.0.0,<2.0.0",
+        "__MCPS_DIR__/grandma3_mcp.py",
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        "8081",
+        "--mode",
+        "webapi_only"
+      ]
     },
     "bdb_resolume_mcp": {
       "command": "uv",
-      "args": ["run", "--with", "mcp>=1.0.0,<2.0.0", "__MCPS_DIR__/resolume_mcp.py"]
+      "args": [
+        "run",
+        "--with",
+        "mcp>=1.0.0,<2.0.0",
+        "__MCPS_DIR__/resolume_mcp.py"
+      ]
     },
     "adobe_uxp_mcp": {
       "command": "node",
-      "args": ["__MCPS_DIR__/adobe_uxp_mcp/index.js"]
+      "args": [
+        "__MCPS_DIR__/adobe_uxp_mcp/index.js"
+      ]
     },
     "bdb_blender_mcp": {
       "command": "uv",
-      "args": ["--directory", "__MCPS_DIR__/blender-mcp", "run", "-m", "blender_mcp.server"]
+      "args": [
+        "--directory",
+        "__MCPS_DIR__/blender-mcp",
+        "run",
+        "-m",
+        "blender_mcp.server"
+      ]
     },
     "bdb_after_effects_mcp": {
       "command": "npx",
-      "args": ["-y", "@kumoproductions/mcp-aftereffects@0.3.1"]
+      "args": [
+        "-y",
+        "@kumoproductions/mcp-aftereffects@0.3.1"
+      ]
     },
     "bdb_after_effects_mcp_fallback": {
       "command": "go",
-      "args": ["-C", "__MCPS_DIR__/ae-mcp", "run", "./cmd/ae-mcp"]
+      "args": [
+        "-C",
+        "__MCPS_DIR__/ae-mcp",
+        "run",
+        "./cmd/ae-mcp"
+      ]
     },
     "bdb_td_minddesigner": {
       "command": "node",
-      "args": ["__MCPS_DIR__/tdmcp/dist/index.js"]
+      "args": [
+        "__MCPS_DIR__/tdmcp/dist/index.js"
+      ]
     },
     "bdb_td_backup": {
       "command": "node",
-      "args": ["__MCPS_DIR__/touchdesigner-mcp/dist/cli.js", "--stdio"]
+      "args": [
+        "__MCPS_DIR__/touchdesigner-mcp/dist/cli.js",
+        "--stdio"
+      ]
     },
     "zavora_computer_use": {
       "command": "npx",
-      "args": ["-y", "@zavora-ai/computer-use-mcp@7.4.0"]
+      "args": [
+        "-y",
+        "@zavora-ai/computer-use-mcp@7.4.0"
+      ]
     },
     "bdb_windows_computer_use": {
       "command": "uv",
-      "args": ["run", "--directory", "__MCPS_DIR__/windows-computer-use-mcp", "run_server.py"]
+      "args": [
+        "run",
+        "--directory",
+        "__MCPS_DIR__/windows-computer-use-mcp",
+        "run_server.py"
+      ]
     },
     "memb_mcp": {
       "command": "__PYTHON_BIN__",
-      "args": ["__MCPS_DIR__/memb-mcp/run.py"],
+      "args": [
+        "__MCPS_DIR__/memb-mcp/run.py"
+      ],
       "env": {
         "GEMINI_API_KEY": "__GEMINI_API_KEY__"
       }
     },
     "deja": {
       "command": "deja",
-      "args": ["mcp"]
+      "args": [
+        "mcp"
+      ]
     },
     "mcsc": {
       "command": "node",
-      "args": ["__MCPS_DIR__/mcsc/server.js"]
+      "args": [
+        "__MCPS_DIR__/mcsc/server.js"
+      ]
     },
     "open_design_mcp": {
       "command": "npx",
-      "args": ["-y", "open-design-mcp@0.16.1", "__MCPS_DIR__/open-design"],
+      "args": [
+        "-y",
+        "open-design-mcp@0.16.1",
+        "__MCPS_DIR__/open-design"
+      ],
       "env": {
         "OD_DAEMON_URL": "http://127.0.0.1:3000"
       }
@@ -126,9 +206,9 @@
     "bdb_remoteos_mcp": {
       "command": "uv",
       "args": [
-        "--directory", 
-        "__MCPS_DIR__/bdb-remoteos-mcp", 
-        "run", 
+        "--directory",
+        "__MCPS_DIR__/bdb-remoteos-mcp",
+        "run",
         "bdb-remoteos-mcp"
       ],
       "env": {

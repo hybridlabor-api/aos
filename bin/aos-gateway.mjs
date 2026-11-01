@@ -67,7 +67,7 @@ function upstreamNames(dir) {
     try { return Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers || {}); } catch { return []; }
 }
 
-// 1mcp 0.38.2 connects every upstream at startup (lazy loading only changes how tools are exposed). A server whose spawn
+// 1mcp 0.39.7 connects every upstream at startup (lazy loading only changes how tools are exposed). A server whose spawn
 // failed, that exited early or did not answer MCP initialize in 60 s (3 tries) stays "unknown" until the next start: nothing
 // retries it, and `1mcp mcp restart` needs an admin login AOS never sets up. The reason is in 1mcp's own log line.
 const NEVER_CONNECTED = new Set(['unknown', 'disconnected', 'error']);
