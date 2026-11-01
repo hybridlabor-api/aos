@@ -54,16 +54,30 @@ describe('detectApps with fake fsImpl', () => {
         assert.equal(detect('resolume'), null);
     });
     test('resolume darwin: path when bundled server exists', () => {
-        const f = { existsSync: (p) => String(p) === '/Applications/Resolume Arena/mcp/resolume_arena_mcp_server', readdirSync: () => { throw new Error('n/a'); } };
+        const f = {
+            existsSync: (p) => String(p) === '/Applications/Resolume Arena/mcp/resolume_arena_mcp_server',
+            readdirSync: () => { throw new Error('n/a'); },
+            readFileSync: (p) => {
+                if (String(p).includes('default.xml')) return '<version="7.26.0">';
+                throw new Error('ENOENT');
+            }
+        };
         const detect = detectApps({ platform: 'darwin', env: {}, fsImpl: f });
-        assert.deepEqual(detect('resolume'), { path: '/Applications/Resolume Arena/mcp/resolume_arena_mcp_server' });
+        assert.deepEqual(detect('resolume'), { path: '/Applications/Resolume Arena/mcp/resolume_arena_mcp_server', version: '7.26.0' });
     });
     test('resolume win32 with default ProgramFiles and env override', () => {
-        const mk = (pf) => ({ existsSync: (p) => String(p) === `${pf}\\Resolume Arena\\mcp\\resolume_arena_mcp_server.exe`, readdirSync: () => { throw new Error('n/a'); } });
+        const mk = (pf) => ({
+            existsSync: (p) => String(p) === `${pf}\\Resolume Arena\\mcp\\resolume_arena_mcp_server.exe`,
+            readdirSync: () => { throw new Error('n/a'); },
+            readFileSync: (p) => {
+                if (String(p).includes('default.xml')) return '<version="7.27.1">';
+                throw new Error('ENOENT');
+            }
+        });
         assert.deepEqual(detectApps({ platform: 'win32', fsImpl: mk('C:\\Program Files') })('resolume'),
-            { path: 'C:\\Program Files\\Resolume Arena\\mcp\\resolume_arena_mcp_server.exe' });
+            { path: 'C:\\Program Files\\Resolume Arena\\mcp\\resolume_arena_mcp_server.exe', version: '7.27.1' });
         assert.deepEqual(detectApps({ platform: 'win32', env: { ProgramFiles: 'D:\\PF' }, fsImpl: mk('D:\\PF') })('resolume'),
-            { path: 'D:\\PF\\Resolume Arena\\mcp\\resolume_arena_mcp_server.exe' });
+            { path: 'D:\\PF\\Resolume Arena\\mcp\\resolume_arena_mcp_server.exe', version: '7.27.1' });
     });
     test('fs errors -> null, never throws', () => {
         const f = { existsSync: () => { throw new Error('boom'); }, readdirSync: () => { throw new Error('boom'); } };
@@ -106,12 +120,19 @@ describe('applyPicks with fake detect', () => {
             assert.ok(r.retired.includes('bdb_blender_official_mcp'), `${v}`);
         }
     });
-    test('resolume detected: official kept with command replaced, ours retired', () => {
-        const detect = (app) => (app === 'resolume' ? { path: '/opt/arena/mcp/resolume_arena_mcp_server' } : null);
+    test('resolume detected (>= 7.26.0): official kept with command replaced, ours retired', () => {
+        const detect = (app) => (app === 'resolume' ? { version: '7.26.1', path: '/opt/arena/mcp/resolume_arena_mcp_server' } : null);
         const r = applyPicks(servers, picks, detect);
         assert.deepEqual(r.servers.bdb_resolume_official_mcp, { command: '/opt/arena/mcp/resolume_arena_mcp_server', args: [] });
         assert.ok(!r.servers.bdb_resolume_mcp);
         assert.deepEqual(r.retired.sort(), ['bdb_blender_official_mcp', 'bdb_resolume_mcp']);
+    });
+    test('resolume detected (< 7.26.0): ours kept, official retired', () => {
+        const detect = (app) => (app === 'resolume' ? { version: '7.25.0', path: '/opt/arena/mcp/resolume_arena_mcp_server' } : null);
+        const r = applyPicks(servers, picks, detect);
+        assert.ok(r.servers.bdb_resolume_mcp);
+        assert.ok(!r.servers.bdb_resolume_official_mcp);
+        assert.deepEqual(r.retired.sort(), ['bdb_blender_official_mcp', 'bdb_resolume_official_mcp']);
     });
     test('resolume placeholder without path: not satisfied, ours stays', () => {
         const detect = () => null;
@@ -120,7 +141,7 @@ describe('applyPicks with fake detect', () => {
         assert.ok(!r.servers.bdb_resolume_official_mcp);
     });
     test('both apps detected: exactly one per group', () => {
-        const detect = (app) => (app === 'blender' ? { version: '5.1' } : app === 'resolume' ? { path: '/x' } : null);
+        const detect = (app) => (app === 'blender' ? { version: '5.1' } : app === 'resolume' ? { path: '/x', version: '7.26.0' } : null);
         const r = applyPicks(servers, picks, detect);
         assert.ok(!!r.servers.bdb_blender_official_mcp !== !!r.servers.bdb_blender_mcp);
         assert.ok(!!r.servers.bdb_resolume_official_mcp !== !!r.servers.bdb_resolume_mcp);

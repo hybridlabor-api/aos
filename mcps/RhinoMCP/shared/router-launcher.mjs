@@ -12,7 +12,7 @@ import { homedir, constants as osConstants } from "node:os";
 import { createInterface } from "node:readline";
 
 function resolveRid() {
-  if (process.platform === "darwin") return "osx-arm64";
+  if (process.platform === "darwin") return process.arch === "x64" ? "osx-x64" : "osx-arm64";
   if (process.platform === "win32") return process.arch === "arm64" ? "win-arm64" : "win-x64";
   return null;
 }
@@ -47,10 +47,12 @@ function findRouter() {
 
   const considered = [];
   for (const ver of ["9.0", "8.0"]) {
-    const base = join(root, ver, "Rhino-MCP-Platform");
-    if (!isDir(base)) continue;
-    for (const pkgver of listDirs(base).sort(byVersionDesc)) {
-      considered.push({ ver, pkgver, path: join(base, pkgver, "router", rid, exe) });
+    for (const pluginName of ["rhinoai", "Rhino-MCP-Platform"]) {
+      const base = join(root, ver, pluginName);
+      if (!isDir(base)) continue;
+      for (const pkgver of listDirs(base).sort(byVersionDesc)) {
+        considered.push({ ver, pkgver, path: join(base, pkgver, "router", rid, exe) });
+      }
     }
   }
 
