@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { chooseHarness, currentHarness, decideCanvasVerdict, detectAO, executeStep, failReport, HARNESSES, lastJsonObject, runHumanStep, runProcess } from '../lib/fabric/executors.mjs';
+import { chooseHarness, currentHarness, decideCanvasVerdict, detectAO, executeStep, failReport, HARNESSES, lastJsonObject, runHumanStep, runProcess, invocationFor } from '../lib/fabric/executors.mjs';
 import { validateReport } from '../lib/fabric/schema.mjs';
 import { FabricError } from '../lib/fabric/store.mjs';
 import { ROOT, tmpProject, writeFakeExecutor } from './fixtures/fabric-helpers.mjs';
@@ -210,12 +210,16 @@ test('no harness on PATH is exit 1 with a clear message, not a failed step', wit
   await assert.rejects(executeStep(stepFor(p), { mode: 'aos-acp', env: {}, onPath: () => false }), (e) => e instanceof FabricError && e.code === 1 && /no harness found: install one of claude, codex, opencode, agy/.test(e.message));
 }));
 
-test('agy cannot limit its write paths: a writing step without a sandbox fails with agy-scope and starts nothing', withProject(async (p) => {
-  const r = await executeStep(stepFor(p, { model_hint: { harness: 'agy' }, allowed_writes: ['**'] }), { mode: 'aos-acp', env: {}, onPath: (h) => h === 'agy' });
-  assert.equal(r.report.status, 'fail');
-  assert.equal(r.report.findings[0].id, 'agy-scope');
-  assert.match(r.report.findings[0].summary, /--sandbox coop\|wsl2/);
-  assert.equal(r.report.executor.harness, 'agy');
+test('agy cannot limit its write paths: a writing step without a sandbox uses --allow-default allow, with a sandbox uses scoped', withProject(async (p) => {
+  const step = stepFor(p, { model_hint: { harness: 'agy' }, allowed_writes: ['**'] });
+  const invAllow = await invocationFor(step, 'agy', { timeoutS: 30 });
+  const idxAllow = invAllow.args.indexOf('--allow-default');
+  assert.equal(invAllow.args[idxAllow + 1], 'allow');
+
+  const invScoped = await invocationFor(step, 'agy', { sandbox: 'coop', timeoutS: 30 });
+  const idxScoped = invScoped.args.indexOf('--allow-default');
+  assert.equal(invScoped.args[idxScoped + 1], 'scoped');
+  assert.ok(invScoped.args.includes('--sandbox'));
 }));
 
 test('failReport is exported for drivers', () => {
