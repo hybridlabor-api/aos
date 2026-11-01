@@ -146,7 +146,7 @@ test('update runs only the planned package when a package is outdated', async ()
     assert.ok(m.calls.includes('installMemB'), 'installMemB should be called');
 });
 
-test('equal version with modified shipped file detected as drift and repaired', async () => {
+test('equal version with modified shipped file detected as drift but not repaired without force', async () => {
     const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
     const shippedFile = path.join(m.home, '.agents', 'test-shipped.txt');
     fs.writeFileSync(shippedFile, 'modified-content');
@@ -158,13 +158,17 @@ test('equal version with modified shipped file detected as drift and repaired', 
     const plan = await menu.planUpdate(m.host, m.opts());
     const kernel = plan.find((p) => p.id === 'kernel');
     assert.ok(kernel);
-    assert.strictEqual(kernel.changed, true, 'kernel flagged changed due to drift');
-    assert.strictEqual(kernel.reason, 'modified test-shipped.txt');
+    assert.strictEqual(kernel.changed, false, 'kernel not flagged changed due to drift without force');
+    assert.match(kernel.reason, /files differ: use --force to reinstall/);
 
     const code = await menu.update(m.host, m.opts());
     assert.strictEqual(code, 0);
-    assert.ok(m.calls.includes('quickUpdateKernel'), 'quickUpdateKernel called to repair drift');
-    assert.ok(m.calls.includes('quickUpdateHarnesses'), 'quickUpdateHarnesses called');
+    assert.ok(!m.calls.includes('quickUpdateKernel'), 'quickUpdateKernel not called without force');
+
+    // Test with force
+    const planForce = await menu.planUpdate(m.host, m.opts({ force: true }));
+    const kernelForce = planForce.find((p) => p.id === 'kernel');
+    assert.strictEqual(kernelForce.changed, true, 'kernel flagged changed with force');
 });
 
 test('manifest entries of older releases and outside HOME never count as drift', async () => {
