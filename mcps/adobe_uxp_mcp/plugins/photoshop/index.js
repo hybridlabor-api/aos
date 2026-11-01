@@ -1,6 +1,8 @@
 const { app, core } = require("photoshop");
 
-const WS_URL = "ws://localhost:8080";
+// Configure your per-install token here (matches AOS_UXP_TOKEN on the server)
+const TOKEN = "YOUR_TOKEN_HERE";
+const WS_URL = `ws://127.0.0.1:8080?token=${TOKEN}`;
 let socket = new WebSocket(WS_URL);
 
 socket.onopen = () => {

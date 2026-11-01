@@ -174,6 +174,8 @@ export const ConfigSchema = z.object({
   requestTimeoutMs: z.coerce.number().int().positive().default(10000),
   /** HTTP transport port (only used when transport=http). */
   httpPort: z.coerce.number().int().positive().max(65535).default(3939),
+  /** Streamable HTTP transport host. */
+  httpHost: z.string().default("127.0.0.1"),
   /** Subscribe to TD WebSocket events and forward them as MCP logging notifications. */
   events: z.enum(["on", "off"]).default("on"),
   /**
@@ -202,7 +204,7 @@ export const ConfigSchema = z.object({
    * (default) for the zero-config local flow. Set the SAME value in TouchDesigner's
    * environment (`TDMCP_BRIDGE_TOKEN`) to turn enforcement on.
    */
-  bridgeToken: z.string().min(1).optional(),
+  bridgeToken: z.string().default("dev-token"),
   /**
    * Optional bearer token that the Streamable HTTP transport requires on every
    * request (`Authorization: Bearer <token>`). Acts as the enforcement half of an
@@ -211,7 +213,7 @@ export const ConfigSchema = z.object({
    * local flow open. The HTTP transport binds loopback only, so this matters when
    * the server is fronted by a proxy or bound to a LAN interface.
    */
-  httpAuthToken: z.string().min(1).optional(),
+  httpAuthToken: z.string().default("dev-token"),
   /**
    * Base URL of an OpenAI-compatible chat endpoint used by `tdmcp chat` (the local
    * LLM copilot). Defaults to Ollama's local server. Point it at LM Studio, a cloud
@@ -430,6 +432,7 @@ function envValues(env: NodeJS.ProcessEnv): Record<string, unknown> {
     logLevel: env.TDMCP_LOG_LEVEL,
     requestTimeoutMs: env.TDMCP_REQUEST_TIMEOUT_MS,
     httpPort: env.TDMCP_HTTP_PORT,
+    httpHost: env.TDMCP_HTTP_HOST,
     events: env.TDMCP_EVENTS,
     rawPython: env.TDMCP_RAW_PYTHON,
     yolo: env.TDMCP_YOLO,
