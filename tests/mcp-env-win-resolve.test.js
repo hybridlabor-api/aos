@@ -14,7 +14,7 @@ test('npx resolves to npx.cmd via the entry PATH (key spelled "Path") and runs t
     const env = { Path: 'C:\\node;C:\\other', PATHEXT: '.COM;.EXE;.BAT;.CMD', SystemRoot: 'C:\\Windows' };
     const file = cliSpawn.resolveCommand('npx', { platform: 'win32', env, fs: fsImpl });
     assert.match(file, /^C:\\node\\npx\.cmd$/i);
-    const inv = cliSpawn.buildInvocation(file, ['-y', '@modelcontextprotocol/server-github@2025.4.8'], { platform: 'win32', env, fs: fsImpl });
+    const inv = cliSpawn.buildInvocation(file, ['-y', 'github/github-mcp-server@2.0.3'], { platform: 'win32', env, fs: fsImpl });
     assert.match(inv.file, /cmd\.exe$/i);
     assert.deepStrictEqual(inv.args.slice(0, 3), ['/d', '/s', '/c']);
 });

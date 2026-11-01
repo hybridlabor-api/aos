@@ -146,7 +146,7 @@ test('claude_desktop_config.json: AOS servers go, a user server and the file sta
     const ur = require('../lib/uninstall-records.js');
     const home = tmp();
     const f = path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-    const aos = { 'chrome-devtools': { command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer@2025.5.12'] } };
+    const aos = { 'chrome-devtools': { command: 'npx', args: ['-y', 'chrome-devtools-mcp@1.12.0'] } };
     const mine = { mine: { command: 'node', args: ['/my/server.js'] } };
     fs.mkdirSync(path.dirname(f), { recursive: true });
     fs.writeFileSync(f, JSON.stringify({ mcpServers: { ...aos, ...mine } }));

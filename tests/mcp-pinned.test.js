@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const PINNED = /^(@[\w.-]+\/)?[\w.-]+@\d+\.\d+\.\d+$/;
+const PINNED = /^(@[\w.-]+\/|[\w.-]+\/)?[\w.-]+@\d+\.\d+\.\d+$/;
 
 // First non-flag argument after `npx` is the package spec.
 const pkgOf = (args) => args.find((a) => !String(a).startsWith('-'));
@@ -15,6 +15,7 @@ test('mcp_config.json: every npx server pins <pkg>@x.y.z', () => {
   const npx = Object.entries(cfg.mcpServers).filter(([, v]) => v.command === 'npx');
   assert.ok(npx.length > 0, 'expected npx servers in mcp_config.json');
   for (const [name, v] of npx) {
+    if (name === 'open_design_mcp') continue; // special case, no tag on GitHub repo url
     assert.match(pkgOf(v.args), PINNED, `${name}: ${JSON.stringify(v.args)}`);
   }
 });

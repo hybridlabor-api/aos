@@ -10,10 +10,10 @@ You are the authoritative skill for managing and utilizing the specialized Model
 
 ## Available MCP Servers
 
-1. **github** (`@modelcontextprotocol/server-github`)
+1. **github** (`github/github-mcp-server`)
    - **Capabilities:** Read/write repositories, manage issues, handle PRs, search code.
 
-2. **chrome-devtools** (`@modelcontextprotocol/server-puppeteer`)
+2. **chrome-devtools** (`chrome-devtools-mcp`)
    - **Capabilities:** Automate Chrome/Chromium, run JS in browser, scrape dynamic pages, test web UI.
 
 3. **bdb_unreal_mcp** (Unreal Engine 5 C++/TS Bridge)

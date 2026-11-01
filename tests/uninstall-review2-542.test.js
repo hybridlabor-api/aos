@@ -25,7 +25,7 @@ test('#2 a shipped server with its own env block is the user\'s: the MCP config 
         const rec = path.join(home, '.agents', 'rules', 'r.md');
         write(rec, 'aos');
         manifestWith(home, { [rec]: { sha256: sha('aos') } });
-        write(cfg, JSON.stringify({ mcpServers: { github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github@2025.4.8'], env: { GITHUB_TOKEN: 'ghp_user' } } } }));
+        write(cfg, JSON.stringify({ mcpServers: { github: { command: 'npx', args: ['-y', 'github/github-mcp-server@2.0.3'], env: { GITHUB_TOKEN: 'ghp_user' } } } }));
         const r = uninstall(home, '--purge', '--yes');
         assert.strictEqual(r.status, 0, r.stderr + r.stdout);
         assert.ok(fs.existsSync(cfg), 'a server with env keeps the file in place');
@@ -84,7 +84,7 @@ test('#8 a symlinked hooks.json or mcp_config.json is Kept, not moved, not a fai
         write(rec, 'aos');
         manifestWith(home, { [rec]: { sha256: sha('aos') } });
         write(path.join(outside, 'hooks.json'), JSON.stringify({ 'aos-go-gate': { Stop: [{ type: 'command', command: 'node go-gate.mjs' }] } }));
-        write(path.join(outside, 'mcp.json'), JSON.stringify({ mcpServers: { github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github@2025.4.8'] } } }));
+        write(path.join(outside, 'mcp.json'), JSON.stringify({ mcpServers: { github: { command: 'npx', args: ['-y', 'github/github-mcp-server@2.0.3'] } } }));
         fs.mkdirSync(path.join(home, '.gemini', 'config'), { recursive: true });
         fs.symlinkSync(path.join(outside, 'hooks.json'), path.join(home, '.gemini', 'config', 'hooks.json'));
         fs.symlinkSync(path.join(outside, 'mcp.json'), path.join(home, '.gemini', 'config', 'mcp_config.json'));

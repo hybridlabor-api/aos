@@ -212,7 +212,7 @@ test('pinned packages: failed install retries without the puppeteer download, wa
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
     try {
         const dir = path.join(tmpDir, 'gateway');
-        const servers = { 'chrome-devtools': { command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer@2025.5.12'] } };
+        const servers = { 'chrome-devtools': { command: 'npx', args: ['-y', 'chrome-devtools-mcp@1.12.0'] } };
         const calls = [];
         const msgs = [];
         const ctx = { home: path.resolve(__dirname, '..'), log: (m) => msgs.push(m), env: {}, run: async (c, a, o) => { calls.push(o && o.env); return { status: 1 }; } };

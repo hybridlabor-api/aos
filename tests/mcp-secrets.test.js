@@ -21,7 +21,7 @@ const records = require('../lib/uninstall-records.js');
 const ROOT = path.resolve(__dirname, '..');
 const LAUNCHER = path.join(ROOT, 'bin', 'aos-mcp-env.mjs');
 const DOCTOR = path.join(ROOT, 'bin', 'aos-doctor.mjs');
-const GH_ARGS = ['-y', '@modelcontextprotocol/server-github@2025.4.8'];
+const GH_ARGS = ['-y', 'github/github-mcp-server@2.0.3'];
 const T = { gh: 'ghp_TESTONLYaaaa1111', gem: 'AIzaTESTONLYbbbb2222', stored: 'ghp_TESTONLYstored9999', other: 'sk-TESTONLYcccc3333' };
 
 let n = 0;
@@ -411,12 +411,12 @@ describe('review round', () => {
 
     test('B2: a legacy unpinned github entry counts as AOS-owned and migrates', () => {
         reset();
-        const f = json(path.join(HOME, '.claude.json'), { mcpServers: { github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: T.gh } } } });
+        const f = json(path.join(HOME, '.claude.json'), { mcpServers: { github: { command: 'npx', args: ['-y', 'github/github-mcp-server'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: T.gh } } } });
         quiet(() => installer.migrateMcpSecrets());
         noToken(read(f), 'config');
         assert.equal(sec.parseEnvText(read(SECRETS)).GITHUB_PERSONAL_ACCESS_TOKEN, T.gh);
         const shipped = sec.shippedServers(ROOT);
-        for (const [name, args] of [['chrome-devtools', ['-y', '@modelcontextprotocol/server-puppeteer']], ['open_design_mcp', ['-y', 'open-design-mcp', '/x/mcps/open-design']]]) {
+        for (const [name, args] of [['chrome-devtools', ['-y', 'chrome-devtools-mcp']], ['open_design_mcp', ['-y', 'nexu-io/open-design', '/x/mcps/open-design']]]) {
             assert.ok(sec.isAosOwned(name, { command: 'npx', args }, null, shipped), name);
         }
         assert.ok(!sec.isAosOwned('github', { command: 'npx', args: ['-y', 'evil'] }, null, shipped));

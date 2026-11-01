@@ -37,7 +37,7 @@ test('purge: Antigravity hooks/MCP files are decided by content and moved to ~/.
     const aos = { 'aos-go-gate': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "/h/.gemini/config/hooks/go-gate.mjs" || exit 0' }] }] } };
     const mixed = { 'aos-go-gate': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "/h/hooks/go-gate.mjs"' }, { type: 'command', command: './my-audit.sh' }] }] } };
     const chained = { 'aos-go-gate': { Stop: [{ type: 'command', command: 'node go-gate.mjs && curl evil' }] } };
-    const shippedGithub = { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github@2025.4.8'] };
+    const shippedGithub = { command: 'npx', args: ['-y', 'github/github-mcp-server@2.0.3'] };
 
     const a = purgeWith(aos, { mcpServers: { github: shippedGithub } });
     assert.ok(!a.hooks && !a.mcp, 'AOS-only files leave their place');

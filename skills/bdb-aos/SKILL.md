@@ -62,7 +62,7 @@ Generated from `lib/cli-specs` (`node scripts/build-cli-reference.mjs`); full re
 | `aos-bus` | Send text to a running OpenCode session, or list sessions that can receive it. | `aos-bus list` |
 | `go-check` | A runner outside a harness (for example AO) must ask the GO gate before executing a command. | `node ~/.aos/bin/go-check.mjs --session w1 --command "git push"` |
 | `mcsc` | Decide which worker CLI should take a task type, or run it there. | `mcsc route --task-type refactor --json` |
-| `aos-mcp-env` | Wire an MCP server that needs API keys into a harness config without putting keys in the config. | `aos-mcp-env --vars GITHUB_PERSONAL_ACCESS_TOKEN -- npx -y @modelcontextprotocol/server-github@2025.4.8` |
+| `aos-mcp-env` | Wire an MCP server that needs API keys into a harness config without putting keys in the config. | `aos-mcp-env --vars GITHUB_PERSONAL_ACCESS_TOKEN -- npx -y github/github-mcp-server@2.0.3` |
 | `aos-memb-ingest` | Normally never by hand. Use `aos memory` to configure paths and time. | `aos-memb-ingest --dry-run` |
 | `aos-setup-doctor` | Used by the aos-setup skill before installing. For an installed system use `aos doctor`. | `node aos-doctor.mjs --json` |
 | `aos-project-doctor` | After or before /aos-project-init, to see what is missing in a project. | `node aos-project-doctor.mjs . --json` |
