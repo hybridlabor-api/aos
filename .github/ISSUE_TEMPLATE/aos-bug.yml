@@ -1,0 +1,58 @@
+name: AOS Bug
+description: Report an AOS bug for maintainers to dispatch to Jules
+title: "[Bug]: "
+labels: [aos-bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Plan rules for Jules
+        All issues: Read `AGENTS.md` first. Make the smallest complete change. Use Conventional Commits and no AI attribution. Never run the installer against the real HOME; tests must use a temporary HOME. Run `npm test` or the relevant `node --test` files and `npm run validate`; all must pass. Create one PR per issue, link the issue in the PR body, and list tests run.
+
+        Bug: Reproduce the bug first. Add a failing test that shows it, then fix the root cause in shared code after grepping all callers. Preserve error handling and mention the root cause in the PR.
+  - type: dropdown
+    id: target_repo
+    attributes:
+      label: Target repo
+      options: [hybridlabor-api/aos]
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: e.g. gateway, installer, hub, skills
+  - type: textarea
+    id: what_happens
+    attributes:
+      label: What happens
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, harness, AOS version
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: shell
+  - type: textarea
+    id: done_when
+    attributes:
+      label: Done when
+    validations:
+      required: true
