@@ -6761,7 +6761,7 @@ function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
         copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(targetHome, '.agents', 'lib'));
         ensureCommonJsRoot(path.join(targetHome, '.agents'));
-        ensureCommonJsRoot(path.join(targetHome, '.gemini', 'config'));
+        if(fs.existsSync(path.join(targetHome, '.gemini'))) ensureCommonJsRoot(path.join(targetHome, '.gemini', 'config'));
         // The gateway reads the shipped server list from ~/.agents/gateway/upstream_template.json (aosRoot); without these it serves nothing.
         const gatewayDir = path.join(targetHome, '.agents', 'gateway');
         fs.mkdirSync(gatewayDir, { recursive: true });
