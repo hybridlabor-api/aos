@@ -18,7 +18,7 @@ function fixture() {
     const github = JSON.parse(JSON.stringify(shipped.github));
     const file = path.join(home, '.claude.json');
     const data = {
-        mcpServers: { github, bdb_after_effects_mcp_fallback: aeBin, mine: { command: 'node', args: ['m.js'] } },
+        mcpServers: { github, bdb_blender_official_mcp: aeBin, mine: { command: 'node', args: ['m.js'] } },
         projects: { '/p/one': { mcpServers: { github, keep: { command: 'x', args: [] } } }, '/p/two': { other: 1 } },
     };
     fs.writeFileSync(file, JSON.stringify(data, null, 2));
