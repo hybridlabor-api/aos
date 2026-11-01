@@ -23,7 +23,7 @@ The **After Effects MCP Server** integrations enable AI assistants to programmat
 
 | Server | Use for | Fallback when |
 | :--- | :--- | :--- |
-| `bdb_after_effects_mcp` (`@kumoproductions/mcp-aftereffects@0.3.2`, Node >= 24) | Primary server for After Effects automation. |
+| `bdb_after_effects_mcp` (`@kumoproductions/mcp-aftereffects@0.3.2`, Node >= 24) | Primary server for After Effects automation. | Undocumented. |
 
 ---
 
