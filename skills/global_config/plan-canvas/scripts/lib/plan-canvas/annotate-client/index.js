@@ -78,6 +78,7 @@ function clientMain(CFG) {
   const $ = sel => root.querySelector(sel);
   const ov = $('svg.ov');
   const hl = $('.hl');
+  const hlBadge = hl ? hl.querySelector('.hl-badge') : null;
   const selhint = $('.selhint');
   const launch = $('.launch');
   const bar = $('.bar');
@@ -141,10 +142,67 @@ function clientMain(CFG) {
     const r = el.getBoundingClientRect();
     return { left: r.left + window.scrollX, top: r.top + window.scrollY, width: r.width, height: r.height };
   }
+  function componentNameFor(el) {
+    if (!el || el.nodeType !== 1) return null;
+    const compAttr = el.getAttribute('data-component') || (el.closest && el.closest('[data-component]') ? el.closest('[data-component]').getAttribute('data-component') : null);
+    if (compAttr) return compAttr;
+    const testId = el.getAttribute('data-testid') || (el.closest && el.closest('[data-testid]') ? el.closest('[data-testid]').getAttribute('data-testid') : null);
+    if (testId) return testId;
+
+    for (let curr = el; curr && curr !== document.body && curr !== document.documentElement; curr = curr.parentElement) {
+      const fiberKey = Object.keys(curr).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+      if (fiberKey) {
+        let fiber = curr[fiberKey];
+        while (fiber) {
+          const type = fiber.type;
+          if (typeof type === 'function' && type.name) {
+            const name = type.displayName || type.name;
+            if (!/^(Fragment|Provider|Consumer|_default|Anonymous|styled|Connect|Route|Router)$/.test(name)) return name;
+          } else if (type && typeof type === 'object' && (type.displayName || type.name)) {
+            const name = type.displayName || type.name;
+            if (!/^(Fragment|Provider|Consumer|_default)$/.test(name)) return name;
+          }
+          fiber = fiber.return;
+        }
+      }
+    }
+
+    for (let curr = el; curr && curr !== document.body && curr !== document.documentElement; curr = curr.parentElement) {
+      if (curr.__vueParentComponent && curr.__vueParentComponent.type && curr.__vueParentComponent.type.name) {
+        return curr.__vueParentComponent.type.name;
+      }
+    }
+
+    const role = el.getAttribute('role');
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'aside' || role === 'complementary') return 'Sidebar';
+    if (tag === 'nav' || role === 'navigation') return 'Navigation';
+    if (tag === 'header' || role === 'banner') return 'Header';
+    if (tag === 'footer' || role === 'contentinfo') return 'Footer';
+    if (tag === 'button' || role === 'button') return 'Button';
+    if (tag === 'dialog' || role === 'dialog') return 'Modal';
+
+    if (el.classList && el.classList.length) {
+      for (const cls of Array.from(el.classList)) {
+        if (/sidebar/i.test(cls)) return 'Sidebar';
+        if (/device[-_]?card|room[-_]?card|stat[-_]?card/i.test(cls)) return 'DeviceCard';
+        if (/card/i.test(cls)) return 'Card';
+        if (/modal|dialog/i.test(cls)) return 'Modal';
+        if (/toggle|switch/i.test(cls)) return 'ToggleSwitch';
+        if (/slider/i.test(cls)) return 'Slider';
+        if (/navbar|topbar|header/i.test(cls)) return 'TopBar';
+        if (/menu/i.test(cls)) return 'Menu';
+      }
+    }
+    return null;
+  }
+
   function anchorFor(el) {
+    const comp = componentNameFor(el);
     return {
       selector: selectorFor(el),
       tag: el.tagName.toLowerCase(),
+      component: comp || undefined,
       snippet: snippetFor(el),
       classes: Array.from(el.classList || [])
     };
@@ -376,6 +434,12 @@ function clientMain(CFG) {
     hl.style.top = rect.top - 2 + 'px';
     hl.style.width = rect.width + 'px';
     hl.style.height = rect.height + 'px';
+
+    if (hlBadge) {
+      const comp = componentNameFor(el);
+      hlBadge.textContent = comp ? '<' + comp + '>' : '<' + el.tagName.toLowerCase() + '>';
+      hlBadge.style.display = 'block';
+    }
   }, true);
 
   document.addEventListener('click', e => {
@@ -394,7 +458,9 @@ function clientMain(CFG) {
     e.preventDefault();
     e.stopPropagation();
     hl.style.display = 'none';
-    openElementCard('Annotate <' + el.tagName.toLowerCase() + '>', el, anchorFor(el), e.clientX, e.clientY);
+    const comp = componentNameFor(el);
+    const label = comp ? 'Annotate <' + comp + '>' : 'Annotate <' + el.tagName.toLowerCase() + '>';
+    openElementCard(label, el, anchorFor(el), e.clientX, e.clientY);
   }, true);
 
   ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'dblclick'].forEach(type => {

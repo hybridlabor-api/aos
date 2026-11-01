@@ -351,7 +351,7 @@ describe('bundle smoke run against a generic DOM stub (logic only, not a browser
 
   test('H1 app mode: element tool swallows clicks on buttons and links, Alt passes through; iframe keeps them live', () => {
     const script = { getAttribute: k => ({ 'data-session': 'abcdef012345', 'data-token': 'tok' }[k]), src: 'http://127.0.0.1:4519/annotate.js?v=1' };
-    const fakeEl = tagName => ({ nodeType: 1, tagName, id: '', parentElement: null, previousElementSibling: null, isContentEditable: false, classList: [], matches: () => false, closest: () => null, getBoundingClientRect: () => ({ left: 1, top: 1, width: 10, height: 10 }) });
+    const fakeEl = tagName => ({ nodeType: 1, tagName, id: '', getAttribute: () => null, parentElement: null, previousElementSibling: null, isContentEditable: false, classList: [], matches: () => false, closest: () => null, getBoundingClientRect: () => ({ left: 1, top: 1, width: 10, height: 10 }) });
     const click = (el, extra = {}) => {
       const calls = [];
       return { calls, ev: { target: el, clientX: 5, clientY: 5, preventDefault: () => calls.push('prevent'), stopPropagation: () => calls.push('stop'), ...extra } };
@@ -382,5 +382,60 @@ describe('bundle smoke run against a generic DOM stub (logic only, not a browser
     const { win, posts } = runBundle('postMessage', { code });
     vm.runInNewContext(code, win);
     assert.equal(posts.length, 1);
+  });
+
+  test('componentNameFor resolves component names correctly', () => {
+    const { win } = runBundle('fetch', { code: annotateClientJs({ transport: 'fetch', version: '1.1.0' }) });
+    const el = (tagName, attrs = {}, classList = [], props = {}) => ({
+      nodeType: 1,
+      tagName,
+      getAttribute: k => attrs[k] || null,
+      classList,
+      parentElement: null,
+      closest: () => null,
+      ...props
+    });
+
+    // Helper to evaluate componentNameFor logic within the stubbed window
+    // Since componentNameFor is not exported, we test it through the UI logic
+    // We will simulate a click and check the label in openElementCard.
+    const fakeEl = el('DIV');
+    const fakeReactEl = el('DIV', {}, [], { __reactFiber$xyz: { type: { name: 'MyReactComponent' } } });
+    const fakeVueEl = el('DIV', {}, [], { __vueParentComponent: { type: { name: 'MyVueComponent' } } });
+    const fakeDataEl = el('DIV', { 'data-component': 'DataComponent' });
+    const fakeTestIdEl = el('DIV', { 'data-testid': 'TestIdComponent' });
+    const fakeSemanticEl = el('ASIDE');
+    const fakeClassEl = el('DIV', {}, ['sidebar', 'other']);
+
+    const click = (target) => {
+      const calls = [];
+      return {
+        calls,
+        ev: { target, clientX: 5, clientY: 5, preventDefault: () => {}, stopPropagation: () => {} }
+      };
+    };
+
+    // We can't directly check componentNameFor, but we can verify if the card is opened with correct label
+    // We need a way to capture `openElementCard`. Since `openElementCard` is internal, we can check `componentNameFor` logic independently or rely on the fact that if we implemented it, we can expose it or use a simpler standalone test logic if needed. However, the requirement is to verify it here. Let's extract componentNameFor from the bundle or replicate it if we just want to ensure it's there.
+
+    // Instead of full integration, let's just make sure it parses and we can extract the function string and test it.
+    const code = annotateClientJs({ transport: 'fetch' });
+    const compMatch = code.match(/function componentNameFor\(el\)\s*{[\s\S]*?return null;\s*}/);
+    assert.ok(compMatch, 'componentNameFor function is in the bundle');
+
+    const componentNameForStr = compMatch[0];
+    const componentNameFor = new Function('el', `
+      const document = { body: {}, documentElement: {} };
+      ${componentNameForStr}
+      return componentNameFor(el);
+    `);
+
+    assert.equal(componentNameFor(fakeReactEl), 'MyReactComponent');
+    assert.equal(componentNameFor(fakeVueEl), 'MyVueComponent');
+    assert.equal(componentNameFor(fakeDataEl), 'DataComponent');
+    assert.equal(componentNameFor(fakeTestIdEl), 'TestIdComponent');
+    assert.equal(componentNameFor(fakeSemanticEl), 'Sidebar');
+    assert.equal(componentNameFor(fakeClassEl), 'Sidebar');
+    assert.equal(componentNameFor(fakeEl), null);
   });
 });
