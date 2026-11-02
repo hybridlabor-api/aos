@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 const { gatewayDir } = require('../lib/gateway/config.js');
 const harness = require('../lib/gateway/harness.js');
 const adopt = require('../lib/gateway/adopt.js');
+const gatewayConfig = require('../lib/gateway/config.js');
 const { fromOpencode } = require('../lib/mcp-secrets.js');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-adopt-'));
@@ -139,12 +140,37 @@ test('conflicting definitions skipped', () => {
     assert.ok(rj(f1).mcpServers.twin);
 });
 
-test('disabled and launcher entries skipped', () => {
+test('disabled entries skipped, user launcher entries adoptable', () => {
     const fx = fixture({ claude: { off: { command: 'node', args: ['x'], disabled: true }, lanch: { command: 'node', args: [path.join('bin', 'aos-mcp-env.mjs'), '--vars', '', '--', 'node', 'z.js'] } }, oc: { oc_off: { type: 'local', command: ['n', 'y'], enabled: false } } });
     const s = adopt.scanAdoptable({ files: fx.files, shipped });
     assert.ok(s.skipped.some((k) => k.name === 'off' && /disabled/.test(k.reason)));
     assert.ok(s.skipped.some((k) => k.name === 'oc_off' && /disabled/.test(k.reason)));
-    assert.ok(s.skipped.some((k) => k.name === 'lanch' && /managed/.test(k.reason)));
+    assert.ok(s.adoptable.some((a) => a.name === 'lanch'));
+});
+
+test('user launcher entry is adopted and written to gateway without wrapping again', () => {
+    const wrapped = { command: 'node', args: ['/home/user/.agents/bin/aos-mcp-env.mjs', '--vars', 'MY_API_KEY', '--', 'node', 'server.js'], env: { FOO: 'bar' } };
+    const fx = fixture({ claude: { wrapped } });
+    const scan = adopt.scanAdoptable({ files: fx.files, shipped });
+    assert.deepEqual(scan.adoptable.find((a) => a.name === 'wrapped').entry, wrapped);
+
+    const rep = adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped });
+    assert.ok(rep.adopted.includes('wrapped'));
+    const adopted = rj(adopt.adoptedPath(fx.home)).servers.wrapped;
+    const upstreams = gatewayConfig.buildUpstreams({ shipped: {}, home: fx.home, launcher: '/another/aos-mcp-env.mjs', pathEnv: '/usr/bin' });
+    const outFile = gatewayConfig.writeGatewayConfig(gatewayDir(fx.home), upstreams);
+    const gatewayEntry = rj(outFile).mcpServers.wrapped;
+    assert.equal(gatewayEntry.command, adopted.command);
+    assert.deepEqual(gatewayEntry.args, adopted.args);
+    assert.deepEqual(gatewayEntry.args, wrapped.args, 'launcher args and secret variable names stay unchanged');
+    assert.deepEqual(gatewayEntry.env, { FOO: 'bar', PATH: '/usr/bin', HOME: fx.home });
+});
+
+test('launcher-wrapped shipped server remains skipped as handled by AOS install', () => {
+    const fx = fixture({ claude: { github: { command: 'node', args: ['/home/user/.agents/bin/aos-mcp-env.mjs', '--vars', 'GITHUB_TOKEN', '--', 'npx', 'gh'] } } });
+    const scan = adopt.scanAdoptable({ files: fx.files, shipped });
+    assert.ok(!scan.adoptable.some((a) => a.name === 'github'));
+    assert.ok(scan.skipped.some((s) => s.name === 'github' && s.reason === 'handled by AOS install'));
 });
 
 test('dryRun returns the scan, writes nothing', () => {
