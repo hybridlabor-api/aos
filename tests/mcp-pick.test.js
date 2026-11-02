@@ -134,6 +134,20 @@ describe('applyPicks with fake detect', () => {
         assert.ok(!r.servers.bdb_resolume_official_mcp);
         assert.deepEqual(r.retired.sort(), ['bdb_blender_official_mcp', 'bdb_resolume_official_mcp']);
     });
+    test('resolume detected (< 7.26.0): ours kept, official retired', () => {
+        const detect = (app) => (app === 'resolume' ? { version: '7.25.0', path: '/opt/arena/mcp/resolume_arena_mcp_server' } : null);
+        const r = applyPicks(servers, picks, detect);
+        assert.ok(r.servers.bdb_resolume_mcp);
+        assert.ok(!r.servers.bdb_resolume_official_mcp);
+        assert.deepEqual(r.retired.sort(), ['bdb_blender_official_mcp', 'bdb_resolume_official_mcp']);
+    });
+    test('resolume detected (< 7.26.0): ours kept, official retired', () => {
+        const detect = (app) => (app === 'resolume' ? { version: '7.25.0', path: '/opt/arena/mcp/resolume_arena_mcp_server' } : null);
+        const r = applyPicks(servers, picks, detect);
+        assert.ok(r.servers.bdb_resolume_mcp);
+        assert.ok(!r.servers.bdb_resolume_official_mcp);
+        assert.deepEqual(r.retired.sort(), ['bdb_blender_official_mcp', 'bdb_resolume_official_mcp']);
+    });
     test('resolume placeholder without path: not satisfied, ours stays', () => {
         const detect = () => null;
         const r = applyPicks(servers, picks, detect);
