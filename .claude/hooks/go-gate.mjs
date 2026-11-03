@@ -2506,7 +2506,8 @@ export const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-")
 // and promptSource absent/typed/queued; origin absent -> promptSource absent or
 // typed. Always: turnOrigin absent or "human", not meta/sidechain/compact
 // summary/tool result/skill injection, no scheduler/wakeup/cron/loop keys.
-// suggestion_accepted (model-written text, one keypress) and sdk never count.
+// suggestion_accepted (model-written text, one keypress) and sdk never count, except a
+// Claude Desktop prompt (entrypoint claude-desktop, origin and turnOrigin human).
 //
 // isStrictHumanEntry (required to SET a mode or grant): additionally needs
 // positive evidence, origin.kind "human" or promptSource "typed". The asymmetry
@@ -2524,6 +2525,9 @@ const hasSchedulerMark = (o, depth = 0) => {
   return Object.entries(o).some(([k, v]) => SCHEDULED_KEYS.has(k) || (depth > 0 && typeof v === "string" && SCHEDULED_VALUE.test(v)) ||
     ((k === "origin" || depth > 0) && hasSchedulerMark(v, depth + 1)));
 };
+// Claude Desktop (Code tab) records every typed prompt as promptSource "sdk"; only its own
+// entrypoint plus a human origin and turn counts, so headless SDK runs stay excluded.
+const isDesktopTyped = (e) => e.promptSource === "sdk" && e.entrypoint === "claude-desktop" && e.origin?.kind === "human" && e.turnOrigin === "human";
 export function isHumanEntry(e) {
   if (!e || typeof e !== "object") return false;
   if (e.type === "USER_INPUT" || e.source === "USER_EXPLICIT") return true; // Antigravity: no origin info exists
@@ -2533,7 +2537,7 @@ export function isHumanEntry(e) {
   if (hasSchedulerMark(e)) return false;
   if (e.origin !== undefined && (!e.origin || typeof e.origin !== "object")) return false;
   if (e.turnOrigin !== undefined && e.turnOrigin !== "human") return false;
-  if (e.origin !== undefined) return e.origin.kind === "human" && [undefined, "typed", "queued"].includes(e.promptSource);
+  if (e.origin !== undefined) return e.origin.kind === "human" && ([undefined, "typed", "queued"].includes(e.promptSource) || isDesktopTyped(e));
   return e.promptSource === undefined || e.promptSource === "typed";
 }
 export const isStrictHumanEntry = (e) =>

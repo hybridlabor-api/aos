@@ -54,6 +54,9 @@ const NONHUMAN = {
     loop: { promptSource: 'system', isMeta: true, turnOrigin: 'system', queuePriority: 'later' },
     sdk: { promptSource: 'sdk', turnOrigin: 'sdk' },
     'human+sdk': { origin: { kind: 'human' }, promptSource: 'sdk' },
+    'desktop entrypoint, sdk turn': { origin: { kind: 'human' }, promptSource: 'sdk', turnOrigin: 'sdk', entrypoint: 'claude-desktop' },
+    'desktop entrypoint, peer origin': { origin: { kind: 'peer' }, promptSource: 'sdk', turnOrigin: 'human', entrypoint: 'claude-desktop' },
+    'headless sdk entrypoint': { origin: { kind: 'human' }, promptSource: 'sdk', turnOrigin: 'human', entrypoint: 'sdk-ts' },
     suggestion: { origin: { kind: 'human' }, promptSource: 'suggestion_accepted' },
     'absent origin, peer turn': { turnOrigin: 'peer' },
     'absent origin, system source': { promptSource: 'system' },
@@ -86,6 +89,15 @@ describe('origin check', () => {
         assert.equal(g.isHumanEntry(user('GO')), true, 'absent origin + absent promptSource: legacy human');
         assert.equal(g.isHumanEntry(user('GO', { promptSource: 'typed' })), true);
         for (const [name, extra] of Object.entries(NONHUMAN)) assert.equal(g.isHumanEntry(user('GO', extra)), false, name);
+    });
+
+    // Claude Desktop (Code tab) records typed prompts as promptSource sdk (Claude Code 2.1.317, Windows).
+    const DESKTOP = { origin: { kind: 'human' }, promptSource: 'sdk', turnOrigin: 'human', entrypoint: 'claude-desktop', userType: 'external' };
+    test('a Claude Desktop typed prompt counts for GO and for gogate modes', () => {
+        assert.equal(g.isHumanEntry(user('GO', DESKTOP)), true);
+        assert.equal(g.isStrictHumanEntry(user('GO', DESKTOP)), true);
+        add(user('GO', DESKTOP));
+        ok('git push origin main');
     });
 
     test('a human GO opens the gate; legacy entries only in a transcript without origin', () => {
