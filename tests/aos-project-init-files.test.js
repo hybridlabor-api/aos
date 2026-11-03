@@ -33,6 +33,13 @@ test('aos project init --files creates project rule files correctly', () => {
 
     const agentsContent = fs.readFileSync(pAgents, 'utf8');
     assert.ok(agentsContent.includes(path.basename(cwd)), 'AGENTS.md should have the project name (cwd basename)');
+    assert.ok(agentsContent.includes('## Build and test commands'), 'AGENTS.md should have Build and test commands section');
+    assert.ok(agentsContent.includes('## Code style'), 'AGENTS.md should have Code style section');
+    assert.ok(agentsContent.includes('## CI'), 'AGENTS.md should have CI section');
+    assert.ok(agentsContent.includes('## Commits'), 'AGENTS.md should have Commits section');
+    assert.ok(agentsContent.includes('## PRs'), 'AGENTS.md should have PRs section');
+    assert.ok(agentsContent.includes('## Security'), 'AGENTS.md should have Security section');
+    assert.ok(agentsContent.includes('Nested `AGENTS.md` files take precedence'), 'AGENTS.md should have monorepo precedence note');
 
     // output should include the plan printed first
     assert.ok(r.stdout.includes('Project init plan:'), 'Should print a plan');
