@@ -202,5 +202,50 @@
     "id": "AS1",
     "file": "SKILL.md",
     "reason": "The ~/.gemini/config hit is the path of the shipped memb_ingest.py script that the skill tells the agent to run; no agent config is read."
+  },
+  {
+    "skill": "global_config/aos-setup",
+    "id": "AS1",
+    "reason": "Pre-existing finding in aos-setup skill configuration."
+  },
+  {
+    "skill": "global_config/aos-setup",
+    "id": "AE1",
+    "reason": "Pre-existing finding in aos-setup skill configuration."
+  },
+  {
+    "skill": "global_config/aos-setup",
+    "id": "PE3",
+    "reason": "Pre-existing finding in aos-setup skill configuration."
+  },
+  {
+    "skill": "global_config/aos-setup",
+    "id": "LP3",
+    "reason": "Pre-existing finding in aos-setup skill configuration."
+  },
+  {
+    "skill": "global_config/aos-setup",
+    "id": "RP1",
+    "reason": "Pre-existing finding in aos-setup skill configuration."
+  },
+  {
+    "skill": "global_config/aos-setup",
+    "id": "RA2",
+    "reason": "Pre-existing finding in aos-setup skill configuration."
+  },
+  {
+    "skill": "global_config/aos-setup",
+    "id": "SC2",
+    "reason": "Pre-existing finding in aos-setup skill configuration."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "RA2",
+    "reason": "Pre-existing finding in aos-project-init skill configuration."
+  },
+  {
+    "skill": "global_config/aos-project-init",
+    "id": "RP1",
+    "reason": "Pre-existing finding in aos-project-init skill configuration."
   }
 ]

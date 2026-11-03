@@ -125,7 +125,7 @@ function checkHarness() {
 function checkWiki() {
   const dir = p('.openwiki');
   const pages = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
-  add('openwiki', 'OpenWiki initialized', pages.length > 0, pages.length ? `openwiki/ present (${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''})` : 'no .openwiki/ present',
+  add('openwiki', 'OpenWiki initialized', pages.length > 0, pages.length ? `.openwiki/ present (${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''})` : 'no ..openwiki/ present',
     'openwiki --init   (run inside the project; needs provider credentials in ~/.openwiki/.env first)');
 
   // Without this file OpenWiki loads zero rules and indexes .venv, node_modules
@@ -147,7 +147,7 @@ function checkWiki() {
 async function checkMemb() {
   const dbPath = path.join(HOME, '.MemBDB', 'memb.db');
   if (!existsSync(dbPath)) {
-    add('memB', 'project memories', false, 'no memB store on this machine', 'Run /aos-setup first.');
+    add('memB', 'entries for the project slug', false, 'no memB store on this machine', 'Run /aos-setup first.');
     return;
   }
   try {
@@ -163,7 +163,7 @@ async function checkMemb() {
     add('memB', 'entries for the project slug', n > 0, n > 0 ? `${n} memories bound to project_id "${PROJECT}"` : `0 memories bound to project_id "${PROJECT}" (advice to ingest)`,
       'Ingest the project: python3 memb_ingest.py <project dir>  (see /aos-project-init, section 5)');
   } catch (e) {
-    add('memB', 'project memories', false, `could not read the store (${e.message.split('\n')[0]})`,
+    add('memB', 'entries for the project slug', false, `could not read the store (${e.message.split('\n')[0]})`,
       'node:sqlite is unflagged only from Node 22.13; on 22.5-22.12 upgrade Node (or pass --experimental-sqlite). Otherwise inspect via the memB WebUI on :8088.');
   }
 }
@@ -181,12 +181,12 @@ function checkWorkspace() {
       const map = path.join(parent, 'WORKSPACE.md');
       const hasMap = existsSync(map);
       if (!hasMap) {
-         add('workspace', 'WORKSPACE.md map', true, `parent folder ${parent} has ${siblings.length} items but no WORKSPACE.md map`, `Consider creating ${map} to map these projects for the router.`);
+         add('workspace', 'WORKSPACE.md map', true, `parent folder ${parent.replace(HOME, '~')} has ${siblings.length} items but no WORKSPACE.md map`, `Consider creating ${map.replace(HOME, '~')} to map these projects for the router.`);
       } else {
          add('workspace', 'WORKSPACE.md map', true, `parent folder has WORKSPACE.md map`, '');
       }
     }
-  } catch {}
+  } catch { /* failed to read workspace */ }
 }
 
 // ---------------------------------------------------------------- report

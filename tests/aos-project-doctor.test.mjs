@@ -55,7 +55,7 @@ test('aos-project-doctor: OpenWiki initialized, watched, memB advice, WORKSPACE 
     let stdout = '';
     try {
       stdout = execFileSync(process.execPath, [doctorScript, root, '--json'], {
-        env: { ...process.env, HOME: tmpHome },
+        env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome },
         encoding: 'utf8'
       });
     } catch (err) {
