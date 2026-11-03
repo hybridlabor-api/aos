@@ -2474,7 +2474,8 @@ function extractClaudeText(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .filter((b) => b && b.type === "text" && typeof b.text === "string")
+      // Claude Desktop prepends a separate text part holding only a <system-reminder> block.
+      .filter((b) => b && b.type === "text" && typeof b.text === "string" && !/^\s*<system-reminder>[\s\S]*<\/system-reminder>\s*$/.test(b.text))
       .map((b) => b.text)
       .join("\n");
   }

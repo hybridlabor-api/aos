@@ -100,6 +100,14 @@ describe('origin check', () => {
         ok('git push origin main');
     });
 
+    test('a Claude Desktop GO with the app\'s prepended system-reminder part still counts', () => {
+        const parts = [{ type: 'text', text: '<system-reminder>\nscratch workspace note\n</system-reminder>\n\n' }, { type: 'text', text: 'go' }];
+        add({ ...user('', DESKTOP), message: { role: 'user', content: parts } });
+        ok('git push origin main');
+        add({ ...user('', DESKTOP), message: { role: 'user', content: [{ type: 'text', text: '<system-reminder>x</system-reminder> GO' }] } });
+        blocked('git push origin main');
+    });
+
     test('a human GO opens the gate; legacy entries only in a transcript without origin', () => {
         add(human('GO'));
         ok('git push origin main');
