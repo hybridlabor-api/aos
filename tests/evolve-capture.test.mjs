@@ -52,7 +52,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
   });
 
   test('captureFailure maps known pattern to mode and stores trace_id', () => {
-    const errorText = 'AssertionError: expected false to be true in test_parse\n    at /Users/testuser/work/test.js:10:5';
+    const errorText = 'SomeWeirdError: timeout waiting for operation';
     const result = captureFailure({
       error: errorText,
       skill: 'clean-code',
@@ -63,8 +63,73 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     });
 
     assert.ok(result.ok, 'capture must succeed');
-    assert.equal(result.record.mode, 'assertion_failure', 'mode must map from known pattern AssertionError');
+    assert.equal(result.record.mode, 'timeout', 'mode must map from known pattern in text');
     assert.equal(result.record.trace_id, 'trace-1234', 'trace_id must be stored');
+  });
+
+  test('captureFailure maps leading error class first', () => {
+    const errorText = 'AssertionError: expected false to be true in test_parse\n    at /Users/testuser/work/test.js:10:5\n    at function_x (TypeError: something went wrong)';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'AssertionError', 'mode must match leading error class AssertionError');
+  });
+
+  test('captureFailure reads trace_id from environment if missing in params', () => {
+    process.env.AOS_TRAIL_NODE = 'env-node-123';
+    const errorText = 'NetworkError: disconnected';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.trace_id, 'env-node-123', 'trace_id must be read from environment AOS_TRAIL_NODE');
+    delete process.env.AOS_TRAIL_NODE;
+  });
+
+  test('captureFailure emits visible warning to stderr on malformed failure-modes.json and falls back to unknown', () => {
+    const modesPath = path.join(path.resolve(__dirname, '../..'), 'evolve', 'failure-modes.json');
+    const originalContent = fs.readFileSync(modesPath, 'utf8');
+    fs.writeFileSync(modesPath, '{ malformed: json ]');
+
+    const errorText = 'SomeWeirdError: something went wrong';
+
+    // Capture stderr
+    const originalStderrWrite = process.stderr.write;
+    let stderrOutput = '';
+    process.stderr.write = (chunk, encoding, callback) => {
+      stderrOutput += chunk.toString();
+      if (callback) callback();
+      return true;
+    };
+
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    // Restore stderr
+    process.stderr.write = originalStderrWrite;
+
+    // Restore modes file
+    fs.writeFileSync(modesPath, originalContent);
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'unknown', 'mode must fallback to unknown');
+    assert.ok(stderrOutput.includes('Warning: Failed to parse evolve/failure-modes.json'), 'stderr must contain warning about malformed json');
   });
 
   test('captureFailure maps unknown error to unknown mode', () => {

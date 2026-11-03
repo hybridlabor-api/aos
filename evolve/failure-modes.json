@@ -1,6 +1,7 @@
-{
-  "AssertionError": "assertion_failure",
-  "SyntaxError": "syntax_error",
-  "TypeError": "type_error",
-  "ReferenceError": "reference_error"
-}
+[
+  ["timeout", "timeout"],
+  ["permission denied", "permission-denied"],
+  ["network error", "network"],
+  ["gate blocked", "gate-blocked"],
+  ["test failed", "test-failure"]
+]

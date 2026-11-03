@@ -38,6 +38,7 @@ Options:
   --role <role>       Active agent role (default: builder)
   --dry-run           Compute redaction and signature without writing to store
   --storage <path>    Custom failure.json destination file (must resolve inside ~/.aos/evolve/)
+  --trace-id <id>     AgentTrail trace ID to attach to the failure record
   --json              Format output as JSON
   -h, --help          Show this help message and exit
 
@@ -163,6 +164,7 @@ export async function main(args = process.argv.slice(2), opts = {}) {
     const kind = getArgValue(args, '--kind') || 'test';
     const harness = getArgValue(args, '--harness') || 'agy';
     const role = getArgValue(args, '--role') || 'builder';
+    const trace_id = getArgValue(args, '--trace-id');
     const errorArg = getArgValue(args, '--error');
 
     let errorData = errorArg;
@@ -212,6 +214,7 @@ export async function main(args = process.argv.slice(2), opts = {}) {
       kind,
       harness,
       role,
+      trace_id,
       storagePath,
       dryRun,
     });
