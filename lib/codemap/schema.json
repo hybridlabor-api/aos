@@ -71,9 +71,10 @@
       "items": {
         "type": "object",
         "properties": {
-          "step": { "type": "string" },
-          "description": { "type": "string" }
-        }
+          "part": { "type": "string" },
+          "note": { "type": "string" }
+        },
+        "required": ["part"]
       }
     }
   }

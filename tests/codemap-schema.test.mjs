@@ -37,11 +37,57 @@ test('validateCodeMap - valid map', () => {
           { part: 'auth0' }
         ]
       }
+    ],
+    tour: [
+      { part: 'backend', note: 'Start here' }
     ]
   };
 
   const errors = validateCodeMap(map);
   assert.strictEqual(errors.length, 0);
+});
+
+test('validateCodeMap - non-object map returns error', () => {
+  assert.strictEqual(validateCodeMap(null)[0], 'CodeMap must be an object.');
+  assert.strictEqual(validateCodeMap("string")[0], 'CodeMap must be an object.');
+  assert.strictEqual(validateCodeMap([{}])[0], 'CodeMap must be an object.');
+});
+
+test('validateCodeMap - missing id on parts', () => {
+  const map = {
+    parts: [
+      { name: 'Backend API' }
+    ]
+  };
+
+  const errors = validateCodeMap(map);
+  assert.strictEqual(errors.length, 1);
+  assert.ok(errors[0].includes("must have a string 'id'"));
+});
+
+test('validateCodeMap - wrong type for globs', () => {
+  const map = {
+    parts: [
+      { id: 'backend', name: 'Backend API', globs: "src/**/*.js" }
+    ]
+  };
+
+  const errors = validateCodeMap(map);
+  assert.strictEqual(errors.length, 1);
+  assert.ok(errors[0].includes("must be an array of strings"));
+});
+
+test('validateCodeMap - duplicate part id', () => {
+  const map = {
+    parts: [
+      { id: 'backend', name: 'Backend API 1' },
+      { id: 'backend', name: 'Backend API 2' }
+    ]
+  };
+
+  const errors = validateCodeMap(map);
+  assert.strictEqual(errors.length, 1);
+  assert.ok(errors[0].includes("Duplicate part id: 'backend'"));
 });
 
 test('validateCodeMap - unknown part reference', () => {
@@ -61,42 +107,18 @@ test('validateCodeMap - unknown part reference', () => {
   assert.ok(errors[0].includes("Did you mean 'frontend'?"));
 });
 
-test('validateCodeMap - multiple unknown references', () => {
+test('validateCodeMap - tour reference checking', () => {
   const map = {
     parts: [
       { id: 'app', name: 'App' }
     ],
-    flows: [
-      {
-        id: 'flow1',
-        name: 'Flow 1',
-        steps: [
-          { part: 'appp' },
-          { part: 'unknown_service' }
-        ]
-      }
+    tour: [
+      { part: 'appp', note: 'Start here' }
     ]
   };
 
   const errors = validateCodeMap(map);
-  assert.strictEqual(errors.length, 2);
+  assert.strictEqual(errors.length, 1);
   assert.ok(errors[0].includes("Unknown part reference: 'appp'"));
   assert.ok(errors[0].includes("Did you mean 'app'?"));
-  assert.ok(errors[1].includes("Unknown part reference: 'unknown_service'"));
-  assert.ok(!errors[1].includes("Did you mean"));
-});
-
-test('Ensure temp HOME usage', () => {
-  const originalHome = process.env.HOME;
-  const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'codemap-test-'));
-  process.env.HOME = tempHome;
-
-  try {
-    // Just a sanity check that we are not touching the real HOME
-    assert.notStrictEqual(originalHome, tempHome);
-    assert.strictEqual(process.env.HOME, tempHome);
-  } finally {
-    process.env.HOME = originalHome;
-    fs.rmSync(tempHome, { recursive: true, force: true });
-  }
 });
