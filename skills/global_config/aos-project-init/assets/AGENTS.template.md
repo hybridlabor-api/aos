@@ -5,6 +5,8 @@ that reads only this file should understand what it is touching.
 
 > Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this
 > file. Every rule lives here exactly once.
+>
+> **Note for monorepos:** Nested `AGENTS.md` files take precedence over this root file for their respective subdirectories.
 
 ## Stack
 
@@ -43,8 +45,6 @@ boundaries an agent must not cross, not every file.
 4. **Private repository** unless explicitly decided otherwise.
 5. **Ask before destructive actions** — mass deletion, history rewriting,
    discarding uncommitted work.
-
-> **Note for monorepos:** Nested `AGENTS.md` files take precedence over this root file for their respective subdirectories.
 
 ## Code style
 
