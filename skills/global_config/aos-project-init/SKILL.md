@@ -132,10 +132,15 @@ Show every intended write as one list, then write on agreement.
 }
 ```
 
+Then, call the CLI to write all pending files:
+
+```bash
+aos project init --files
+```
+
 Then, only for what the interview enabled:
 
 ```bash
-cp ~/.claude/skills/aos-project-init/assets/openwikiignore.template .openwikiignore
 openwiki --init                # needs provider credentials in ~/.openwiki/.env (see /aos-setup)
 ```
 
