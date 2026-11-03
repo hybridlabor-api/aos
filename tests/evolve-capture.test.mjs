@@ -51,6 +51,37 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     assert.equal(sig1, sig2, 'signatures must match after path, timestamp, and line number normalization');
   });
 
+  test('captureFailure maps known pattern to mode and stores trace_id', () => {
+    const errorText = 'AssertionError: expected false to be true in test_parse\n    at /Users/testuser/work/test.js:10:5';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+      trace_id: 'trace-1234',
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'assertion_failure', 'mode must map from known pattern AssertionError');
+    assert.equal(result.record.trace_id, 'trace-1234', 'trace_id must be stored');
+  });
+
+  test('captureFailure maps unknown error to unknown mode', () => {
+    const errorText = 'SomeWeirdError: something went wrong';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'unknown', 'mode must be unknown for unmapped error');
+    assert.equal(result.record.trace_id, undefined, 'trace_id must not be present if not provided');
+  });
+
   test('captureFailure writes new failure record and enforces 0600 file and 0700 dir permissions', () => {
     const errorText = 'AssertionError: expected false to be true in test_parse\n    at /Users/testuser/work/test.js:10:5';
     const result = captureFailure({

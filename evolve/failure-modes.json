@@ -1,0 +1,6 @@
+{
+  "AssertionError": "assertion_failure",
+  "SyntaxError": "syntax_error",
+  "TypeError": "type_error",
+  "ReferenceError": "reference_error"
+}
