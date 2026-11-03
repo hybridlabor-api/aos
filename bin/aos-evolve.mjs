@@ -22,7 +22,7 @@ Usage:
   aos-evolve status [--json]
   aos-evolve disable
   aos-evolve enable
-  aos-evolve probe [--set default]
+  aos-evolve probe [--target <probe>] [--set default]
   aos-evolve --help | -h | help
 
 Commands:
@@ -244,8 +244,9 @@ export async function main(args = process.argv.slice(2), opts = {}) {
   if (cmd === 'probe') {
     const probeLib = await import('../lib/evolve/probe.mjs');
     const set = getArgValue(args, '--set') || 'default';
+    const target = getArgValue(args, '--target');
 
-    const result = probeLib.runProbes({ set });
+    const result = probeLib.runProbes({ set, target });
 
     if (!result.ok) {
       process.stderr.write(`Error: ${result.error}\n`);
