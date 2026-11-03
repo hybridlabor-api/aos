@@ -27,9 +27,16 @@ test('aos project init --files creates project rule files correctly', () => {
     assert.ok(fs.existsSync(pAgents), 'AGENTS.md created');
     assert.ok(fs.existsSync(pClaude), 'CLAUDE.md created');
     assert.ok(fs.existsSync(pGemini), 'GEMINI.md created');
+    assert.ok(fs.existsSync(path.join(cwd, '.aos', 'project.json')), '.aos/project.json created');
+    assert.ok(fs.existsSync(path.join(cwd, '.openwikiignore')), '.openwikiignore created');
+    assert.ok(fs.existsSync(path.join(cwd, '.aos', 'evals')), '.aos/evals created');
 
     const agentsContent = fs.readFileSync(pAgents, 'utf8');
     assert.ok(agentsContent.includes(path.basename(cwd)), 'AGENTS.md should have the project name (cwd basename)');
+
+    // output should include the plan printed first
+    assert.ok(r.stdout.includes('Project init plan:'), 'Should print a plan');
+    assert.ok(r.stdout.includes(`Wrote ${pAgents}`), 'Should plan to write AGENTS.md');
 
     // Check if CLAUDE and GEMINI are symlinks or have pointer text
     if (process.platform !== 'win32') {
@@ -49,6 +56,23 @@ test('aos project init --files creates project rule files correctly', () => {
 
     assert.equal(r2.status, 0, r2.stderr);
     assert.ok(r2.stdout.includes('Skipped'), 'Should skip existing files');
+
+    // modify project.json to verify it isn't overwritten without flag
+    fs.writeFileSync(path.join(cwd, '.aos', 'project.json'), '{"custom": 123}');
+
+    const r3 = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files'], {
+        cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
+    });
+    assert.equal(fs.readFileSync(path.join(cwd, '.aos', 'project.json'), 'utf8'), '{"custom": 123}');
+
+    // now test with --force
+    const r4 = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files', '--force'], {
+        cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
+    });
+
+    assert.equal(r4.status, 0, r4.stderr);
+    assert.ok(r4.stdout.includes('Wrote'), 'Should write existing files with --force');
+    assert.equal(fs.readFileSync(path.join(cwd, '.aos', 'project.json'), 'utf8'), '{}\n');
 
     fs.rmSync(cwd, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
