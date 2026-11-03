@@ -1,32 +1,52 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 
 test('aos-map cli test', async (t) => {
-    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-map-test-'));
-    const mapDir = path.join(tempHome, '.aos', 'map');
-    fs.mkdirSync(mapDir, { recursive: true });
-    fs.writeFileSync(path.join(mapDir, 'architecture.json'), JSON.stringify({
-        nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c', file: 'c.js' }],
-        edges: [{ source: 'a', target: 'b' }, { source: 'b', target: 'c' }]
-    }));
-
+    let tempHome;
     const bin = path.resolve(process.cwd(), 'bin', 'aos-map.mjs');
 
+    t.beforeEach(() => {
+        tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-map-test-'));
+        const mapDir = path.join(tempHome, '.aos', 'map');
+        fs.mkdirSync(mapDir, { recursive: true });
+        fs.writeFileSync(path.join(mapDir, 'architecture.json'), JSON.stringify({
+            parts: [
+                { id: 'a', name: 'Node A', summary: 'Summary A', globs: ['a.js'] },
+                { id: 'b', name: 'Node B', summary: 'Summary B', globs: ['b.js'] },
+                { id: 'c', name: 'Node C', summary: 'Summary C', globs: ['c.js'] }
+            ],
+            connections: [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }]
+        }));
+    });
+
+    t.afterEach(() => {
+        if (tempHome) {
+            fs.rmSync(tempHome, { recursive: true, force: true });
+        }
+    });
+
     await t.test('overview', () => {
-        const out = execSync(`node ${bin} overview`, { cwd: tempHome }).toString();
-        assert.match(out, /nodes/);
+        const out = execFileSync(process.execPath, [bin, 'overview'], { cwd: tempHome }).toString();
+        assert.match(out, /3 parts/);
+        assert.match(out, /a - Node A - Summary A/);
     });
 
     await t.test('find', () => {
-        const out = execSync(`node ${bin} find a`, { cwd: tempHome }).toString();
-        assert.match(out, /"id":"a"/);
+        const outId = execFileSync(process.execPath, [bin, 'find', 'a'], { cwd: tempHome }).toString();
+        assert.match(outId, /a - Node A/);
+
+        const outName = execFileSync(process.execPath, [bin, 'find', 'node b'], { cwd: tempHome }).toString();
+        assert.match(outName, /b - Node B/);
+
+        const outFile = execFileSync(process.execPath, [bin, 'find', 'c.js'], { cwd: tempHome }).toString();
+        assert.match(outFile, /c - Node C/);
 
         try {
-            execSync(`node ${bin} find missing`, { cwd: tempHome });
+            execFileSync(process.execPath, [bin, 'find', 'missing'], { cwd: tempHome });
             assert.fail('should exit 1 on missing find');
         } catch (e) {
             assert.strictEqual(e.status, 1);
@@ -34,17 +54,14 @@ test('aos-map cli test', async (t) => {
     });
 
     await t.test('show', () => {
-        const outNodes = execSync(`node ${bin} show nodes`, { cwd: tempHome }).toString();
-        assert.match(outNodes, /"id": "a"/);
+        const outSpecific = execFileSync(process.execPath, [bin, 'show', 'a'], { cwd: tempHome }).toString();
+        assert.match(outSpecific, /a - Node A/);
 
-        const outSpecific = execSync(`node ${bin} show a`, { cwd: tempHome }).toString();
-        assert.match(outSpecific, /"id": "a"/);
-
-        const outSpecificFile = execSync(`node ${bin} show c.js`, { cwd: tempHome }).toString();
-        assert.match(outSpecificFile, /"id": "c"/);
+        const outSpecificFile = execFileSync(process.execPath, [bin, 'show', 'c.js'], { cwd: tempHome }).toString();
+        assert.match(outSpecificFile, /c - Node C/);
 
         try {
-            execSync(`node ${bin} show missing`, { cwd: tempHome });
+            execFileSync(process.execPath, [bin, 'show', 'missing'], { cwd: tempHome });
             assert.fail('should exit 1 on missing show');
         } catch (e) {
             assert.strictEqual(e.status, 1);
@@ -52,11 +69,11 @@ test('aos-map cli test', async (t) => {
     });
 
     await t.test('path', () => {
-        const out = execSync(`node ${bin} path a c`, { cwd: tempHome }).toString();
+        const out = execFileSync(process.execPath, [bin, 'path', 'a', 'c'], { cwd: tempHome }).toString();
         assert.match(out, /Path from a to c: a -> b -> c/);
 
         try {
-            execSync(`node ${bin} path a missing`, { cwd: tempHome });
+            execFileSync(process.execPath, [bin, 'path', 'a', 'missing'], { cwd: tempHome });
             assert.fail('should exit 1 on missing path');
         } catch (e) {
             assert.strictEqual(e.status, 1);
