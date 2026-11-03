@@ -28,7 +28,7 @@ test('aos project init --files creates project rule files correctly', () => {
     assert.ok(fs.existsSync(pClaude), 'CLAUDE.md created');
     assert.ok(fs.existsSync(pGemini), 'GEMINI.md created');
     assert.ok(fs.existsSync(path.join(cwd, '.aos', 'project.json')), '.aos/project.json created');
-    assert.ok(fs.existsSync(path.join(cwd, '.openwikiignore')), '.openwikiignore created');
+    assert.ok(!fs.existsSync(path.join(cwd, '.openwikiignore')), '.openwikiignore not created yet (no config)');
     assert.ok(fs.existsSync(path.join(cwd, '.aos', 'evals')), '.aos/evals created');
 
     const agentsContent = fs.readFileSync(pAgents, 'utf8');
@@ -63,7 +63,11 @@ test('aos project init --files creates project rule files correctly', () => {
     const r3 = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files'], {
         cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
     });
+    assert.equal(r3.status, 0, r3.stderr);
     assert.equal(fs.readFileSync(path.join(cwd, '.aos', 'project.json'), 'utf8'), '{"custom": 123}');
+
+    // modify AGENTS.md manually to check backup
+    fs.writeFileSync(pAgents, 'Modified agents content');
 
     // now test with --force
     const r4 = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files', '--force'], {
@@ -72,7 +76,13 @@ test('aos project init --files creates project rule files correctly', () => {
 
     assert.equal(r4.status, 0, r4.stderr);
     assert.ok(r4.stdout.includes('Wrote'), 'Should write existing files with --force');
-    assert.equal(fs.readFileSync(path.join(cwd, '.aos', 'project.json'), 'utf8'), '{}\n');
+    assert.ok(fs.existsSync(`${pAgents}.bak`), 'Should create AGENTS.md backup');
+    assert.equal(fs.readFileSync(`${pAgents}.bak`, 'utf8'), 'Modified agents content', 'Backup content matches');
+
+    const projectJson = JSON.parse(fs.readFileSync(path.join(cwd, '.aos', 'project.json'), 'utf8'));
+    assert.equal(projectJson.name, path.basename(cwd));
+    assert.equal(typeof projectJson.slug, 'string');
+    assert.match(projectJson.slug, /^[a-z0-9-]+$/);
 
     fs.rmSync(cwd, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
