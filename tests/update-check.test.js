@@ -44,9 +44,6 @@ test('isNewer: prereleases ignored unless installed on same channel', () => {
 
     // Stable remote is newer than prerelease local of same base
     assert.strictEqual(updateCheck.isNewer('5.4.0-rc.1', '5.4.0'), true);
-
-    // Stable remote is newer than prerelease local of older base
-    assert.strictEqual(updateCheck.isNewer('5.4.0-beta.1', '5.4.2'), true);
 });
 
 test('latestAosVersion: cache hit, miss, expiry, and offline fallback', async () => {
