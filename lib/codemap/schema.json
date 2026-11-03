@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CodeMap Schema",
+  "type": "object",
+  "properties": {
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "summary": { "type": "string" },
+          "globs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "parent": { "type": "string" },
+          "blueprint": { "type": "boolean" }
+        },
+        "required": ["id", "name"]
+      }
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["id", "name"]
+      }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "description": { "type": "string" }
+        },
+        "required": ["from", "to"]
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "part": { "type": "string" },
+                "description": { "type": "string" }
+              },
+              "required": ["part"]
+            }
+          }
+        },
+        "required": ["id", "name", "steps"]
+      }
+    },
+    "tour": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}
