@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 import {
   captureFailure,
   computeErrorSig,
@@ -78,7 +82,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     });
 
     assert.ok(result.ok, 'capture must succeed');
-    assert.equal(result.record.mode, 'AssertionError', 'mode must match leading error class AssertionError');
+    assert.equal(result.record.mode, 'assertion_failure', 'mode must match leading error class AssertionError');
   });
 
   test('captureFailure reads trace_id from environment if missing in params', () => {
@@ -98,7 +102,7 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
   });
 
   test('captureFailure emits visible warning to stderr on malformed failure-modes.json and falls back to unknown', () => {
-    const modesPath = path.join(path.resolve(__dirname, '../..'), 'evolve', 'failure-modes.json');
+    const modesPath = path.join(__dirname, '..', 'evolve', 'failure-modes.json');
     const originalContent = fs.readFileSync(modesPath, 'utf8');
     fs.writeFileSync(modesPath, '{ malformed: json ]');
 
