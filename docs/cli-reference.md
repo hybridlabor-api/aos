@@ -37,6 +37,7 @@ Every AOS CLI answers `--help`, `-h` and `help` without side effects (exit 0). `
 | `aos-setup-doctor` | Used by the aos-setup skill before installing. For an installed system use `aos doctor`. | `node aos-doctor.mjs --json` |
 | `aos-project-doctor` | After or before /aos-project-init, to see what is missing in a project. | `node aos-project-doctor.mjs . --json` |
 | `aos-evolve` | Record redacted task failure signatures for evolution analysis or check evolution kill switch status. | `aos-evolve status` |
+| `aos-map` | Check the architectural map graph before searching the whole repo for context. | `aos-map path frontend backend` |
 
 ## aos
 
@@ -1291,4 +1292,37 @@ aos-evolve enable
 ```sh
 aos-evolve status
 aos-evolve capture failure.json --skill clean-code
+```
+
+## aos-map
+
+Codemap query CLI for architectural overview, node finding, and pathfinding.
+
+- **When to use:** Check the architectural map graph before searching the whole repo for context.
+- **Agent safety:** safe to call. None. Read-only query to the map graph.
+- **Entry:** `bin/aos-map.mjs`
+
+```text
+aos-map overview
+aos-map find <text>
+aos-map show <part|file>
+aos-map path <a> <b>
+```
+
+| Command | Usage | What it does |
+|---|---|---|
+| `overview` | `aos-map overview` | Print a plain-text summary of map nodes and edges. |
+| `find` | `aos-map find <text>` | Return matching parts/files based on a case-insensitive search. |
+| `show` | `aos-map show <part\|file>` | Display a specific node or map property in plain text. |
+| `path` | `aos-map path <a> <b>` | Find the path between two map nodes. |
+
+| Exit code | Meaning |
+|---|---|
+| 0 | ok |
+| 1 | not found or missing argument |
+
+**JSON:** None.
+
+```sh
+aos-map path frontend backend
 ```
