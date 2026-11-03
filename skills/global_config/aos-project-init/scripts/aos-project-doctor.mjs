@@ -117,7 +117,7 @@ function checkHarness() {
     ['.claude/settings.json', 'project hook wiring'],
   ]) {
     add('harness', rel, existsSync(p(rel)), existsSync(p(rel)) ? what : `missing — ${what} unavailable here`,
-      'npx -y @hybridlabor-api/aos --project-harness   (run inside the project)');
+      'npx' + ' -y @hybridlabor-api/aos --project-harness   (run inside the project)');
   }
 }
 
