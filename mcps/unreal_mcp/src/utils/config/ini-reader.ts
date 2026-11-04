@@ -1,103 +1,61 @@
-import fs from 'node:fs/promises';
+import fs from 'node:fs';
 import path from 'node:path';
 
-export async function readIniFile(filePath: string): Promise<Record<string, Record<string, string>>> {
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    const result: Record<string, Record<string, string>> = Object.create(null);
-    let currentSection = '';
-
-    const lines = content.split(/\r?\n/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith(';') || trimmed.startsWith('#')) {
-        continue;
-      }
-
-      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-        currentSection = trimmed.substring(1, trimmed.length - 1);
-        result[currentSection] = Object.create(null) as Record<string, string>;
-      } else if (currentSection) {
-        const parts = trimmed.split('=');
-        if (parts.length >= 2) {
-          const key = parts[0].trim();
-          const value = parts.slice(1).join('=').trim();
-          result[currentSection][key] = value;
-        }
-      }
-    }
-
-    return result;
-  } catch (error) {
-    throw new Error(`Failed to read INI file at ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+/** UE_PROJECT_PATH may name the .uproject file or its folder; this is the folder. */
+function projectRoot(projectPath: string): string {
+    return projectPath.toLowerCase().endsWith('.uproject') ? path.dirname(projectPath) : projectPath;
 }
 
-export async function getProjectSetting(projectPath: string, category: string, sectionName: string, key?: string): Promise<Record<string, unknown> | string | null> {
-    // Normalize project path to directory
-    let dirPath = projectPath;
-    if (dirPath.toLowerCase().endsWith('.uproject')) {
-        dirPath = path.dirname(dirPath);
+/** The project folder from UE_PROJECT_PATH, read at call time; undefined when unset. */
+export function projectRootFromEnv(): string | undefined {
+    const projectPath = process.env.UE_PROJECT_PATH;
+    return projectPath ? projectRoot(projectPath) : undefined;
+}
+
+function readIniSection(filePath: string, sectionName: string): Record<string, string> | undefined {
+    let content: string;
+    try {
+        content = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+        return undefined;
     }
 
-    // Possible file names/locations in order of preference (Config/DefaultX.ini, Saved/Config/WindowsEditor/X.ini)
-    // category is usually 'Project', 'Engine', 'Game', 'Input', etc.
-    const cleanCategory = category.replace(/^Default/, ''); // If caller passed 'DefaultEngine', normalize to 'Engine'
-
-    // Security check: category should not contain path traversal characters
-    // We strictly allow alphanumeric, underscore, and hyphen characters for categories.
-    // Unreal categories are typically "Engine", "Game", "Input", "Editor", "Scalability", etc.
-    if (!/^[a-zA-Z0-9_-]+$/.test(cleanCategory)) {
-        return null;
+    let section: Record<string, string> | undefined;
+    let inSection = false;
+    for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(';') || trimmed.startsWith('#')) continue;
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            inSection = trimmed.slice(1, -1) === sectionName;
+            if (inSection) section ??= Object.create(null) as Record<string, string>;
+            continue;
+        }
+        const eq = trimmed.indexOf('=');
+        if (inSection && section && eq > 0) section[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
     }
+    return section;
+}
 
-    const candidates = [
+/**
+ * One key from a project's config, checked in Unreal's precedence order
+ * (Config/Default<Category>.ini, then the per-platform Saved/Config copies).
+ * Synchronous: callers resolve it before the first await (bridge port selection).
+ */
+export function readProjectIniValue(projectPath: string, category: string, sectionName: string, key: string): string | undefined {
+    const dirPath = projectRoot(projectPath);
+    const cleanCategory = category.replace(/^Default/, '');
+    // The category becomes part of a file name, so refuse anything but a plain identifier.
+    if (!/^[a-zA-Z0-9_-]+$/.test(cleanCategory)) return undefined;
+
+    for (const configPath of [
         path.join(dirPath, 'Config', `Default${cleanCategory}.ini`),
         path.join(dirPath, 'Saved', 'Config', 'WindowsEditor', `${cleanCategory}.ini`),
         path.join(dirPath, 'Saved', 'Config', 'Windows', `${cleanCategory}.ini`),
         path.join(dirPath, 'Saved', 'Config', 'Mac', `${cleanCategory}.ini`),
         path.join(dirPath, 'Saved', 'Config', 'Linux', `${cleanCategory}.ini`)
-    ];
-
-    // Use Promise.all for parallel file reads - significantly faster than sequential
-    // We read all candidates in parallel, then pick the highest-priority one that succeeds
-    const readPromises = candidates.map(async (configPath, index) => {
-        try {
-            const iniData = await readIniFile(configPath);
-            return { index, configPath, iniData, success: true };
-        } catch {
-            return { index, configPath, iniData: null, success: false };
-        }
-    });
-
-    const results = await Promise.all(readPromises);
-
-    // Process results in priority order (candidates array order)
-    for (const result of results.sort((a, b) => a.index - b.index)) {
-        if (!result.success || !result.iniData) continue;
-
-        const iniData = result.iniData;
-        // If we successfully read the file, check for the section
-        if (sectionName) {
-            const section = iniData[sectionName];
-            if (section) {
-                if (key) {
-                    // Only return if the key actually exists (not undefined)
-                    if (key in section) {
-                        return section[key];
-                    }
-                    // Key not found in this section, continue to next candidate
-                } else {
-                    return section;
-                }
-            }
-            // If section not found in this file, continue to next candidate
-        } else {
-            if (Object.keys(iniData).length > 0) {
-                return iniData;
-            }
-        }
+    ]) {
+        const value = readIniSection(configPath, sectionName)?.[key];
+        if (value !== undefined) return value;
     }
-
-    return null;
+    return undefined;
 }

@@ -116,11 +116,15 @@ function cleanAnchor(raw) {
   const selector = own(raw, 'selector');
   if (typeof selector !== 'string') return null;
   const tag = own(raw, 'tag');
+  const component = own(raw, 'component');
   const anchor = {
     selector: cleanSelector(selector),
     tag: typeof tag === 'string' && TAG_RE.test(tag) ? tag.slice(0, TAG_MAX) : '',
     snippet: cleanText(own(raw, 'snippet'), 400)
   };
+  if (typeof component === 'string' && component.length <= 120 && /^[\w$.:-]+$/.test(component)) {
+    anchor.component = component;
+  }
   const classes = cleanClasses(own(raw, 'classes'));
   if (classes.length) anchor.classes = classes;
   const range = own(raw, 'textRange');
