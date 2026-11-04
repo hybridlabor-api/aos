@@ -46,6 +46,7 @@ test('tickWatches works with string cursors', async () => {
     // First tick
     const startCwd = process.cwd();
     process.chdir(fakeRoot);
+    process.env.AOS_TEST_SANDBOX = '1';
     await tickWatches(HOME, fakeRoot);
     process.chdir(startCwd);
 
@@ -55,6 +56,12 @@ test('tickWatches works with string cursors', async () => {
     // Second tick
     const startCwd2 = process.cwd();
     process.chdir(fakeRoot);
+    process.env.AOS_TEST_SANDBOX = '1';
+    // simulate time passing to bypass interval
+    const watchesBefore = readWatches(HOME);
+    watchesBefore[0].lastTick = Date.now() - 300000;
+    const { writeWatches } = await import('../lib/hub/inbox.mjs');
+    writeWatches(HOME, watchesBefore);
     await tickWatches(HOME, fakeRoot);
     process.chdir(startCwd2);
     watches = readWatches(HOME);

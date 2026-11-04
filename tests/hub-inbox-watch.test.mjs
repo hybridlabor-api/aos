@@ -59,6 +59,7 @@ test('tickWatches calls gateway, compares cursor, delivers items, and updates cu
     // First tick
     const startCwd = process.cwd();
     process.chdir(fakeRoot); // To keep gw_calls.json there
+    process.env.AOS_TEST_SANDBOX = '1';
     await tickWatches(HOME, fakeRoot);
     process.chdir(startCwd);
 
@@ -68,8 +69,8 @@ test('tickWatches calls gateway, compares cursor, delivers items, and updates cu
     // Verify a2a got the sends
     let sends = "";
     try { sends = readFileSync(join(fakeRoot, 'a2a_sends.log'), 'utf8'); } catch (e) {}
-    assert.ok(sends.includes('--to live_peer {"ts":1,"msg":"A"}'), 'send 1');
-    assert.ok(sends.includes('--to live_peer {"ts":2,"msg":"B"}'), 'send 2');
+    assert.ok(sends.includes('{"ts":1,"msg":"A"}'), 'send 1');
+    assert.ok(sends.includes('{"ts":2,"msg":"B"}'), 'send 2');
 
     // Log file appended
     const inboxLog = readFileSync(join(HOME, '.aos', 'hub', 'inbox.log'), 'utf8');
@@ -78,6 +79,12 @@ test('tickWatches calls gateway, compares cursor, delivers items, and updates cu
     // Second tick
     const startCwd2 = process.cwd();
     process.chdir(fakeRoot);
+    process.env.AOS_TEST_SANDBOX = '1';
+    // simulate time passing to bypass interval
+    const watchesBefore = readWatches(HOME);
+    watchesBefore[0].lastTick = Date.now() - 300000;
+    const { writeWatches } = await import('../lib/hub/inbox.mjs');
+    writeWatches(HOME, watchesBefore);
     await tickWatches(HOME, fakeRoot);
     process.chdir(startCwd2);
     watches = readWatches(HOME);

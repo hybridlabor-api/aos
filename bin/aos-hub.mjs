@@ -397,9 +397,11 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
       // Never touch a service the user switched off in settings (or the profile excludes).
       isDisabled: (id) => { try { return excludedIds(readSettings(home)).has(id); } catch { return false; } },
       beforeTick: async () => {
+        // Run watches asynchronously to prevent blocking the service watcher loop.
         try {
-          const { tickWatches } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'inbox.mjs')).href);
-          await tickWatches(home, ROOT);
+            import(pathToFileURL(join(ROOT, 'lib', 'hub', 'inbox.mjs')).href).then(({ tickWatches }) => {
+                tickWatches(home, ROOT).catch(() => {});
+            }).catch(() => {});
         } catch { /* best effort */ }
         const diskStamp = codeStamp();
         if (diskStamp > ownStamp) {
