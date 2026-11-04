@@ -75,7 +75,12 @@
     },
     "bdb_blender_mcp": {
       "command": "uv",
-      "args": ["--directory", "__MCPS_DIR__/blender-mcp", "run", "-m", "blender_mcp.server"]
+      "args": ["--directory", "__MCPS_DIR__/blender-mcp", "run", "mcp-for-blender"],
+      "env": {
+        "BLENDER_MCP_SAFE_MODE": "1",
+        "DISABLE_TELEMETRY": "1",
+        "BLENDER_HOST": "127.0.0.1"
+      }
     },
     "bdb_after_effects_mcp": {
       "command": "npx",
