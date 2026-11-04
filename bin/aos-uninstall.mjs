@@ -588,7 +588,7 @@ async function execute(p) {
     h('.codex-plugin', 'system.md'), h('.gemini', 'RULES.md'), h('.gemini', 'GEMINI.md'),
   ];
   for (const f of ruleFiles.filter(existsSync)) {
-    const entry = manifest && manifest[f];
+    const entry = p.manifest && p.manifest[f];
     const owned = !!entry;
     try {
       let text = readFileSync(f, 'utf8');
