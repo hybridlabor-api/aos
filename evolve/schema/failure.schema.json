@@ -88,14 +88,6 @@
     "cwd_class": {
       "type": "string",
       "description": "Category of working directory (e.g. worktree, scratch, repo)."
-    },
-    "mode": {
-      "type": "string",
-      "description": "Named failure mode derived from pattern matching, with 'unknown' as fallback."
-    },
-    "trace_id": {
-      "type": "string",
-      "description": "Associated AgentTrail trace ID if available."
     }
   },
   "additionalProperties": false

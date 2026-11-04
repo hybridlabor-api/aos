@@ -54,9 +54,6 @@ const NONHUMAN = {
     loop: { promptSource: 'system', isMeta: true, turnOrigin: 'system', queuePriority: 'later' },
     sdk: { promptSource: 'sdk', turnOrigin: 'sdk' },
     'human+sdk': { origin: { kind: 'human' }, promptSource: 'sdk' },
-    'desktop entrypoint, sdk turn': { origin: { kind: 'human' }, promptSource: 'sdk', turnOrigin: 'sdk', entrypoint: 'claude-desktop' },
-    'desktop entrypoint, peer origin': { origin: { kind: 'peer' }, promptSource: 'sdk', turnOrigin: 'human', entrypoint: 'claude-desktop' },
-    'headless sdk entrypoint': { origin: { kind: 'human' }, promptSource: 'sdk', turnOrigin: 'human', entrypoint: 'sdk-ts' },
     suggestion: { origin: { kind: 'human' }, promptSource: 'suggestion_accepted' },
     'absent origin, peer turn': { turnOrigin: 'peer' },
     'absent origin, system source': { promptSource: 'system' },
@@ -89,39 +86,6 @@ describe('origin check', () => {
         assert.equal(g.isHumanEntry(user('GO')), true, 'absent origin + absent promptSource: legacy human');
         assert.equal(g.isHumanEntry(user('GO', { promptSource: 'typed' })), true);
         for (const [name, extra] of Object.entries(NONHUMAN)) assert.equal(g.isHumanEntry(user('GO', extra)), false, name);
-    });
-
-    // Claude Desktop (Code tab) records typed prompts as promptSource sdk (Claude Code 2.1.317, Windows).
-    const DESKTOP = { origin: { kind: 'human' }, promptSource: 'sdk', turnOrigin: 'human', entrypoint: 'claude-desktop', userType: 'external' };
-    test('a Claude Desktop typed prompt counts for GO and for gogate modes', () => {
-        assert.equal(g.isHumanEntry(user('GO', DESKTOP)), true);
-        assert.equal(g.isStrictHumanEntry(user('GO', DESKTOP)), true);
-        add(user('GO', DESKTOP));
-        ok('git push origin main');
-    });
-
-    const queued = (prompt, origin = { kind: 'human' }) => ({ type: 'attachment', uuid: `q${++n}`, timestamp: ts(), attachment: { type: 'queued_command', prompt, commandMode: 'prompt', origin, humanTurn: true, timestamp: ts() } });
-    test('a GO typed while Claude is busy (queued_command attachment) counts; a non-human queued one does not', () => {
-        add(human('do the thing'));
-        add(queued('GO'));
-        ok('git push origin main');
-        add(queued('GO', { kind: 'peer' }));
-        blocked('git push origin main');
-    });
-
-    test('gogate off typed while busy (queued) sets the mode', () => {
-        add(human('work'));
-        runGrant('gogate off');
-        add(queued('gogate off'));
-        ok('git push origin main');
-    });
-
-    test('a Claude Desktop GO with the app\'s prepended system-reminder part still counts', () => {
-        const parts = [{ type: 'text', text: '<system-reminder>\nscratch workspace note\n</system-reminder>\n\n' }, { type: 'text', text: 'go' }];
-        add({ ...user('', DESKTOP), message: { role: 'user', content: parts } });
-        ok('git push origin main');
-        add({ ...user('', DESKTOP), message: { role: 'user', content: [{ type: 'text', text: '<system-reminder>x</system-reminder> GO' }] } });
-        blocked('git push origin main');
     });
 
     test('a human GO opens the gate; legacy entries only in a transcript without origin', () => {

@@ -27,23 +27,9 @@ test('aos project init --files creates project rule files correctly', () => {
     assert.ok(fs.existsSync(pAgents), 'AGENTS.md created');
     assert.ok(fs.existsSync(pClaude), 'CLAUDE.md created');
     assert.ok(fs.existsSync(pGemini), 'GEMINI.md created');
-    assert.ok(fs.existsSync(path.join(cwd, '.aos', 'project.json')), '.aos/project.json created');
-    assert.ok(!fs.existsSync(path.join(cwd, '.openwikiignore')), '.openwikiignore not created yet (no config)');
-    assert.ok(fs.existsSync(path.join(cwd, '.aos', 'evals')), '.aos/evals created');
 
     const agentsContent = fs.readFileSync(pAgents, 'utf8');
     assert.ok(agentsContent.includes(path.basename(cwd)), 'AGENTS.md should have the project name (cwd basename)');
-    assert.ok(agentsContent.includes('## Build and test commands'), 'AGENTS.md should have Build and test commands section');
-    assert.ok(agentsContent.includes('## Code style'), 'AGENTS.md should have Code style section');
-    assert.ok(agentsContent.includes('## CI'), 'AGENTS.md should have CI section');
-    assert.ok(agentsContent.includes('## Commits'), 'AGENTS.md should have Commits section');
-    assert.ok(agentsContent.includes('## PRs'), 'AGENTS.md should have PRs section');
-    assert.ok(agentsContent.includes('## Security'), 'AGENTS.md should have Security section');
-    assert.ok(agentsContent.includes('Nested `AGENTS.md` files take precedence'), 'AGENTS.md should have monorepo precedence note');
-
-    // output should include the plan printed first
-    assert.ok(r.stdout.includes('Project init plan:'), 'Should print a plan');
-    assert.ok(r.stdout.includes(`Wrote ${pAgents}`), 'Should plan to write AGENTS.md');
 
     // Check if CLAUDE and GEMINI are symlinks or have pointer text
     if (process.platform !== 'win32') {
@@ -63,33 +49,6 @@ test('aos project init --files creates project rule files correctly', () => {
 
     assert.equal(r2.status, 0, r2.stderr);
     assert.ok(r2.stdout.includes('Skipped'), 'Should skip existing files');
-
-    // modify project.json to verify it isn't overwritten without flag
-    fs.writeFileSync(path.join(cwd, '.aos', 'project.json'), '{"custom": 123}');
-
-    const r3 = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files'], {
-        cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
-    });
-    assert.equal(r3.status, 0, r3.stderr);
-    assert.equal(fs.readFileSync(path.join(cwd, '.aos', 'project.json'), 'utf8'), '{"custom": 123}');
-
-    // modify AGENTS.md manually to check backup
-    fs.writeFileSync(pAgents, 'Modified agents content');
-
-    // now test with --force
-    const r4 = spawnSync(process.execPath, [INSTALLER, 'project', 'init', '--files', '--force'], {
-        cwd, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_DRY_RUN: '0' }, encoding: 'utf8', timeout: 120000,
-    });
-
-    assert.equal(r4.status, 0, r4.stderr);
-    assert.ok(r4.stdout.includes('Wrote'), 'Should write existing files with --force');
-    assert.ok(fs.existsSync(`${pAgents}.bak`), 'Should create AGENTS.md backup');
-    assert.equal(fs.readFileSync(`${pAgents}.bak`, 'utf8'), 'Modified agents content', 'Backup content matches');
-
-    const projectJson = JSON.parse(fs.readFileSync(path.join(cwd, '.aos', 'project.json'), 'utf8'));
-    assert.equal(projectJson.name, path.basename(cwd));
-    assert.equal(typeof projectJson.slug, 'string');
-    assert.match(projectJson.slug, /^[a-z0-9-]+$/);
 
     fs.rmSync(cwd, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });

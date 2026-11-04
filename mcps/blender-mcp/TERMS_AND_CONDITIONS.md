@@ -1,6 +1,6 @@
 # Blender MCP - Terms of Use and Privacy Policy
 
-**Last Updated: August 2026**
+**Last Updated: January 2025**
 
 ---
 
@@ -14,30 +14,20 @@ By using Blender MCP, you agree to these terms. If you do not agree, please do n
 
 ## 2. Data I Collect
 
-Collection of your content is **opt-in**. Unless you explicitly turn on telemetry consent in the Blender MCP addon preferences, the only thing collected is the minimal anonymous usage record described at the end of this section.
-
-When you have opted in, I may collect:
+When you use Blender MCP, I may collect:
 
 - **Prompts and text inputs** you provide to the AI
 - **Generated code** produced in response to your prompts
-- **Scene metadata** such as object names, transforms, materials, and configurations
-- **Viewport screenshots**
-- **Trajectory data** including goals, tool actions, compact before/after scene state, observation summaries, and accept/reject/correction feedback
-- **Edits made directly in Blender** while the MCP server is running — the names of Blender operators you invoke by hand (for example `object.delete`, `transform.translate`), and undo/redo actions. These are recorded whether or not the edit was prompted by the AI, and undo shortly after an AI action is interpreted as rejecting that action.
+- **Scene metadata** such as object names, modifier settings, and configurations
 - **Basic usage data** including timestamps and feature usage
 
 I do **not** collect:
 
-- Your full Blender `.blend` files or raw 3D mesh geometry (unless present in compact metadata)
-- File paths or filenames from operator settings (these are filtered out before sending)
-- Keystrokes, mouse input, or activity in Blender while the MCP server is stopped
+- Screenshots or images of your viewport
+- Your Blender files or 3D models
 - Personal files unrelated to your Blender session
 - Passwords or financial information
 - Data from other applications on your system
-
-Trajectory, screenshot, and manual-edit collection only occurs while telemetry consent is enabled in the Blender MCP addon preferences — it is **disabled by default**, so this requires you to turn it on, and you can turn it back off there at any time — **and** the MCP server is running. Turning off consent or stopping the server removes the handlers that observe your manual edits.
-
-Unless you opt in, a minimal anonymous usage record is all that is sent, so I can count active users and see which tools get used: a randomly generated install ID, a session ID, the tool name, whether it succeeded, how long it took, the Blender MCP and Blender versions, your operating system, and a timestamp. No prompts, code, screenshots, scene data, or manual-edit records are included. To stop this record too, set `DISABLE_TELEMETRY=true` in the environment of the MCP server, which disables all telemetry.
 
 ---
 
@@ -48,7 +38,7 @@ I am currently collecting data for potential future use. This data may be used t
 - **Train AI models** for 3D creation and Blender automation
 - **Improve Blender MCP** based on real-world usage
 - **Conduct research** on AI-assisted creative workflows
-- **Share datasets** with the research community (with direct identifiers removed, or in aggregated form)
+- **Share datasets** with the research community (in anonymized or aggregated form)
 
 Your data may be:
 
@@ -76,9 +66,7 @@ You may:
 
 - **Request access** to the data I've collected from your usage
 - **Request deletion** of your data
-- **Decline to opt in**, which is the default state — leave the telemetry option in the Blender MCP addon preferences unchecked, and none of your prompts, code, screenshots, scene data, or trajectory data is collected. You can use the software normally either way.
-- **Withdraw consent** at any time by unchecking that option again. Collection stops immediately.
-- **Turn off telemetry entirely**, including the minimal anonymous usage record, by setting `DISABLE_TELEMETRY=true` in the MCP server's environment.
+- **Opt out of telemetry** by unchecking the telemetry option in the Blender MCP addon preferences. When disabled, no data is collected, and you can continue using the software normally.
 
 To exercise these rights, contact me at ahujasid@gmail.com.
 
@@ -116,18 +104,16 @@ Your data may be stored and processed in any country. By using Blender MCP, you 
 
 ### Your Content
 
-You retain ownership of your original creative work. By opting in to telemetry, you grant me a **worldwide, royalty-free, perpetual license** to use:
+You retain ownership of your original creative work. By using Blender MCP with telemetry enabled, you grant me a **worldwide, royalty-free, perpetual license** to use:
 
 - Prompts you submit
 - Images/screenshots of your Blender viewport
 - Code generated in response to your prompts
 - Scene metadata captured during use
-- Trajectory data (goals, actions, compact scene state before/after edits, observation summaries, and feedback signals)
-- Records of edits you make directly in Blender during a session (operator names and non-path settings, and undo/redo signals)
 
 This license is for AI training, research, open datasets, and improving the project.
 
-**Note:** Telemetry is off by default. If you never opt in, no license is granted, as none of this content is collected.
+**Note:** When telemetry is disabled, no license is granted as no data is collected.
 
 ### AI-Generated Content
 
@@ -175,15 +161,14 @@ Questions or requests? Email me at ahujasid@gmail.com.
 
 ## 15. Consent
 
-Telemetry is off by default; nothing in this section applies unless you opt in. By opting in to telemetry, you acknowledge that:
+By using Blender MCP with telemetry enabled, you acknowledge that:
 
 1. You have read and understood these terms
 2. You consent to the collection of prompts, generated code, images/screenshots, and scene metadata
-3. You consent to the collection of edits you make yourself in Blender during a session — the Blender operators you invoke and your undo/redo actions — as described in Section 2
-4. You understand this data may be used to train AI models or released as part of open datasets
-5. You understand that once data is used for training or released publicly, it cannot be fully deleted
-6. You are at least 16 years old
-7. You can withdraw consent at any time in the addon preferences
+3. You understand this data may be used to train AI models or released as part of open datasets
+4. You understand that once data is used for training or released publicly, it cannot be fully deleted
+5. You are at least 16 years old
+6. You can disable telemetry at any time in the addon preferences
 
 ---
 
