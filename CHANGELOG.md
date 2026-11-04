@@ -1,5 +1,25 @@
 # Changelog
 
+## [5.4.5](https://github.com/hybridlabor-api/aos/compare/v5.4.4...v5.4.5) (2026-11-01)
+
+
+### Features
+
+* **cli:** add aos project init --files to create missing rule files ([99d9c62](https://github.com/hybridlabor-api/aos/commit/99d9c620d37e8f74e532779a2f8f8b0db09830b2))
+
+
+### Bug Fixes
+
+* **cli:** aos project stops on unknown forms, tests use a temp HOME ([df51e13](https://github.com/hybridlabor-api/aos/commit/df51e137384a568f57b8592374cca3ec1e1d1d7d))
+* **fabric:** run agy natively with skip-permissions without a sandbox ([#216](https://github.com/hybridlabor-api/aos/issues/216)) ([3b4d573](https://github.com/hybridlabor-api/aos/commit/3b4d573f987d6b7032f593b231f8f9f7d179187e))
+* **gateway:** adopt user MCP entries that already run through the secret launcher ([#211](https://github.com/hybridlabor-api/aos/issues/211)) ([27c3d14](https://github.com/hybridlabor-api/aos/commit/27c3d144709689fbf8d85eff544d77adba373eaa))
+* **gateway:** send CORS headers on 502 and handle stream aborts cleanly ([#218](https://github.com/hybridlabor-api/aos/issues/218)) ([4a6f900](https://github.com/hybridlabor-api/aos/commit/4a6f900f981ffe76edd3c21b380f70deb99c93ff))
+* **mcp:** restrict adobe_uxp and td_minddesigner bridges to loopback and auth ([#220](https://github.com/hybridlabor-api/aos/issues/220)) ([325d03d](https://github.com/hybridlabor-api/aos/commit/325d03d07b27bec1d09182a780e78f3561f60c64))
+* **scripts:** parse folded YAML descriptions in catalogue generators ([411a5f8](https://github.com/hybridlabor-api/aos/commit/411a5f8d8e3595c8a7291ddc698a842c2524bc2a))
+* **update:** switch to stable only on explicit consent, never on dry run ([e6d930f](https://github.com/hybridlabor-api/aos/commit/e6d930f4da8a252663af28188eb87b8bb5338a86))
+* **update:** update from beta to stable release properly, add force hint ([5826555](https://github.com/hybridlabor-api/aos/commit/58265551764493a41457dc787ab02f600801ebd3))
+* **update:** update from beta to stable release properly, add force hint ([3bb76b1](https://github.com/hybridlabor-api/aos/commit/3bb76b12e4eec26aff8e5e4efa62e33ca0262ccf))
+
 ## [5.4.4](https://github.com/hybridlabor-api/aos/compare/v5.4.3...v5.4.4) (2026-10-29)
 
 

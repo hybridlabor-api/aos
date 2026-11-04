@@ -22,6 +22,7 @@ Usage:
   aos-evolve status [--json]
   aos-evolve disable
   aos-evolve enable
+  aos-evolve probe [--target <probe>] [--set default]
   aos-evolve --help | -h | help
 
 Commands:
@@ -29,6 +30,7 @@ Commands:
   status     Display evolution engine status, kill switch state, and failure counts
   disable    Activate the kill switch (~/.aos/evolve/DISABLED) to halt all evolution cycles
   enable     Remove the kill switch and re-enable evolution cycles
+  probe      Run the fixed probe set 3 times, records results, and checks for regression/improvement
 
 Options:
   --skill <name>      Target skill directory name (required for --error)
@@ -38,6 +40,7 @@ Options:
   --role <role>       Active agent role (default: builder)
   --dry-run           Compute redaction and signature without writing to store
   --storage <path>    Custom failure.json destination file (must resolve inside ~/.aos/evolve/)
+  --trace-id <id>     AgentTrail trace ID to attach to the failure record
   --json              Format output as JSON
   -h, --help          Show this help message and exit
 
@@ -163,6 +166,7 @@ export async function main(args = process.argv.slice(2), opts = {}) {
     const kind = getArgValue(args, '--kind') || 'test';
     const harness = getArgValue(args, '--harness') || 'agy';
     const role = getArgValue(args, '--role') || 'builder';
+    const trace_id = getArgValue(args, '--trace-id');
     const errorArg = getArgValue(args, '--error');
 
     let errorData = errorArg;
@@ -212,6 +216,7 @@ export async function main(args = process.argv.slice(2), opts = {}) {
       kind,
       harness,
       role,
+      trace_id,
       storagePath,
       dryRun,
     });
@@ -236,6 +241,21 @@ export async function main(args = process.argv.slice(2), opts = {}) {
         process.stdout.write(`(dry-run: no changes written to ${result.storePath})\n`);
       }
     }
+    return 0;
+  }
+
+  if (cmd === 'probe') {
+    const probeLib = await import('../lib/evolve/probe.mjs');
+    const set = getArgValue(args, '--set') || 'default';
+    const target = getArgValue(args, '--target');
+
+    const result = probeLib.runProbes({ set, target });
+
+    if (!result.ok) {
+      process.stderr.write(`Error: ${result.error}\n`);
+      return 1;
+    }
+    process.stdout.write(`Probes passed.\n`);
     return 0;
   }
 

@@ -281,7 +281,7 @@ async function startHttp(
       };
       httpServer.once("error", onListenError);
       httpServer.once("listening", onListening);
-      httpServer.listen(config.httpPort, "127.0.0.1");
+      httpServer.listen(config.httpPort, config.httpHost);
     });
   } catch (err) {
     // The event stream was started above (before we knew whether the HTTP port

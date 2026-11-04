@@ -1556,3 +1556,19 @@ describe('presets.json', () => {
         assert.ok(fs.existsSync(path.join(dir, 'presets.json')));
     });
 });
+
+test('forwarder 502 includes CORS headers for SSE clients', async () => {
+    const http = require('http');
+    const { createForwarder } = require('../lib/gateway/forwarder.js');
+    const f = createForwarder({ port: 0, upstreamPort: 9999, token: 'test' });
+    await f.listen();
+    try {
+        const r = await new Promise((resolve) => {
+            http.get({ host: '127.0.0.1', port: f.server.address().port, path: '/sse', headers: { 'x-aos-token': 'test', accept: 'text/event-stream' } }, resolve);
+        });
+        assert.strictEqual(r.statusCode, 502);
+        assert.strictEqual(r.headers['access-control-allow-origin'], '*');
+    } finally {
+        await f.close();
+    }
+});

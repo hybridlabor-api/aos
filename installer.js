@@ -8630,33 +8630,8 @@ async function main() {
         return;
     }
     if (args[0] === 'project') {
-        const pAgents = path.join(currentDir, 'AGENTS.md');
-        const pClaude = path.join(currentDir, 'CLAUDE.md');
-        const pGemini = path.join(currentDir, 'GEMINI.md');
-        const tmplPath = path.join(srcDir, 'skills', 'global_config', 'aos-project-init', 'assets', 'AGENTS.template.md');
-        if (!fs.existsSync(pAgents)) {
-            const template = fs.existsSync(tmplPath) ? fs.readFileSync(tmplPath, 'utf8') : '# Agents\n';
-            fs.writeFileSync(pAgents, template.replace('<PROJECT NAME>', path.basename(currentDir)));
-            log.step(`Wrote ${pAgents}`);
-        } else {
-            log.step(`Skipped ${pAgents} (already exists)`);
-        }
-        for (const pt of [pClaude, pGemini]) {
-            if (fs.existsSync(pt)) {
-                log.step(`Skipped ${pt} (already exists)`);
-            } else {
-                if (process.platform === 'win32') {
-                    fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
-                } else {
-                    try {
-                        fs.symlinkSync('AGENTS.md', pt);
-                    } catch (e) {
-                        fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
-                    }
-                }
-                log.step(`Wrote ${pt} pointer to AGENTS.md`);
-            }
-        }
+        const { runProjectInit } = require('./lib/project-init.js');
+        runProjectInit({ args, currentDir, srcDir, log, platform: process.platform });
         return;
     }
     if (args[0] === 'context') {

@@ -86,13 +86,6 @@ test('smoke: a whole fabric run on agy, inside a sandbox', { skip: WIN && 'the c
   assert.ok(fs.existsSync(path.join(p.home, '.aos', 'acp', 'fabric-r-0-architect-1.jsonl')));
 }));
 
-test('smoke: agy cannot limit its write paths, so a writing step without a sandbox is refused and the run escalates', () => project(async (p, bin) => {
-  const r = await wholeRun(p, bin, 'agy');
-  assert.equal(r.code, 6);
-  assert.equal(r.lines.at(-1).phase, 'escalated');
-  assert.match(r.lines.at(-1).reason, /architect gave no usable result in 2 attempts: agy cannot limit its write paths/);
-  assert.deepEqual(log(p).filter((e) => e.kind === 'report_accepted').map((e) => e.report.findings[0].id), ['agy-scope', 'agy-scope']);
-}));
 
 test('smoke: --executor ao without a reachable AO falls back to aos-acp and says so once in the log', () => project(async (p, bin) => {
   fs.mkdirSync(path.join(p.home, '.aos'), { recursive: true });
