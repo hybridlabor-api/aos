@@ -20,6 +20,7 @@ function toolbarCss() {
 @media (prefers-color-scheme:light){:host{--bg:#fff;--fg:#0a0a0a;--mut:#52525b;--line:#d4d4d8;--sh:0 8px 32px rgba(0,0,0,.18)}}
 *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .hl{position:fixed;pointer-events:none;border:1.5px solid var(--acc);background:rgba(155,48,196,.12);border-radius:4px;display:none;z-index:2147483646;transition:all .06s ease-out}
+.hl-badge{position:absolute;top:-24px;left:-1px;background:var(--acc);color:var(--acc-fg);font-size:11px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'SF Mono',Monaco,monospace;padding:2px 7px;border-radius:4px;white-space:nowrap;display:none;box-shadow:0 2px 8px rgba(0,0,0,.35);line-height:1.2}
 svg.ov{position:absolute;left:0;top:0;overflow:visible;pointer-events:none;z-index:2147483645}
 svg.ov.draw{pointer-events:auto;cursor:crosshair;touch-action:none}
 button{font-size:12px;font-weight:600;line-height:1;cursor:pointer;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:6px;min-width:32px;min-height:32px;padding:6px 8px}
@@ -62,7 +63,7 @@ function toolbarHtml() {
     `<button type="button" data-stroke="${w}" aria-pressed="false" aria-label="${label} stroke" title="${label}">${w}</button>`;
   return `
 <svg class="ov" aria-hidden="true"></svg>
-<div class="hl"></div>
+<div class="hl"><div class="hl-badge"></div></div>
 <button class="selhint" type="button">Annotate selection</button>
 <button class="launch" type="button" aria-label="Annotate this page (Alt+Shift+A)" title="Annotate (Alt+Shift+A)" hidden>Annotate</button>
 <div class="bar" role="toolbar" aria-label="Annotation tools" aria-orientation="horizontal" hidden>
