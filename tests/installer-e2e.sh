@@ -44,6 +44,14 @@ chk "workflows restored"      "[ -d $F/.claude/workflows ]"
 chk "stale skill replaced"    "! grep -q 'STALE' $F/.claude/skills/fabric/SKILL.md"
 chk "and backed up"           "ls $F/.claude/skills/fabric/SKILL.md.*.bak >/dev/null 2>&1"
 
+echo "── hook versions ──"
+echo '// aos-hook-version: 999' > $F/.claude/hooks/memb-inject.mjs
+run
+chk "newer hook on disk kept" "grep -q 'aos-hook-version: 999' $F/.claude/hooks/memb-inject.mjs"
+
+HOME=$F node "$REPO/installer.js" -y --platforms=2 --force >/dev/null 2>&1
+chk "--force replaces newer hook" "grep -q 'aos-hook-version: 2' $F/.claude/hooks/memb-inject.mjs"
+
 echo "── the user's own files survive ──"
 mkdir -p $F/.claude/skills/my-own && echo 'MINE' > $F/.claude/skills/my-own/SKILL.md
 python3 - "$F" <<'PY'
