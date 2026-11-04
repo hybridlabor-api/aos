@@ -1041,6 +1041,12 @@ function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
     return 'kept';
 }
 
+function getHookVersion(content) {
+    if (!content) return null;
+    const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
+    return m ? parseInt(m[1], 10) : null;
+}
+
 function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes, shippedHashes = SHIPPED_HASHES) {
     const sourceHash = computeFileHash(sourcePath);
     if (!sourceHash) {
@@ -1060,6 +1066,21 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
         fs.copyFileSync(sourcePath, targetPath);
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
         return 'wrote';
+    }
+
+    const force = process.argv.includes('--force') || Boolean(process.env.AOS_FORCE);
+    if (path.basename(targetPath).endsWith('.mjs') || path.basename(targetPath).endsWith('.js')) {
+        const sourceContent = fs.readFileSync(sourcePath, 'utf8');
+        const targetContent = fs.readFileSync(targetPath, 'utf8');
+        const sourceVersion = getHookVersion(sourceContent);
+        const targetVersion = getHookVersion(targetContent);
+
+        if (sourceVersion !== null && targetVersion !== null) {
+            if (targetVersion > sourceVersion && !force) {
+                log.warn(`Disk hook file ${targetPath} (v${targetVersion}) is newer than the shipped one (v${sourceVersion}); keeping the disk file. Use --force to overwrite.`);
+                return 'kept';
+            }
+        }
     }
 
     // Rebuilt on every pack and unable to contain its own hash, so an older copy is never a user edit.
