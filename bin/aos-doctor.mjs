@@ -105,6 +105,7 @@ const dirCount = (p) => {
 function portOpen(port, timeout = 1200) {
   return new Promise((resolve) => {
     const s = connect({ host: '127.0.0.1', port });
+    s.unref();
     const done = (v) => { s.destroy(); resolve(v); };
     s.setTimeout(timeout);
     s.once('connect', () => done(true));
@@ -1194,4 +1195,4 @@ await checkGateway();
 report();
 
 const hasCriticalFails = results.some(r => !r.ok && !r.warningOnly);
-process.exit(hasCriticalFails ? 1 : 0);
+process.exitCode = hasCriticalFails ? 1 : 0;
