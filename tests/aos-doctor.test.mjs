@@ -131,3 +131,60 @@ test('aos-doctor: Codex hook review fix text includes documented --dangerously-b
     assert.ok(review.fix.includes('--dangerously-bypass-hook-trust'), 'fix text must surface --dangerously-bypass-hook-trust');
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+test('aos-doctor: openwiki provider credentials check correctly identifies effective config and warns on env overrides', () => {
+  const doctorScript = path.join(__dirname, '..', 'skills', 'global_config', 'aos-setup', 'scripts', 'aos-doctor.mjs');
+
+  function runDoctorWithEnv(envVars, openwikiEnvContent) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-doctor-ow-'));
+    try {
+      const owDir = path.join(home, '.openwiki');
+      if (openwikiEnvContent !== null) {
+        fs.mkdirSync(owDir, { recursive: true });
+        fs.writeFileSync(path.join(owDir, '.env'), openwikiEnvContent);
+      }
+
+      let stdout;
+      try {
+        stdout = execFileSync(process.execPath, [doctorScript, '--json'], {
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ...envVars }
+        });
+      } catch (err) {
+        stdout = err.stdout;
+      }
+      return JSON.parse(stdout).results.find((r) => r.name === 'provider credentials');
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  // Nothing configured
+  const resNothing = runDoctorWithEnv({}, null);
+  assert.equal(resNothing.ok, false);
+  assert.match(resNothing.detail, /no ~\/.openwiki\/.env and no env var/);
+
+  // Config only
+  const resConfig = runDoctorWithEnv({}, 'OPENWIKI_PROVIDER=openai\nOPENAI_API_KEY=sk-config');
+  assert.equal(resConfig.ok, true);
+  assert.match(resConfig.detail, /provider from ~\/.openwiki\/.env \(openai\), key from ~\/.openwiki\/.env/);
+  assert.doesNotMatch(resConfig.detail, /warn:/);
+
+  // Env override present
+  const resEnv = runDoctorWithEnv(
+    { OPENWIKI_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'sk-env' },
+    'OPENWIKI_PROVIDER=openai\nOPENAI_API_KEY=sk-config'
+  );
+  assert.equal(resEnv.ok, true); // It is ok because credentials exist, but warning is in detail
+  assert.match(resEnv.detail, /provider from env \(anthropic\), key from env/);
+  assert.match(resEnv.detail, /warn: shell env overrides saved provider and key/);
+
+  // Just provider overridden
+  const resProvOverride = runDoctorWithEnv(
+    { OPENWIKI_PROVIDER: 'anthropic' },
+    'OPENWIKI_PROVIDER=openai\nOPENAI_API_KEY=sk-config'
+  );
+  assert.equal(resProvOverride.ok, true);
+  assert.match(resProvOverride.detail, /provider from env \(anthropic\), key from ~\/.openwiki\/.env/);
+  assert.match(resProvOverride.detail, /warn: shell env overrides saved provider/);
+});

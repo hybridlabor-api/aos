@@ -141,6 +141,8 @@ aos project init --files
 Then, only for what the interview enabled:
 
 ```bash
+# NEVER run openwiki --init yourself. It needs a real terminal. Instruct the user to run:
+# NEVER run openwiki --init yourself. It needs a real terminal. Instruct the user to run:
 openwiki --init                # needs provider credentials in ~/.openwiki/.env (see /aos-setup)
 ```
 

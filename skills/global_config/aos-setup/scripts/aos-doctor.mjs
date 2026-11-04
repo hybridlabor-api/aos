@@ -449,9 +449,54 @@ function checkOpenWiki() {
   const bin = which('openwiki');
   add('openwiki', 'CLI', !!bin, bin || 'not on PATH', 'npm install -g openwiki@latest');
 
-  const env = h('.openwiki', '.env');
-  add('openwiki', 'provider credentials', existsSync(env), existsSync(env) ? '~/.openwiki/.env' : 'no ~/.openwiki/.env — every run will fail auth',
-    'openwiki --init   (wizard saves provider + key to ~/.openwiki/.env; /api-key in chat updates the key; `openwiki auth` is for connectors only)');
+  const envPath = h('.openwiki', '.env');
+  const readDotenv = (p) => {
+    const res = {};
+    if (!existsSync(p)) return res;
+    for (const l of readFileSync(p, 'utf8').split('\n')) {
+      const t = l.trim();
+      if (!t || t.startsWith('#')) continue;
+      const i = t.indexOf('=');
+      if (i > 0) res[t.slice(0, i).trim()] = t.slice(i + 1).trim();
+    }
+    return res;
+  };
+  const savedEnv = readDotenv(envPath);
+  const activeEnv = process.env;
+
+  const getPK = (e) => {
+    let p = e.OPENWIKI_PROVIDER || null;
+    let k = Object.keys(e).find((key) => (key.endsWith('_API_KEY') || key === 'OPENAI_API_KEY') && e[key]);
+    return { p, k };
+  };
+
+  const saved = getPK(savedEnv);
+  const active = getPK(activeEnv);
+
+  const effectiveProvider = active.p || saved.p;
+  const hasEnvKey = !!active.k;
+  const hasSavedKey = !!saved.k;
+  const ok = !!effectiveProvider && (hasEnvKey || hasSavedKey);
+
+  let detail = '';
+  if (!effectiveProvider) {
+    detail = 'no ~/.openwiki/.env and no env var — every run will fail auth';
+  } else {
+    const pSrc = active.p ? 'env' : '~/.openwiki/.env';
+    const kSrc = hasEnvKey ? 'env' : (hasSavedKey ? '~/.openwiki/.env' : 'missing');
+    detail = `provider from ${pSrc} (${effectiveProvider}), key from ${kSrc}`;
+
+    const warnOverrides = [];
+    if (active.p && saved.p) warnOverrides.push('provider');
+    if (hasEnvKey && hasSavedKey) warnOverrides.push('key');
+
+    if (warnOverrides.length > 0) {
+      detail += ` (warn: shell env overrides saved ${[...new Set(warnOverrides)].join(' and ')})`;
+    }
+  }
+
+  add('openwiki', 'provider credentials', ok, detail,
+    'Run in a real terminal (no agents!): openwiki --init   (wizard saves provider + key to ~/.openwiki/.env)');
 
   if (bin) {
     try {

@@ -1,0 +1,8 @@
+commit_ready.sh
+skills/global_config/aos-project-init/SKILL.md
+skills/global_config/aos-project-init/scripts/aos-project-doctor.mjs
+skills/global_config/aos-setup/SKILL.md
+skills/global_config/aos-setup/scripts/aos-doctor.mjs
+tests/aos-bus.test.js
+tests/aos-doctor.test.mjs
+tests/installer-419-findings.test.js
