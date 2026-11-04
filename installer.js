@@ -6099,6 +6099,9 @@ function injectHarnessRules() {
             installStep(`sync ${homeAgentsPath}`, () => {
                 if (!fs.existsSync(homeAgentsPath)) {
                     fs.writeFileSync(homeAgentsPath, '# Global Agent Rules\n\n');
+                    if (_sessionManifest) {
+                        _sessionManifest[homeAgentsPath] = { path: homeAgentsPath, sha256: computeFileHash(homeAgentsPath), version: pkg.version, installedAt: new Date().toISOString() };
+                    }
                     log.step(`Created missing ${homeAgentsPath}`);
                 }
                 const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
@@ -6110,6 +6113,9 @@ function injectHarnessRules() {
                 next = upsertRoutingBlock(upsertDestructiveBlock(next));
                 if (next !== agentsContent) {
                     fs.writeFileSync(homeAgentsPath, next);
+                    if (_sessionManifest) {
+                        _sessionManifest[homeAgentsPath] = { path: homeAgentsPath, sha256: computeFileHash(homeAgentsPath), version: pkg.version, installedAt: new Date().toISOString() };
+                    }
                     log.step(`Synced managed blocks in ${homeAgentsPath}`);
                 }
             }, '~/AGENTS.md is unchanged.');
