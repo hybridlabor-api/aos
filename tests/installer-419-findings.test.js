@@ -237,7 +237,7 @@ test('finding 3: OpenCode plugin payload is installed when missing and left alon
     fs.utimesSync(plugin, old, old);
     const second = runInstaller(h, code);
     assert.doesNotMatch(second, /Installed OpenCode plugin|commands in .*written/);
-    assert.ok(Math.abs(fs.statSync(plugin).mtimeMs - old.getTime()) <= 1);
+    assert.strictEqual(Math.round(fs.statSync(plugin).mtimeMs), Math.round(old.getTime()));
     fs.appendFileSync(plugin, '\n// local change\n');
     assert.match(runInstaller(h, code), /Installed OpenCode plugin/);
 });

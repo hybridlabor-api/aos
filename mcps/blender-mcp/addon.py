@@ -5011,7 +5011,7 @@ class BlenderMCPServer:
         if premium_active():
             return premium_import_generated_asset_hunyuan(*args, **kwargs)
         return self.import_generated_asset_hunyuan_ai(*args, **kwargs)
-
+            
     def _import_hunyuan_glb(self, name: str, glb_url: str):
         temp_dir = tempfile.mkdtemp(prefix="hunyuan_glb_")
         glb_path = osp.join(temp_dir, "model.glb")

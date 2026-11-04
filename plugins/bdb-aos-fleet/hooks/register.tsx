@@ -1,5 +1,6 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
+import { getHomeDir } from "./home"
 
 import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateBlock, GateProfile, GateState, PlanComponent, PlanTask } from '../types'
 
@@ -347,7 +348,7 @@ async function readProfile($: EngineInterface) {
     await update($, profile, () => demoProfile())
     return
   }
-  const home = await $.env.get('HOME')
+  const home = await getHomeDir($)
   let found: GateProfile | null = null
   for (const cmd of [['aos-gate', 'status'], ['node', `${home}/.agents/bin/aos-gate.mjs`, 'status']]) {
     try {
@@ -366,7 +367,7 @@ async function readGate($: EngineInterface) {
     await update($, gate, () => demoGate())
     return
   }
-  const home = await $.env.get('HOME')
+  const home = await getHomeDir($)
   const r = await $.process.run(['node', `${home}/.claude/hooks/go-grant.mjs`, '--status', '--session', await $.session.id()])
   await update($, gate, () => parseGateStatus(r.stdout))
 }
@@ -490,7 +491,7 @@ export function boardProgress(boards: readonly BoardSummary[]): FleetProgress | 
 }
 
 async function loadExtras($: EngineInterface) {
-  const home = await $.env.get('HOME')
+  const home = await getHomeDir($)
   const state: TaskState = JSON.parse(await $.fs.read(`${home}/.aos/tasks/state.json`))
   const next = tasksExtras(state)
   const boards = new Map<number, BoardSummary>()
@@ -550,7 +551,7 @@ async function readProject($: EngineInterface) {
 async function publish($: EngineInterface, ended = false) {
   if (await isDemo($)) return
   if (!id) return
-  dir ||= `${await $.env.get('HOME')}/.aos/fleet`
+  dir ||= `${await getHomeDir($)}/.aos/fleet`
   const me = await read($, self)
   const name = me.name ?? id.slice(0, 8)
   const pipelineAttention = me.activity !== 'working' && project.pipelineReason
@@ -579,7 +580,7 @@ async function loadFleet($: EngineInterface) {
     await update($, fleet, () => demoFleet())
     return
   }
-  dir ||= `${await $.env.get('HOME')}/.aos/fleet`
+  dir ||= `${await getHomeDir($)}/.aos/fleet`
   if (!(await $.fs.exists(dir))) return
   const now = await $.clock.now()
   const entries = await $.fs.list(dir)

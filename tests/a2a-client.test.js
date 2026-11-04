@@ -285,3 +285,19 @@ test("send({depth}) combines with the env depth (higher wins) and stamps effecti
     }
   }
 });
+
+test("send() to a pull-only idle peer returns quickly with TASK_STATE_QUEUED_PULL_ONLY and writes to inbox", async () => {
+  const { register } = await import("../lib/a2a-registry.mjs");
+  const inbox = await import("../lib/a2a-inbox.mjs");
+  // register a pull-only idle peer
+  register({ name: "agy-idle-peer", harness: "agy", pid: 999999 }); // fake pid to ensure isLive returns false
+
+  const res = await client.send({ to: "agy-idle-peer", text: "hello agy idle peer" });
+  assert.equal(res.state, "TASK_STATE_QUEUED_PULL_ONLY");
+  assert.match(res.statusMessage, /peer is pull-only and idle/);
+
+  // check inbox
+  const msgs = inbox.pending("agy-idle-peer");
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].text, "hello agy idle peer");
+});

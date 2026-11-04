@@ -537,14 +537,14 @@ function ensurePythonVenv(dir, opts = {}) {
         const target = sys ? sys.cmd : '3.12';
         try {
             if (!sys) run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
-            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, '.venv']);
+            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, path.join(dir, '.venv')]);
             return { created: true, viaUv: true };
         } catch (e) {
             if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
         }
     }
     try {
-        run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+        run(sys.cmd, ['-m', 'venv', '--clear', path.join(dir, '.venv')]);
     } catch (e) {
         // Rename, never delete: the half-built venv stays as .venv.broken-<stamp> (as lib/v5/packages.js does).
         if (path.isAbsolute(dir)) try { fs.renameSync(path.join(dir, '.venv'), path.join(dir, `.venv.broken-${Date.now()}`)); } catch (_) { /* nothing half-built */ }
@@ -1041,6 +1041,12 @@ function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
     return 'kept';
 }
 
+function getHookVersion(content) {
+    if (!content) return null;
+    const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
+    return m ? parseInt(m[1], 10) : null;
+}
+
 function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes, shippedHashes = SHIPPED_HASHES) {
     const sourceHash = computeFileHash(sourcePath);
     if (!sourceHash) {
@@ -1060,6 +1066,21 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
         fs.copyFileSync(sourcePath, targetPath);
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
         return 'wrote';
+    }
+
+    const force = process.argv.includes('--force') || Boolean(process.env.AOS_FORCE);
+    if (path.basename(targetPath).endsWith('.mjs') || path.basename(targetPath).endsWith('.js')) {
+        const sourceContent = fs.readFileSync(sourcePath, 'utf8');
+        const targetContent = fs.readFileSync(targetPath, 'utf8');
+        const sourceVersion = getHookVersion(sourceContent);
+        const targetVersion = getHookVersion(targetContent);
+
+        if (sourceVersion !== null && targetVersion !== null) {
+            if (targetVersion > sourceVersion && !force) {
+                log.warn(`Disk hook file ${targetPath} (v${targetVersion}) is newer than the shipped one (v${sourceVersion}); keeping the disk file. Use --force to overwrite.`);
+                return 'kept';
+            }
+        }
     }
 
     // Rebuilt on every pack and unable to contain its own hash, so an older copy is never a user edit.
@@ -4134,7 +4155,7 @@ async function installHardwarePcb() {
     const needsSync = hardwareApps.hwServerDirsNeedingSync(hwDir);
     for (const serverDir of needsSync) {
         log.step(`Hardware & PCB: venv python missing in ${path.basename(serverDir)} — running uv sync (explicit uv path: ${uvBin()}).`);
-        const res = spawnSync(uvBin(), ['sync'], { cwd: serverDir, stdio: 'ignore', timeout: 600000, windowsHide: true });
+        const res = spawnSync(uvBin(), ['sync', '--frozen'], { cwd: serverDir, stdio: 'ignore', timeout: 600000, windowsHide: true });
         if (res.error || res.status !== 0) {
             log.warn(`uv sync failed for ${path.basename(serverDir)}${res.error ? ` (${res.error.message})` : ` (exit ${res.status})`}. The MCP launcher may fall back to 'uv run', which needs uv on the harness's PATH.`);
         }
@@ -6078,6 +6099,9 @@ function injectHarnessRules() {
             installStep(`sync ${homeAgentsPath}`, () => {
                 if (!fs.existsSync(homeAgentsPath)) {
                     fs.writeFileSync(homeAgentsPath, '# Global Agent Rules\n\n');
+                    if (_sessionManifest) {
+                        _sessionManifest[homeAgentsPath] = { path: homeAgentsPath, sha256: computeFileHash(homeAgentsPath), version: pkg.version, installedAt: new Date().toISOString() };
+                    }
                     log.step(`Created missing ${homeAgentsPath}`);
                 }
                 const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
@@ -6089,6 +6113,9 @@ function injectHarnessRules() {
                 next = upsertRoutingBlock(upsertDestructiveBlock(next));
                 if (next !== agentsContent) {
                     fs.writeFileSync(homeAgentsPath, next);
+                    if (_sessionManifest) {
+                        _sessionManifest[homeAgentsPath] = { path: homeAgentsPath, sha256: computeFileHash(homeAgentsPath), version: pkg.version, installedAt: new Date().toISOString() };
+                    }
                     log.step(`Synced managed blocks in ${homeAgentsPath}`);
                 }
             }, '~/AGENTS.md is unchanged.');
