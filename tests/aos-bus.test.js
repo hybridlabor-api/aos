@@ -251,7 +251,7 @@ describe('plugin timers', () => {
             fs.writeFileSync(reg, JSON.stringify({ ...r, pid: process.ppid })); // taken over by another live process
             fs.utimesSync(reg, old, old);
             mock.timers.tick(5000);
-            assert.equal(Math.round(fs.statSync(reg).mtimeMs), Math.round(old.getTime()), 'foreign registration left alone');
+            assert.equal(fs.statSync(reg).mtimeMs, old.getTime(), "foreign registration left alone");
         } finally { mock.timers.reset(); }
     });
 
