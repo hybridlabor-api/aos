@@ -537,14 +537,14 @@ function ensurePythonVenv(dir, opts = {}) {
         const target = sys ? sys.cmd : '3.12';
         try {
             if (!sys) run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
-            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, '.venv']);
+            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, path.join(dir, '.venv')]);
             return { created: true, viaUv: true };
         } catch (e) {
             if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
         }
     }
     try {
-        run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+        run(sys.cmd, ['-m', 'venv', '--clear', path.join(dir, '.venv')]);
     } catch (e) {
         // Rename, never delete: the half-built venv stays as .venv.broken-<stamp> (as lib/v5/packages.js does).
         if (path.isAbsolute(dir)) try { fs.renameSync(path.join(dir, '.venv'), path.join(dir, `.venv.broken-${Date.now()}`)); } catch (_) { /* nothing half-built */ }
@@ -4155,7 +4155,7 @@ async function installHardwarePcb() {
     const needsSync = hardwareApps.hwServerDirsNeedingSync(hwDir);
     for (const serverDir of needsSync) {
         log.step(`Hardware & PCB: venv python missing in ${path.basename(serverDir)} — running uv sync (explicit uv path: ${uvBin()}).`);
-        const res = spawnSync(uvBin(), ['sync'], { cwd: serverDir, stdio: 'ignore', timeout: 600000, windowsHide: true });
+        const res = spawnSync(uvBin(), ['sync', '--frozen'], { cwd: serverDir, stdio: 'ignore', timeout: 600000, windowsHide: true });
         if (res.error || res.status !== 0) {
             log.warn(`uv sync failed for ${path.basename(serverDir)}${res.error ? ` (${res.error.message})` : ` (exit ${res.status})`}. The MCP launcher may fall back to 'uv run', which needs uv on the harness's PATH.`);
         }
