@@ -283,6 +283,7 @@ Verify by starting a session and checking that the first prompt carries a
 
 ```bash
 npm install -g openwiki@latest        # CLI, needs Node >= 22
+# NEVER run openwiki --init yourself. It needs a real terminal. Instruct the user to run:
 openwiki --init                       # run in a repo: the wizard saves provider, model and key to ~/.openwiki/.env
                                       # (`openwiki auth <x>` only authenticates connectors: slack, gmail, x, notion)
 openwiki integrations list            # per-harness host integration status
