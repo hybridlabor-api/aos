@@ -114,6 +114,18 @@ describe('annotation schema', () => {
     assert.equal(tag('x<script>'), '');
   });
 
+  test('component field: valid components kept, invalid or oversized dropped', () => {
+    const getComponent = c => normalizeAnnotation({ ...base(), anchor: { ...base().anchor, component: c } }).anchor.component;
+    assert.equal(getComponent('MyReactComponent'), 'MyReactComponent');
+    assert.equal(getComponent('v-btn'), 'v-btn');
+    assert.equal(getComponent('Module.Component'), 'Module.Component');
+    assert.equal(getComponent('$Component'), '$Component');
+    assert.equal(getComponent('App::Sidebar'), 'App::Sidebar');
+    assert.equal(getComponent('invalid component name'), undefined);
+    assert.equal(getComponent('a'.repeat(121)), undefined);
+    assert.equal(getComponent('<script>'), undefined);
+  });
+
   test('shapes: every type, clamp, round, color enum', () => {
     const shapes = [
       { type: 'element' },

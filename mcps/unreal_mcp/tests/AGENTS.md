@@ -1,11 +1,11 @@
 # TEST KNOWLEDGE BASE
 
-Test infrastructure for the TypeScript MCP server and Unreal bridge contracts. Vitest tests run without Unreal; MCP integration suites normally require a built server plus a connected Unreal Editor.
+Test infrastructure for the capability records, the stdio proxy and the plugin's source contracts. Vitest tests run without Unreal; MCP integration suites need a built server plus an editor serving `/mcp`. No mocks or fakes: there is no mock connection, fake upstream or in-memory server.
 
 ## STRUCTURE
 ```text
 tests/
-|-- test-runner.mjs                 # stdio client, setup/cleanup, expectations, JSON reports
+|-- test-runner.mjs                 # stdio client of dist/cli.js (the proxy), setup/cleanup, expectations, JSON reports
 |-- test-runner-response-utils.mjs  # response-path assertions and filtered capture selection
 |-- integration.mjs                 # compact representative parent-tool integration suite
 |-- expectation-utils.mjs           # shared expectation parsing
@@ -14,14 +14,30 @@ tests/
 |   |-- gameplay/                   # animation, AI, character, combat, effects, GAS, inventory
 |   |-- utility/                    # audio, behavior trees, networking, sequences
 |   `-- world/                      # environment, geometry, level structure, PCG
-|-- native-mcp-parity-audit.mjs     # TS versus native canonical tool/action parity
 |-- parameter-combination-audit.mjs # audit CLI entrypoint
 |-- parameter-audit-*.mjs           # CLI, schema extraction, suite capture, coverage, context
+|-- fold-twins.mjs                  # one twin case per folded family, applied by the runner and the audit capture
 |-- unit/                           # Vitest behavior, security, routing, and source contracts
 `-- reports/                        # generated JSON only; never add AGENTS or hand-authored files
 ```
 
-The mock smoke test is `scripts/smoke-test.ts`, not under this directory. It imports `dist/index.js`, uses linked in-memory transports, enables `MOCK_UNREAL_CONNECTION`, and checks the 23-tool surface plus `manage_tools`.
+Record tests look records up through `unit/support/capability-index.ts` (which also fails on an alias or tool+action pair two records claim) and check examples and schemas with `unit/support/schema-validate.ts`.
+
+## TIMEOUT LADDER
+| Scope | Default | Override |
+|-------|---------|----------|
+| Vitest unit | 10s | `vitest.config.ts` `testTimeout` |
+| Integration per-case | **5s** | `UNREAL_MCP_TEST_CASE_TIMEOUT_MS`, or per-case `timeoutMs` (cleanup cases use 30s) |
+| Per-call server | 60s | `UNREAL_MCP_TEST_CALL_TIMEOUT_MS` |
+| Client / progress | 300s | `UNREAL_MCP_TEST_CLIENT_TIMEOUT_MS` |
+| `/mcp` port wait | 10s | none; `createConnectedClient` is passed 10000 |
+| Inter-case throttle | 100ms | `UNREAL_MCP_TEST_THROTTLE_MS` |
+
+Other runner env: `UNREAL_MCP_URL` (http://127.0.0.1:3000/mcp, also read by the proxy), `UNREAL_MCP_SERVER_CMD/ARGS/CWD`, `UNREAL_MCP_FORCE_DIST`, `UNREAL_MCP_AUTO_BUILD` / `UNREAL_MCP_NO_AUTO_BUILD`, `UNREAL_MCP_ALLOW_TS_FALLBACK`, `UNREAL_MCP_TEST_LOG_RESPONSES`.
+
+The runner AUTO-BUILDS: if `dist/cli.js` is missing, or source is newer than dist, it runs `npm run build` unless `UNREAL_MCP_NO_AUTO_BUILD=1`. It still needs a live editor.
+
+A build that is attempted and FAILS now aborts the run. It used to fall through to `ts-node-esm src/cli.ts`, so a full green could be reported while `dist/` — the artifact the package ships — was broken. Set `UNREAL_MCP_ALLOW_TS_FALLBACK=1` to run source anyway and accept that `dist/` is unverified. Choosing source deliberately (stale dist with `UNREAL_MCP_NO_AUTO_BUILD=1`) is unchanged.
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
@@ -30,26 +46,25 @@ The mock smoke test is `scripts/smoke-test.ts`, not under this directory. It imp
 | Add broad integration coverage | `integration.mjs` | Canonical quick suite across parent tools |
 | Add tool/action coverage | `mcp-tools/<category>/*.test.mjs` | Import `runToolTests` directly and keep setup before dependent cases |
 | Change expectation parsing | `expectation-utils.mjs`, `unit/test_runner.test.ts` | Lock evaluator changes with focused unit cases |
-| Change native parity rules | `native-mcp-parity-audit.mjs` | Reads TS definitions and native canonical registry/tool C++ |
 | Change parameter audit | `parameter-audit-*.mjs` | Schema AST, suite capture, live/static evidence, reporting |
-| Change architectural contracts | `unit/plugin/`, `unit/source_structure.test.ts`, `unit/tools/handler_structure.test.ts` | These inspect source text and layout; they do not compile Unreal |
+| Change architectural contracts | `unit/plugin/`, `unit/source_structure.test.ts` | These inspect source text and layout; they do not compile Unreal |
 
 ## COMMANDS
 ```bash
 npm run test:unit          # Vitest: src/**/*.test.ts and tests/unit/**/*.test.ts
-npm run test:smoke         # mock in-memory MCP check against built dist/
 npm test                   # tests/integration.mjs; Unreal-dependent
-npm run test:native-parity # canonical TS/native tool and action equality
-npm run test:params        # parity, then static + strict + optional-strict parameter audit
+npm run test:params        # static + strict + optional-strict parameter audit
 ```
 
 ## INTEGRATION CASES
 - Use `{ scenario, toolName, arguments, expected }`; optional fields include `assertions`, `captureResult`, and `timeoutMs`.
 - Export no custom harness: end each suite with `runToolTests('<suite-name>', cases)`.
 - Keep the standard relative `runToolTests` import shape; the static audit replaces that import while evaluating suite definitions.
+- Cases keep naming the pre-fold actions. At run time `runToolTests` derives one twin per folded family (`fold-twins.mjs`): the first case naming a folded member is re-run as the family's primary plus its selector value, right after its source case. The audit captures the same twins, so every advertised primary and selector is covered without hand-written duplicates.
 - Use unique actor/asset names, usually timestamped, and add explicit cleanup for created state.
 - Captures use `{ key, fromField }`; array captures may add `where: { path, equals|includes }` and `selectField`. Later arguments reference `${captured:key}`.
-- Assertions address response paths such as `structuredContent.result.assetPath`; use `equals` for exact values, `includes` for string fragments, or `approximately` with a nonnegative `tolerance` for floating-point values.
+- Assertions address response paths such as `structuredContent.result.assetPath`; a success reply carries only `data`, so `resolveResponsePath` reads a `result.*` path from `data`, then `data.details`, then the reply itself. The operators `evaluateAssertions` implements are exactly: `equals`, `approximately` (with a nonnegative `tolerance`), `includes`, `notIncludes`, `length`, `minLength`, `includesObject`, and `gte` (numeric, the counterpart of `minLength`).
+- An assertion naming no recognised operator is REFUSED rather than passed. It used to fall through every check and report success, which is how two `gte` assertions sat here asserting nothing; `ASSERTION_OPERATORS` in `test-runner-response-utils.mjs` is the list, and adding an operator means adding it there.
 
 ## EXPECTATION GRAMMAR
 - Strings split on literal ` or ` or `|`; the first token is the primary intent.
@@ -60,10 +75,10 @@ npm run test:params        # parity, then static + strict + optional-strict para
 - `structuredContent.success: false`, nested failures, or `isError: true` must not pass a success-primary case unless an explicit allowed alternative matches.
 
 ## AUDIT CONTRACTS
-- Native parity compares canonical tool names and `definitions/shared/action-sets.ts` enums with native MCP registry and tool definitions.
-- Parameter schema extraction uses the TypeScript compiler API; suite coverage is captured from `mcp-tools/` plus `integration.mjs`.
-- Missing or extra actions always fail the parameter audit. `--strict` also fails undeclared test parameters.
+- Parameter schemas come from the generated parent definitions (the surface the server exposes); suite coverage is captured from `mcp-tools/` plus `integration.mjs`.
+- Missing or extra actions always fail the parameter audit. `--strict` also fails undeclared test parameters, so a case for a removed action or param must go with it.
 - `--optional-strict` fails optional schema parameters absent from static coverage; `npm run test:params` enables all strict static gates.
+- A folded family's former names count as declared actions (`readFoldedActionsByTool`), never as extra actions.
 - Live audit mode consumes the latest `<suite>-test-results-*.json`; only successful live responses prove optional-parameter coverage.
 - Treat `reports/` as disposable evidence. Diagnose failures from the newest JSON, but never edit reports to satisfy a gate.
 
