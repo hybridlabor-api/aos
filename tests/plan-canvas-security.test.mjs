@@ -89,6 +89,18 @@ describe('Plan-Canvas request provenance', () => {
     if (srv) await srv.close().catch(() => {});
   });
 
+  test('unit: allowed hosts are parsed and accepted', () => {
+    const hosts = guard.buildAllowedHostnames('127.0.0.1', ['mytailnet.ts.net', '*.example.com', 'foo.com']);
+    assert.equal(hosts.has('mytailnet.ts.net'), true);
+    assert.equal(hosts.has('foo.com'), true);
+    assert.equal(hosts.has('*.example.com'), false, 'wildcard must not be accepted');
+    assert.equal(hosts.has('127.0.0.1'), true);
+
+    assert.equal(guard.isAllowedHostHeader('mytailnet.ts.net', hosts), true);
+    assert.equal(guard.isAllowedHostHeader('foo.com:8080', hosts), true);
+    assert.equal(guard.isAllowedHostHeader('evil.com', hosts), false);
+  });
+
   test('unit: origin must match the port when one is given', () => {
     const hosts = guard.buildAllowedHostnames('127.0.0.1');
     assert.equal(guard.isAllowedOrigin('http://127.0.0.1:4519', hosts, 4519), true);
