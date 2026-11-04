@@ -229,17 +229,9 @@ remember to query. On every prompt it reads the SQLite store directly and
 injects the relevant memories as context. It fails open: any error exits `0`
 and the prompt proceeds untouched.
 
-Since v4.4.0 the installer ships `memb-inject.mjs` into `~/.claude/hooks/` and
+The installer ships `memb-inject.mjs` into `~/.claude/hooks/` and
 wires it as an automated prompt hook across Claude Code (`UserPromptSubmit` in `settings.json`),
-Google Antigravity (`PreInvocation` in `hooks.json` / `.agents/hooks.json`), and OpenAI Codex (`UserPromptSubmit` in `config.toml`). **v4.4.0's Quick Update did not** — it
-refreshes skills and submodules, and hooks are harness plumbing rather than
-skills, so a machine that already had AOS updated to 4.4.0 without ever
-receiving the hook. Fixed in v4.4.1; a machine that took that update needs one
-more run:
-
-```bash
-npx -y @hybridlabor-api/aos@latest
-```
+Google Antigravity (`PreInvocation` in `hooks.json` / `.agents/hooks.json`), and OpenAI Codex (`UserPromptSubmit` in `config.toml`).
 
 The wiring is merged into `~/.claude/settings.json`, Antigravity `hooks.json`, and Codex `config.toml`, never written over them:
 user keys and foreign hook entries survive, and a re-run replaces the BDB entry

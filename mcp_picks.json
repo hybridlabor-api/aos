@@ -13,7 +13,7 @@
             "command": "uvx",
             "args": [
               "--from",
-              "git+https://projects.blender.org/lab/blender_mcp.git@ff54e4d8f6b09502f2f466189cca0e52b4a91643#subdirectory=mcp",
+              "git+https://projects.blender.org/lab/blender_mcp.git@2cea8d566dde07fbac28a61d698909d69724e853#subdirectory=mcp",
               "blender-mcp"
             ]
           }
@@ -29,7 +29,8 @@
         {
           "name": "bdb_resolume_official_mcp",
           "requires": {
-            "app": "resolume"
+            "app": "resolume",
+            "minVersion": "7.26.0"
           },
           "entry": {
             "command": "__RESOLUME_MCP__",

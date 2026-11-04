@@ -27,11 +27,11 @@ export const homeDir = () => process.env.AOS_HUB_HOME || osHome();
 export const hubPaths = (home = homeDir()) => ({ dir: join(home, '.aos', 'hub'), file: join(home, '.aos', 'hub', 'hub.json') });
 
 export function parseArgv(argv) {
-  const out = { cmd: 'start', port: DEFAULT_PORT, tab: undefined, noOpen: process.env.AOS_NO_OPEN === '1', json: false };
+  const out = { cmd: 'start', port: DEFAULT_PORT, tab: undefined, noOpen: process.env.AOS_NO_OPEN === '1', json: false, watchArgs: [] };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === 'start' || a === 'stop' || a === 'restart' || a === 'status' || a === 'open') out.cmd = a;
+    if (a === 'start' || a === 'stop' || a === 'restart' || a === 'status' || a === 'open' || a === 'watch') out.cmd = a;
     else if (a === '--port') out.port = Number(argv[++i]);
     else if (a.startsWith('--port=')) out.port = Number(a.split('=')[1]);
     else if (a === '--tab') out.tab = argv[++i];
@@ -44,8 +44,9 @@ export function parseArgv(argv) {
   }
   if (out.tab !== undefined && !/^[a-z]+$/.test(out.tab)) throw new Error(`invalid --tab: ${out.tab}`);
   if (out.watch && !out.serve) throw new Error('--watch is only valid together with --serve');
-  if (rest.length && (rest[0] === 'open' || ['start', 'stop', 'restart', 'status'].includes(rest[0]))) out.cmd = rest[0];
+  if (rest.length && (rest[0] === 'open' || ['start', 'stop', 'restart', 'status', 'watch'].includes(rest[0]))) out.cmd = rest[0];
   if (!Number.isInteger(out.port) || out.port < 1 || out.port > 65535) throw new Error(`invalid --port: ${out.port}`);
+  if (out.cmd === 'watch') out.watchArgs = rest.slice(1);
   return out;
 }
 
@@ -280,6 +281,35 @@ export async function cli(argv = process.argv.slice(2)) {
   if (opts.cmd === 'restart') return cmdRestart(opts);
   if (opts.cmd === 'status') return cmdStatus(opts);
   if (opts.cmd === 'open') return cmdOpen(opts);
+  if (opts.cmd === 'watch') {
+      const { readWatches, addWatch, removeWatch } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'inbox.mjs')).href);
+      const home = homeDir();
+      const sub = opts.watchArgs[0];
+      if (sub === 'list') {
+          console.log(JSON.stringify(readWatches(home), null, 2));
+          return 0;
+      } else if (sub === 'add') {
+          const defStr = opts.watchArgs.slice(1).join(' ');
+          if (!defStr) {
+             console.error('usage: aos-hub watch add <json>');
+             return 2;
+          }
+          const w = addWatch(home, JSON.parse(defStr));
+          console.log(`Added watch ${w.id}`);
+          return 0;
+      } else if (sub === 'remove') {
+          const id = opts.watchArgs[1];
+          if (!id) {
+             console.error('usage: aos-hub watch remove <id>');
+             return 2;
+          }
+          removeWatch(home, id);
+          console.log(`Removed watch ${id}`);
+          return 0;
+      }
+      console.error('usage: aos-hub watch add|list|remove');
+      return 2;
+  }
   return cmdStart(opts);
 }
 
@@ -367,6 +397,12 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
       // Never touch a service the user switched off in settings (or the profile excludes).
       isDisabled: (id) => { try { return excludedIds(readSettings(home)).has(id); } catch { return false; } },
       beforeTick: async () => {
+        // Run watches asynchronously to prevent blocking the service watcher loop.
+        try {
+            import(pathToFileURL(join(ROOT, 'lib', 'hub', 'inbox.mjs')).href).then(({ tickWatches }) => {
+                tickWatches(home, ROOT).catch(() => {});
+            }).catch(() => {});
+        } catch { /* best effort */ }
         const diskStamp = codeStamp();
         if (diskStamp > ownStamp) {
           try {

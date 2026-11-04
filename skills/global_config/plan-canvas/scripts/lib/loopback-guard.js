@@ -30,9 +30,14 @@ function parseHostHeader(value) {
   return match[1].toLowerCase();
 }
 
-function buildAllowedHostnames(configuredHost) {
+function buildAllowedHostnames(configuredHost, allowHosts = []) {
   const set = new Set(LOOPBACK_HOSTNAMES);
   if (configuredHost) set.add(String(configuredHost).toLowerCase());
+  for (const host of allowHosts) {
+    if (typeof host === 'string' && host && !host.includes('*')) {
+      set.add(host.toLowerCase());
+    }
+  }
   return set;
 }
 

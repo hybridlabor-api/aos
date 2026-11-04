@@ -588,6 +588,8 @@ async function execute(p) {
     h('.codex-plugin', 'system.md'), h('.gemini', 'RULES.md'), h('.gemini', 'GEMINI.md'),
   ];
   for (const f of ruleFiles.filter(existsSync)) {
+    const entry = manifest && manifest[f];
+    const owned = !!entry;
     try {
       let text = readFileSync(f, 'utf8');
       if (f === h('CLAUDE.md')) {
@@ -600,7 +602,25 @@ async function execute(p) {
       // strips still cover older installs that carried only those blocks.
       const stripped = stripRoutingBlock(stripDestructiveBlock(stripHarnessRulesBlock(text)));
       if (stripped === text) continue;
-      if (!stripped.trim()) { rmSync(f); console.log(`  ${tilde(f)} removed (no user content left)`); continue; }
+
+      const fileHash = sha256(f);
+
+      if (f === h('AGENTS.md')) {
+        const isShippedEmpty = stripped.trim() === '# Global Agent Rules' || stripped.trim() === '';
+        // If it matches exactly the original empty file, or it's manifest-owned and completely unchanged:
+        if ((entry && fileHash === entry.sha256) || (!entry && isShippedEmpty) || (!entry && fileHash === 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855') || (fileHash === 'ce5a4f79db9cefb029ac50033baaa7c9541b4613220a53890a89107e2dd9e7bd')) {
+          rmSync(f); console.log(`  ${tilde(f)} removed (no user content left)`); continue;
+        } else {
+          // If we reach here, it is edited.
+          if (!stripped.trim() && stripped !== text) {
+              // It's empty after stripping but wasn't untouched.
+              // Just fall through to keep it (write the stripped version, though it might be empty).
+              // The original logic deleted it here. We shouldn't.
+          }
+        }
+      } else {
+        if (!stripped.trim()) { rmSync(f); console.log(`  ${tilde(f)} removed (no user content left)`); continue; }
+      }
       writeFileSync(f, stripped);
       console.log(`  Rule blocks removed from ${tilde(f)}`);
     } catch { failures.push(`${tilde(f)} unreadable (rule blocks)`); console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
