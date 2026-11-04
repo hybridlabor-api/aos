@@ -1,0 +1,5 @@
+repo: https://github.com/ahujasid/blender-mcp (MCP for Blender)
+commit: 992233bb258975a05eec8b5691465c50c2831e34
+date: 2026-10-29
+license: MIT
+note: includes the path-traversal fix 30a3308 (CVE-2026-66004)
