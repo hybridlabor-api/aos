@@ -169,8 +169,12 @@ function checkAosCore() {
     } else if (g.found && npmGlobalAos.isCurrentGlobal(g, pkg.version)) {
       add('aos-core', 'Global npm install', true, `${tilde(g.root)} (v${g.version}, matches the running version)`);
     } else if (g.found) {
-      add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version}, running v${pkg.version})`,
-        `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
+      if (npmGlobalAos.isOlderVersion(g.version, pkg.version)) {
+        add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version}, running v${pkg.version})`,
+          `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
+      } else {
+        add('aos-core', 'Global npm install', true, `${tilde(g.root)} (v${g.version}, running v${pkg.version})`, '', true);
+      }
     } else {
       add('aos-core', 'Global npm install', true, 'none — only the ~/.local/bin launcher');
     }
