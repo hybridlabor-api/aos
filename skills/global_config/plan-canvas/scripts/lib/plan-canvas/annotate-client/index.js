@@ -14,6 +14,54 @@ const { toolbarCss, toolbarHtml } = require('./toolbar');
 const { rawUnits, toAnchorUnits, fromAnchorUnits, fitsAnchor } = geometry;
 const { createDraft, draftAdd, draftUndo, draftRedo, draftClear, makeShape, buildItem, chunkItems, shapeSummary } = model;
 
+const compCache = new WeakMap();
+
+function componentNameFor(el, docObject) {
+  if (!el || el.nodeType !== 1) return null;
+  if (compCache.has(el)) return compCache.get(el);
+  const doc = docObject || (typeof document !== 'undefined' ? document : el.ownerDocument);
+  const body = doc ? doc.body : null;
+  const docElem = doc ? doc.documentElement : null;
+
+  function resolve() {
+    const compAttr = el.getAttribute('data-component') || (el.closest && el.closest('[data-component]') ? el.closest('[data-component]').getAttribute('data-component') : null);
+    if (compAttr) return compAttr;
+
+    for (let curr = el; curr && curr !== body && curr !== docElem; curr = curr.parentElement) {
+      const fiberKey = Object.keys(curr).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+      if (fiberKey) {
+        let fiber = curr[fiberKey];
+        while (fiber) {
+          const type = fiber.type;
+          if (typeof type === 'function' && type.name) {
+            const name = type.displayName || type.name;
+            if (!/^(Fragment|Provider|Consumer|_default|Anonymous|styled|Connect|Route|Router)$/.test(name)) return name;
+          } else if (type && typeof type === 'object' && (type.displayName || type.name)) {
+            const name = type.displayName || type.name;
+            if (!/^(Fragment|Provider|Consumer|_default)$/.test(name)) return name;
+          }
+          fiber = fiber.return;
+        }
+      }
+    }
+
+    for (let curr = el; curr && curr !== body && curr !== docElem; curr = curr.parentElement) {
+      if (curr.__vueParentComponent && curr.__vueParentComponent.type && curr.__vueParentComponent.type.name) {
+        return curr.__vueParentComponent.type.name;
+      }
+    }
+
+    const testId = el.getAttribute('data-testid') || (el.closest && el.closest('[data-testid]') ? el.closest('[data-testid]').getAttribute('data-testid') : null);
+    if (testId) return testId;
+
+    return null;
+  }
+
+  const name = resolve();
+  compCache.set(el, name);
+  return name;
+}
+
 // Runs in the browser. Free identifiers are the inlined pure helpers above.
 function clientMain(CFG) {
   const FETCH = CFG.transport === 'fetch';
@@ -78,6 +126,7 @@ function clientMain(CFG) {
   const $ = sel => root.querySelector(sel);
   const ov = $('svg.ov');
   const hl = $('.hl');
+  const hlBadge = hl ? hl.querySelector('.hl-badge') : null;
   const selhint = $('.selhint');
   const launch = $('.launch');
   const bar = $('.bar');
@@ -141,10 +190,13 @@ function clientMain(CFG) {
     const r = el.getBoundingClientRect();
     return { left: r.left + window.scrollX, top: r.top + window.scrollY, width: r.width, height: r.height };
   }
+
   function anchorFor(el) {
+    const comp = componentNameFor(el);
     return {
       selector: selectorFor(el),
       tag: el.tagName.toLowerCase(),
+      component: comp || undefined,
       snippet: snippetFor(el),
       classes: Array.from(el.classList || [])
     };
@@ -376,6 +428,12 @@ function clientMain(CFG) {
     hl.style.top = rect.top - 2 + 'px';
     hl.style.width = rect.width + 'px';
     hl.style.height = rect.height + 'px';
+
+    if (hlBadge) {
+      const comp = componentNameFor(el);
+      hlBadge.textContent = comp ? '<' + comp + '>' : '<' + el.tagName.toLowerCase() + '>';
+      hlBadge.style.display = 'block';
+    }
   }, true);
 
   document.addEventListener('click', e => {
@@ -394,7 +452,9 @@ function clientMain(CFG) {
     e.preventDefault();
     e.stopPropagation();
     hl.style.display = 'none';
-    openElementCard('Annotate <' + el.tagName.toLowerCase() + '>', el, anchorFor(el), e.clientX, e.clientY);
+    const comp = componentNameFor(el);
+    const label = comp ? 'Annotate <' + comp + '>' : 'Annotate <' + el.tagName.toLowerCase() + '>';
+    openElementCard(label, el, anchorFor(el), e.clientX, e.clientY);
   }, true);
 
   ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'dblclick'].forEach(type => {
@@ -595,10 +655,10 @@ function annotateClientJs({ transport = 'postMessage', version = '' } = {}) {
   ];
   const fns = [
     geometry.roundPoint, geometry.clampPoint, geometry.rawUnits, geometry.toAnchorUnits, geometry.fromAnchorUnits,
-    geometry.fitsAnchor, geometry.rdp, geometry.simplify, ...model.PURE_FUNCTIONS
+    geometry.fitsAnchor, geometry.rdp, geometry.simplify, ...model.PURE_FUNCTIONS, componentNameFor
   ].map(fn => fn.toString());
   const json = JSON.stringify(cfg).replace(/</g, '\\u003c');
-  return `'use strict';\n(() => {\n${consts.join('\n')}\n${fns.join('\n')}\n(${clientMain.toString()})(${json});\n})();\n`;
+  return `'use strict';\n(() => {\nconst compCache = new WeakMap();\n${consts.join('\n')}\n${fns.join('\n')}\n(${clientMain.toString()})(${json});\n})();\n`;
 }
 
-module.exports = { annotateClientJs };
+module.exports = { annotateClientJs, componentNameFor };
