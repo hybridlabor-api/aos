@@ -93,7 +93,7 @@ describe('aos-bus library', () => {
         const old = new Date(Date.now() - 60000);
         fs.utimesSync(reg, old, old);
         assert.equal(lib.touchSession('m1', process.pid + 1), false);
-        assert.equal(fs.statSync(reg).mtimeMs, old.getTime());
+        assert.equal(Math.round(fs.statSync(reg).mtimeMs), Math.round(old.getTime()));
         assert.equal(lib.touchSession('nope'), false);
         assert.equal(lib.touchSession('m1', process.pid), true);
         assert.ok(Date.now() - fs.statSync(reg).mtimeMs < 2000);
@@ -251,7 +251,7 @@ describe('plugin timers', () => {
             fs.writeFileSync(reg, JSON.stringify({ ...r, pid: process.ppid })); // taken over by another live process
             fs.utimesSync(reg, old, old);
             mock.timers.tick(5000);
-            assert.equal(fs.statSync(reg).mtimeMs, old.getTime(), 'foreign registration left alone');
+            assert.equal(Math.round(fs.statSync(reg).mtimeMs), Math.round(old.getTime()), 'foreign registration left alone');
         } finally { mock.timers.reset(); }
     });
 
