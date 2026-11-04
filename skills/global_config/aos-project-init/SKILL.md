@@ -135,7 +135,8 @@ Show every intended write as one list, then write on agreement.
 Then, only for what the interview enabled:
 
 ```bash
-cp ~/.claude/skills/aos-project-init/assets/openwikiignore.template .openwikiignore
+# NEVER run openwiki --init yourself. It needs a real terminal. Instruct the user to run:
+# NEVER run openwiki --init yourself. It needs a real terminal. Instruct the user to run:
 openwiki --init                # needs provider credentials in ~/.openwiki/.env (see /aos-setup)
 ```
 

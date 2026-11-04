@@ -29,7 +29,8 @@
         {
           "name": "bdb_resolume_official_mcp",
           "requires": {
-            "app": "resolume"
+            "app": "resolume",
+            "minVersion": "7.26.0"
           },
           "entry": {
             "command": "__RESOLUME_MCP__",

@@ -12,12 +12,12 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 F=$(mktemp -d)
 pass=0; fail=0
 chk(){ if eval "$2"; then echo "  ✅ $1"; pass=$((pass+1)); else echo "  ❌ $1"; fail=$((fail+1)); fi; }
-run(){ HOME=$F node "$REPO/installer.js" -y --platforms=2 >/dev/null 2>&1; }
+run(){ HOME=$F node "$REPO/installer.js" -y --platforms=2; }
 
 echo "throwaway HOME: $F"
 
 echo "── dry-run writes nothing AOS owns ──"
-HOME=$F node "$REPO/installer.js" --dry-run -y --platforms=2 >/dev/null 2>&1
+HOME=$F node "$REPO/installer.js" --dry-run -y --platforms=2
 chk "no AOS file created" '[ "$(find $F -type f -not -path "*/.npm/*" 2>/dev/null | wc -l | tr -d " ")" = "0" ]'
 chk "no memb-mcp venv created" "[ ! -d $F/.gemini/config/mcps/memb-mcp/.venv ]"
 
@@ -43,6 +43,14 @@ chk "stale hook replaced"     "grep -q 'aos-hook-version: 2' $F/.claude/hooks/me
 chk "workflows restored"      "[ -d $F/.claude/workflows ]"
 chk "stale skill replaced"    "! grep -q 'STALE' $F/.claude/skills/fabric/SKILL.md"
 chk "and backed up"           "ls $F/.claude/skills/fabric/SKILL.md.*.bak >/dev/null 2>&1"
+
+echo "── hook versions ──"
+echo '// aos-hook-version: 999' > $F/.claude/hooks/memb-inject.mjs
+run
+chk "newer hook on disk kept" "grep -q 'aos-hook-version: 999' $F/.claude/hooks/memb-inject.mjs"
+
+HOME=$F node "$REPO/installer.js" -y --platforms=2 --force
+chk "--force replaces newer hook" "grep -q 'aos-hook-version: 2' $F/.claude/hooks/memb-inject.mjs"
 
 echo "── the user's own files survive ──"
 mkdir -p $F/.claude/skills/my-own && echo 'MINE' > $F/.claude/skills/my-own/SKILL.md

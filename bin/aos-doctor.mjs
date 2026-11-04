@@ -789,6 +789,13 @@ async function checkHub() {
       `${tilde(hubFile)} not present (nothing written yet)`, '', true);
   }
 
+  const watchesFile = h('.aos', 'hub', 'watches.json');
+  const watches = readJson(watchesFile) || [];
+  const statusObj = readJson(h('.aos', 'status.json'));
+  const lastTickTime = statusObj && statusObj.at ? new Date(statusObj.at).toISOString() : 'never';
+  add('hub', 'Inbox Watches', true,
+    `${watches.length} active watch(es)${watches.length ? `; last tick: ${lastTickTime}` : ''}`, '', true);
+
   const backupRoots = [h('.aos', 'store')];
   try {
     const storeDir = h('.aos', 'store');

@@ -12,7 +12,7 @@ const lib = path.join(root, 'skills/global_config/plan-canvas/scripts/lib/plan-c
 const geo = require(path.join(lib, 'annotate-client/geometry.js'));
 const model = require(path.join(lib, 'annotate-client/model.js'));
 const toolbar = require(path.join(lib, 'annotate-client/toolbar.js'));
-const { annotateClientJs } = require(path.join(lib, 'annotate-client/index.js'));
+const { annotateClientJs, componentNameFor } = require(path.join(lib, 'annotate-client/index.js'));
 const { artifactSdkJs } = require(path.join(lib, 'sdk.js'));
 
 const box = { left: 100, top: 200, width: 300, height: 50 };
@@ -351,7 +351,7 @@ describe('bundle smoke run against a generic DOM stub (logic only, not a browser
 
   test('H1 app mode: element tool swallows clicks on buttons and links, Alt passes through; iframe keeps them live', () => {
     const script = { getAttribute: k => ({ 'data-session': 'abcdef012345', 'data-token': 'tok' }[k]), src: 'http://127.0.0.1:4519/annotate.js?v=1' };
-    const fakeEl = tagName => ({ nodeType: 1, tagName, id: '', parentElement: null, previousElementSibling: null, isContentEditable: false, classList: [], matches: () => false, closest: () => null, getBoundingClientRect: () => ({ left: 1, top: 1, width: 10, height: 10 }) });
+    const fakeEl = tagName => ({ nodeType: 1, tagName, id: '', getAttribute: () => null, parentElement: null, previousElementSibling: null, isContentEditable: false, classList: [], matches: () => false, closest: () => null, getBoundingClientRect: () => ({ left: 1, top: 1, width: 10, height: 10 }) });
     const click = (el, extra = {}) => {
       const calls = [];
       return { calls, ev: { target: el, clientX: 5, clientY: 5, preventDefault: () => calls.push('prevent'), stopPropagation: () => calls.push('stop'), ...extra } };
@@ -382,5 +382,33 @@ describe('bundle smoke run against a generic DOM stub (logic only, not a browser
     const { win, posts } = runBundle('postMessage', { code });
     vm.runInNewContext(code, win);
     assert.equal(posts.length, 1);
+  });
+
+  test('componentNameFor resolves component names correctly', () => {
+    const { win } = runBundle('fetch', { code: annotateClientJs({ transport: 'fetch', version: '1.1.0' }) });
+    const el = (tagName, attrs = {}, classList = [], props = {}) => ({
+      nodeType: 1,
+      tagName,
+      getAttribute: k => attrs[k] || null,
+      classList,
+      parentElement: null,
+      closest: () => null,
+      ...props
+    });
+
+    const fakeEl = el('DIV');
+    const fakeReactEl = el('DIV', {}, [], { __reactFiber$xyz: { type: { name: 'MyReactComponent' } } });
+    const fakeVueEl = el('DIV', {}, [], { __vueParentComponent: { type: { name: 'MyVueComponent' } } });
+    const fakeDataEl = el('DIV', { 'data-component': 'DataComponent' });
+    const fakeTestIdEl = el('DIV', { 'data-testid': 'TestIdComponent' });
+    const fakeClassEl = el('DIV', {}, ['sidebar']);
+
+    const fakeDoc = { body: {}, documentElement: {} };
+    assert.equal(componentNameFor(fakeReactEl, fakeDoc), 'MyReactComponent');
+    assert.equal(componentNameFor(fakeVueEl, fakeDoc), 'MyVueComponent');
+    assert.equal(componentNameFor(fakeDataEl, fakeDoc), 'DataComponent');
+    assert.equal(componentNameFor(fakeTestIdEl, fakeDoc), 'TestIdComponent');
+    assert.equal(componentNameFor(fakeClassEl, fakeDoc), null, 'should not guess from CSS classes');
+    assert.equal(componentNameFor(fakeEl, fakeDoc), null);
   });
 });
