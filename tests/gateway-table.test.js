@@ -50,4 +50,22 @@ test('mapKey reads the row root; unknown kinds keep mcpServers', () => {
     assert.equal(harness.mapKey('nope'), 'mcpServers');
 });
 
+test('every row has valid skills_mode, skills_dir, rules_file, and plugin schema', () => {
+    const validModes = new Set(['native', 'plugin', 'symlink', 'copy', 'none']);
+    const validPlugins = new Set(['none', 'commands+agents', 'hooks', 'full']);
+    for (const r of rows) {
+        assert.ok(validModes.has(r.skills_mode), `${r.id}: invalid skills_mode ${r.skills_mode}`);
+        assert.ok(r.skills_dir === null || typeof r.skills_dir === 'string', `${r.id}: skills_dir must be string or null`);
+        assert.ok(r.rules_file === null || typeof r.rules_file === 'string', `${r.id}: rules_file must be string or null`);
+        assert.ok(validPlugins.has(r.plugin), `${r.id}: invalid plugin ${r.plugin}`);
+    }
+    const cursor = rows.find((r) => r.id === 'cursor');
+    assert.equal(cursor.skills_dir, '~/.cursor/skills');
+    assert.equal(cursor.skills_mode, 'copy');
+    const agy = rows.find((r) => r.id === 'agy');
+    assert.equal(agy.skills_dir, '~/.gemini/config/plugins/bdb-aos/skills');
+    assert.equal(agy.skills_mode, 'plugin');
+    assert.equal(agy.plugin, 'full');
+});
+
 // Runtime-added row case skipped: lib/harnesses.json is loaded once and the loader has no override path.

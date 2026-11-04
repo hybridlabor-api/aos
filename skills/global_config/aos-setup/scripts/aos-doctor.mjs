@@ -86,6 +86,7 @@ const runDeja = (args) => execFileSync('deja', args, { encoding: 'utf8', timeout
 function portOpen(port, timeout = 1200) {
   return new Promise((resolve) => {
     const s = connect({ host: '127.0.0.1', port });
+    s.unref();
     const done = (v) => { s.destroy(); resolve(v); };
     s.setTimeout(timeout);
     s.once('connect', () => done(true));
@@ -636,4 +637,4 @@ await checkSynapse();
 checkWorktrees();
 checkReaMcp();
 report();
-process.exit(results.some(r => !r.ok) ? 1 : 0);
+process.exitCode = results.some(r => !r.ok) ? 1 : 0;
