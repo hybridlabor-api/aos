@@ -1,33 +1,39 @@
 [project]
-name = "blender-mcp"
-version = "1.6.0"
-description = "Blender integration through the Model Context Protocol"
+name = "mcp-for-blender"
+version = "2.2.6"
+description = "Open source Blender integration through the Model Context Protocol (not affiliated with Blender Foundation)"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Siddharth Ahuja", email = "ahujasid@gmail.com"}
 ]
-license = {text = "MIT"}
+license = "MIT"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "mcp[cli]>=1.3.0,<2.0.0",
+    "mcp>=1.26.0,<2",
     "httpx>=0.27.0",
 ]
 
 [project.scripts]
-blender-mcp = "blender_mcp.server:main"
+mcp-for-blender = "blender_mcp.server:main"
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py"]
+testpaths = ["tests"]
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.setuptools.package-data]
+blender_mcp = ["bundled/addon.py", "apps/*.html", "guides/*.md"]
+
 [project.urls]
-"Homepage" = "https://github.com/yourusername/blender-mcp"
-"Bug Tracker" = "https://github.com/yourusername/blender-mcp/issues"
+"Homepage" = "https://github.com/ahujasid/blender-mcp"
+"Bug Tracker" = "https://github.com/ahujasid/blender-mcp/issues"

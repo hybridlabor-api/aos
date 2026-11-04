@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 import {
   captureFailure,
   computeErrorSig,
@@ -49,6 +53,102 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
 
     assert.ok(typeof sig1 === 'string' && sig1.length === 32, 'signature must be 32-char hex string');
     assert.equal(sig1, sig2, 'signatures must match after path, timestamp, and line number normalization');
+  });
+
+  test('captureFailure maps known pattern to mode and stores trace_id', () => {
+    const errorText = 'SomeWeirdError: timeout waiting for operation';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+      trace_id: 'trace-1234',
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'timeout', 'mode must map from known pattern in text');
+    assert.equal(result.record.trace_id, 'trace-1234', 'trace_id must be stored');
+  });
+
+  test('captureFailure maps leading error class first', () => {
+    const errorText = 'AssertionError: expected false to be true in test_parse\n    at /Users/testuser/work/test.js:10:5\n    at function_x (TypeError: something went wrong)';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'assertion_failure', 'mode must match leading error class AssertionError');
+  });
+
+  test('captureFailure reads trace_id from environment if missing in params', () => {
+    process.env.AOS_TRAIL_NODE = 'env-node-123';
+    const errorText = 'NetworkError: disconnected';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.trace_id, 'env-node-123', 'trace_id must be read from environment AOS_TRAIL_NODE');
+    delete process.env.AOS_TRAIL_NODE;
+  });
+
+  test('captureFailure emits visible warning to stderr on malformed failure-modes.json and falls back to unknown', () => {
+    const modesPath = path.join(__dirname, '..', 'evolve', 'failure-modes.json');
+    const originalContent = fs.readFileSync(modesPath, 'utf8');
+    fs.writeFileSync(modesPath, '{ malformed: json ]');
+
+    const errorText = 'SomeWeirdError: something went wrong';
+
+    // Capture stderr
+    const originalStderrWrite = process.stderr.write;
+    let stderrOutput = '';
+    process.stderr.write = (chunk, encoding, callback) => {
+      stderrOutput += chunk.toString();
+      if (callback) callback();
+      return true;
+    };
+
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    // Restore stderr
+    process.stderr.write = originalStderrWrite;
+
+    // Restore modes file
+    fs.writeFileSync(modesPath, originalContent);
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'unknown', 'mode must fallback to unknown');
+    assert.ok(stderrOutput.includes('Warning: Failed to parse evolve/failure-modes.json'), 'stderr must contain warning about malformed json');
+  });
+
+  test('captureFailure maps unknown error to unknown mode', () => {
+    const errorText = 'SomeWeirdError: something went wrong';
+    const result = captureFailure({
+      error: errorText,
+      skill: 'clean-code',
+      kind: 'test',
+      storagePath: testStorePath,
+      home: fakeHome,
+    });
+
+    assert.ok(result.ok, 'capture must succeed');
+    assert.equal(result.record.mode, 'unknown', 'mode must be unknown for unmapped error');
+    assert.equal(result.record.trace_id, undefined, 'trace_id must not be present if not provided');
   });
 
   test('captureFailure writes new failure record and enforces 0600 file and 0700 dir permissions', () => {

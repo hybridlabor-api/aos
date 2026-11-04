@@ -5,6 +5,7 @@ import { extractToolSchemas } from './parameter-audit-schema.mjs';
 import {
   argumentSignature,
   captureTestSuites,
+  caseParameters,
   groupCasesByTool,
   liveReportCases
 } from './parameter-audit-suites.mjs';
@@ -22,7 +23,7 @@ function staticCasesFromSuites(suites) {
         toolName: testCase.toolName,
         action: args.action,
         expected: testCase.expected,
-        parameters: Object.keys(args).filter((key) => key !== 'action').sort(),
+        parameters: caseParameters(args),
         signature: argumentSignature(args)
       });
     }
@@ -39,7 +40,8 @@ function summarizeToolCoverage(schema, casesByTool, parameterCoverageCasesByTool
   const required = new Set(schema.required);
   const optionalParameters = schema.properties.filter((property) => !required.has(property) && property !== 'action');
   const declaredProperties = new Set(schema.properties);
-  const declaredActions = new Set(schema.actions);
+  // A folded family still serves its old names, so a case exercising one is not an extra action.
+  const declaredActions = new Set([...schema.actions, ...(schema.foldedActions ?? [])]);
   const missingOptionalParameters = optionalParameters.filter((parameter) => !successfulParameters.has(parameter)).sort();
 
   return {

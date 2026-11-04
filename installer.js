@@ -1041,6 +1041,12 @@ function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
     return 'kept';
 }
 
+function getHookVersion(content) {
+    if (!content) return null;
+    const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
+    return m ? parseInt(m[1], 10) : null;
+}
+
 function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes, shippedHashes = SHIPPED_HASHES) {
     const sourceHash = computeFileHash(sourcePath);
     if (!sourceHash) {
@@ -1060,6 +1066,21 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
         fs.copyFileSync(sourcePath, targetPath);
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
         return 'wrote';
+    }
+
+    const force = process.argv.includes('--force') || Boolean(process.env.AOS_FORCE);
+    if (path.basename(targetPath).endsWith('.mjs') || path.basename(targetPath).endsWith('.js')) {
+        const sourceContent = fs.readFileSync(sourcePath, 'utf8');
+        const targetContent = fs.readFileSync(targetPath, 'utf8');
+        const sourceVersion = getHookVersion(sourceContent);
+        const targetVersion = getHookVersion(targetContent);
+
+        if (sourceVersion !== null && targetVersion !== null) {
+            if (targetVersion > sourceVersion && !force) {
+                log.warn(`Disk hook file ${targetPath} (v${targetVersion}) is newer than the shipped one (v${sourceVersion}); keeping the disk file. Use --force to overwrite.`);
+                return 'kept';
+            }
+        }
     }
 
     // Rebuilt on every pack and unable to contain its own hash, so an older copy is never a user edit.
@@ -1198,23 +1219,36 @@ function initSessionManifest(existingManifest, sourceDirs) {
     _sessionHashes = buildKnownSourceHashes(sourceDirs);
 }
 
+// Resolves tokens in harness skill directory paths from lib/harnesses.json
+function resolveHarnessSkillDir(dirStr, targetHome = homeDir) {
+    if (!dirStr || typeof dirStr !== 'string') return null;
+    if (dirStr.startsWith('~')) {
+        return path.join(targetHome, dirStr.slice(1).replace(/^[\\/]+/, ''));
+    }
+    if (dirStr.startsWith('$HOME')) {
+        return path.join(targetHome, dirStr.slice(5).replace(/^[\\/]+/, ''));
+    }
+    if (dirStr.startsWith('$CLAUDE_CONFIG_DIR')) {
+        return path.join(claudeConfigDir(targetHome), dirStr.slice(18).replace(/^[\\/]+/, ''));
+    }
+    return path.resolve(dirStr);
+}
+
 // The exact roots syncSkillsToGlobalHarnesses and the Gemini/Antigravity
-// config-skills path write into. Pruning only touches a manifest entry whose
-// path starts under one of these -- never one that merely contains a
-// "skills" segment somewhere deeper, which is what let the MCP-bundle and
-// workspace_agents cases above leak in during testing.
+// config-skills path write into, driven directly from lib/harnesses.json. Pruning only touches
+// a manifest entry whose path starts under one of these.
 function globalSkillDestRoots() {
-    return [
-        path.join(homeDir, '.agents', 'skills'),
-        path.join(claudeConfigDir(homeDir), 'skills'),
-        path.join(homeDir, '.codex', 'skills'),
-        path.join(homeDir, '.cursor', 'skills'),
-        path.join(homeDir, '.roo', 'skills'),
-        path.join(homeDir, '.config', 'opencode', 'skills'),
-        path.join(homeDir, '.windsurf', 'bdb-skills'),
-        path.join(homeDir, '.aider', 'bdb-skills'),
-        path.join(geminiDir, 'config', 'skills'),
-    ];
+    let rows = [];
+    try { rows = require('./lib/harnesses.json'); } catch (_) {}
+    const roots = new Set();
+    roots.add(path.join(homeDir, '.agents', 'skills'));
+    for (const row of rows) {
+        if (!row.skills_dir) continue;
+        const resolved = resolveHarnessSkillDir(row.skills_dir, homeDir);
+        if (resolved) roots.add(resolved);
+    }
+    roots.add(path.join(geminiDir, 'config', 'skills'));
+    return [...roots];
 }
 
 // Retires skills the package no longer ships (lib/retired-skills.js). Edited or foreign files are
@@ -2210,7 +2244,7 @@ function cleanEmptySkillDirs(dir) {
 // skills (e.g. hardware-pcb) also present in ~/.agents/skills are backed up and retired when file
 // hashes match; edited copies stay and are reported.
 function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, rootDir = null, label = 'Codex', tag = 'codex-skills', keep = null, onlyNames = null } = {}) {
-    if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return { removed: [], leftover: [] };
+    if (DRY_RUN || !manifest) return { removed: [], leftover: [] };
     const targetHome = home || homeDir;
     const root = rootDir || path.join(targetHome, '.codex', 'skills');
     if (!fs.existsSync(root)) return { removed: [], leftover: [] };
@@ -2373,19 +2407,23 @@ function agyExcludeList(skillsBase, excludeSkills = []) {
     return [...new Set([...excludeSkills, ...agyLeafNames(skillsBase).filter((n) => !isAgyRouter(n))])];
 }
 
-function retireAgySkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+function retireAgySkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, retireRouters = null } = {}) {
     const root = path.join(home, '.gemini', 'config', 'skills');
     if (!manifest || !fs.existsSync(root)) return { removed: [], leftover: [] };
     const agentsSkills = path.join(home, '.agents', 'skills');
     const prefix = path.resolve(root) + path.sep;
+    const pluginActive = retireRouters !== null ? Boolean(retireRouters) : (
+        fs.existsSync(path.join(home, '.gemini', 'config', 'plugins', 'bdb-aos')) ||
+        fs.existsSync(path.join(home, '.agents', '.bdb-agy-plugin.json'))
+    );
     // Only skills that ~/.agents/skills also holds are retired, so no skill ever disappears from agy entirely.
     const owned = {};
     for (const [f, v] of Object.entries(manifest)) {
         if (typeof f !== 'string' || !path.resolve(f).startsWith(prefix)) continue;
         const name = path.resolve(f).slice(prefix.length).split(path.sep)[0];
-        if (!isAgyRouter(name) && fs.existsSync(path.join(agentsSkills, name))) owned[f] = v;
+        if ((pluginActive || !isAgyRouter(name)) && fs.existsSync(path.join(agentsSkills, name))) owned[f] = v;
     }
-    const keep = new Set(fs.readdirSync(root).filter((n) => isAgyRouter(n)));
+    const keep = pluginActive ? null : new Set(fs.readdirSync(root).filter((n) => isAgyRouter(n)));
     const sub = { ...owned };
     const r = retireCodexSkillCopies(sub, { home, rootDir: root, label: 'Antigravity', tag: 'agy-skills', keep, onlyNames: new Set(Object.keys(owned).map((f) => path.resolve(f).slice(prefix.length).split(path.sep)[0])) });
     for (const f of Object.keys(owned)) if (!(f in sub)) delete manifest[f];
@@ -2498,32 +2536,42 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
     }
 }
 
+const HARNESS_ID_TO_DETECT_KEY = {
+    claude: 'claudecode',
+    cursor: 'cursor',
+    windsurf: 'windsurf',
+    aider: 'aider',
+    roo: 'vscode',
+    opencode: 'opencode',
+    codex: 'codex',
+    agy: 'antigravity',
+};
+
 function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
     const pluginCovered = ignorePluginCoverage ? new Set() : runPluginMigration().covered;
 
-    // Mirror only into harnesses that are actually present. This list used to
-    // be unconditional, which both wrote skills nobody would read and planted
-    // the very directories detectPlatforms() then read back as proof the
-    // harness existed. ~/.agents is ours and always written.
+    // Mirror only into harnesses that are actually present, driven directly from lib/harnesses.json.
+    // ~/.agents is ours and always written.
     const detectedKeys = new Set(detectPlatforms().map((d) => d.key));
-    // No `|| fs.existsSync(d.dir)` fallback here on purpose: that fallback
-    // used to mean a directory AOS itself planted in a past run (before a
-    // harness was ever really detected) kept being "detected" forever,
-    // regardless of what detectPlatforms() found this run -- the exact
-    // circularity the block comment above warns about, just one layer down.
-    // A harness that stops being detected now simply stops receiving skill
-    // updates instead of perpetuating a false positive.
-    return [
+    let rows = [];
+    try { rows = require('./lib/harnesses.json'); } catch (_) {}
+
+    const dests = [
         { dir: path.join(homeDir, '.agents', 'skills'), key: null },
-        { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
-        { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
-        { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
-        // Skipped once skills.paths lists ~/.agents/skills: a second copy is listed twice (#187).
-        ...(opencodeUsesAgentsSkills() ? [] : [{ dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' }]),
-        // Same dirs the fresh install writes for platforms 6 and 8 (resolveTargetPaths), so update refreshes them too.
-        { dir: path.join(homeDir, '.windsurf', 'bdb-skills'), key: 'windsurf' },
-        { dir: path.join(homeDir, '.aider', 'bdb-skills'), key: 'aider' },
-    ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
+    ];
+
+    for (const row of rows) {
+        if (!row.skills_dir || row.skills_mode === 'none' || row.skills_mode === 'plugin') continue;
+        if (row.id === 'opencode' && opencodeUsesAgentsSkills(homeDir)) continue;
+        if (row.skills_mode === 'native' && row.id !== 'opencode') continue;
+        const key = HARNESS_ID_TO_DETECT_KEY[row.id] || row.id;
+        const resolved = resolveHarnessSkillDir(row.skills_dir, homeDir);
+        if (resolved) {
+            dests.push({ dir: resolved, key });
+        }
+    }
+
+    return dests.filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
 const TAURI_PILOT_VERSION = '0.8.1';
@@ -4661,10 +4709,10 @@ function resolveTargetPaths(platformValue, customPaths) {
         // per-platform path did not.
         if (process.platform !== 'linux') extraMcpConfigPaths = [path.join(homeDir, '.claude.json')];
     } else if (platformValue === '3') {
-        targetSkillDir = path.join(currentDir, '.cursor', 'bdb-skills');
-        targetLegacyDir = path.join(currentDir, '.cursor', 'bdb-skills', 'legacy');
-        targetWorkspaceDir = path.join(currentDir, '.cursor', 'workspace_skills');
-        targetMcpDir = path.join(currentDir, '.cursor');
+        targetSkillDir = path.join(homeDir, '.cursor', 'skills');
+        targetLegacyDir = path.join(homeDir, '.cursor', 'skills', 'legacy');
+        targetWorkspaceDir = path.join(homeDir, '.cursor', 'workspace_skills');
+        targetMcpDir = path.join(homeDir, '.cursor');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '5') {
         // Codex reads ~/.agents/skills too; a second copy under ~/.codex/skills would list every skill twice.
@@ -6051,6 +6099,9 @@ function injectHarnessRules() {
             installStep(`sync ${homeAgentsPath}`, () => {
                 if (!fs.existsSync(homeAgentsPath)) {
                     fs.writeFileSync(homeAgentsPath, '# Global Agent Rules\n\n');
+                    if (_sessionManifest) {
+                        _sessionManifest[homeAgentsPath] = { path: homeAgentsPath, sha256: computeFileHash(homeAgentsPath), version: pkg.version, installedAt: new Date().toISOString() };
+                    }
                     log.step(`Created missing ${homeAgentsPath}`);
                 }
                 const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
@@ -6062,6 +6113,9 @@ function injectHarnessRules() {
                 next = upsertRoutingBlock(upsertDestructiveBlock(next));
                 if (next !== agentsContent) {
                     fs.writeFileSync(homeAgentsPath, next);
+                    if (_sessionManifest) {
+                        _sessionManifest[homeAgentsPath] = { path: homeAgentsPath, sha256: computeFileHash(homeAgentsPath), version: pkg.version, installedAt: new Date().toISOString() };
+                    }
                     log.step(`Synced managed blocks in ${homeAgentsPath}`);
                 }
             }, '~/AGENTS.md is unchanged.');
@@ -8630,33 +8684,8 @@ async function main() {
         return;
     }
     if (args[0] === 'project') {
-        const pAgents = path.join(currentDir, 'AGENTS.md');
-        const pClaude = path.join(currentDir, 'CLAUDE.md');
-        const pGemini = path.join(currentDir, 'GEMINI.md');
-        const tmplPath = path.join(srcDir, 'skills', 'global_config', 'aos-project-init', 'assets', 'AGENTS.template.md');
-        if (!fs.existsSync(pAgents)) {
-            const template = fs.existsSync(tmplPath) ? fs.readFileSync(tmplPath, 'utf8') : '# Agents\n';
-            fs.writeFileSync(pAgents, template.replace('<PROJECT NAME>', path.basename(currentDir)));
-            log.step(`Wrote ${pAgents}`);
-        } else {
-            log.step(`Skipped ${pAgents} (already exists)`);
-        }
-        for (const pt of [pClaude, pGemini]) {
-            if (fs.existsSync(pt)) {
-                log.step(`Skipped ${pt} (already exists)`);
-            } else {
-                if (process.platform === 'win32') {
-                    fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
-                } else {
-                    try {
-                        fs.symlinkSync('AGENTS.md', pt);
-                    } catch (e) {
-                        fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
-                    }
-                }
-                log.step(`Wrote ${pt} pointer to AGENTS.md`);
-            }
-        }
+        const { runProjectInit } = require('./lib/project-init.js');
+        runProjectInit({ args, currentDir, srcDir, log, platform: process.platform });
         return;
     }
     if (args[0] === 'context') {
