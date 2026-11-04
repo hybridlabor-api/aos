@@ -14,6 +14,54 @@ const { toolbarCss, toolbarHtml } = require('./toolbar');
 const { rawUnits, toAnchorUnits, fromAnchorUnits, fitsAnchor } = geometry;
 const { createDraft, draftAdd, draftUndo, draftRedo, draftClear, makeShape, buildItem, chunkItems, shapeSummary } = model;
 
+const compCache = new WeakMap();
+
+function componentNameFor(el, docObject) {
+  if (!el || el.nodeType !== 1) return null;
+  if (compCache.has(el)) return compCache.get(el);
+  const doc = docObject || (typeof document !== 'undefined' ? document : el.ownerDocument);
+  const body = doc ? doc.body : null;
+  const docElem = doc ? doc.documentElement : null;
+
+  function resolve() {
+    const compAttr = el.getAttribute('data-component') || (el.closest && el.closest('[data-component]') ? el.closest('[data-component]').getAttribute('data-component') : null);
+    if (compAttr) return compAttr;
+
+    for (let curr = el; curr && curr !== body && curr !== docElem; curr = curr.parentElement) {
+      const fiberKey = Object.keys(curr).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+      if (fiberKey) {
+        let fiber = curr[fiberKey];
+        while (fiber) {
+          const type = fiber.type;
+          if (typeof type === 'function' && type.name) {
+            const name = type.displayName || type.name;
+            if (!/^(Fragment|Provider|Consumer|_default|Anonymous|styled|Connect|Route|Router)$/.test(name)) return name;
+          } else if (type && typeof type === 'object' && (type.displayName || type.name)) {
+            const name = type.displayName || type.name;
+            if (!/^(Fragment|Provider|Consumer|_default)$/.test(name)) return name;
+          }
+          fiber = fiber.return;
+        }
+      }
+    }
+
+    for (let curr = el; curr && curr !== body && curr !== docElem; curr = curr.parentElement) {
+      if (curr.__vueParentComponent && curr.__vueParentComponent.type && curr.__vueParentComponent.type.name) {
+        return curr.__vueParentComponent.type.name;
+      }
+    }
+
+    const testId = el.getAttribute('data-testid') || (el.closest && el.closest('[data-testid]') ? el.closest('[data-testid]').getAttribute('data-testid') : null);
+    if (testId) return testId;
+
+    return null;
+  }
+
+  const name = resolve();
+  compCache.set(el, name);
+  return name;
+}
+
 // Runs in the browser. Free identifiers are the inlined pure helpers above.
 function clientMain(CFG) {
   const FETCH = CFG.transport === 'fetch';
@@ -141,60 +189,6 @@ function clientMain(CFG) {
   function boxOf(el) {
     const r = el.getBoundingClientRect();
     return { left: r.left + window.scrollX, top: r.top + window.scrollY, width: r.width, height: r.height };
-  }
-  function componentNameFor(el) {
-    if (!el || el.nodeType !== 1) return null;
-    const compAttr = el.getAttribute('data-component') || (el.closest && el.closest('[data-component]') ? el.closest('[data-component]').getAttribute('data-component') : null);
-    if (compAttr) return compAttr;
-    const testId = el.getAttribute('data-testid') || (el.closest && el.closest('[data-testid]') ? el.closest('[data-testid]').getAttribute('data-testid') : null);
-    if (testId) return testId;
-
-    for (let curr = el; curr && curr !== document.body && curr !== document.documentElement; curr = curr.parentElement) {
-      const fiberKey = Object.keys(curr).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
-      if (fiberKey) {
-        let fiber = curr[fiberKey];
-        while (fiber) {
-          const type = fiber.type;
-          if (typeof type === 'function' && type.name) {
-            const name = type.displayName || type.name;
-            if (!/^(Fragment|Provider|Consumer|_default|Anonymous|styled|Connect|Route|Router)$/.test(name)) return name;
-          } else if (type && typeof type === 'object' && (type.displayName || type.name)) {
-            const name = type.displayName || type.name;
-            if (!/^(Fragment|Provider|Consumer|_default)$/.test(name)) return name;
-          }
-          fiber = fiber.return;
-        }
-      }
-    }
-
-    for (let curr = el; curr && curr !== document.body && curr !== document.documentElement; curr = curr.parentElement) {
-      if (curr.__vueParentComponent && curr.__vueParentComponent.type && curr.__vueParentComponent.type.name) {
-        return curr.__vueParentComponent.type.name;
-      }
-    }
-
-    const role = el.getAttribute('role');
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'aside' || role === 'complementary') return 'Sidebar';
-    if (tag === 'nav' || role === 'navigation') return 'Navigation';
-    if (tag === 'header' || role === 'banner') return 'Header';
-    if (tag === 'footer' || role === 'contentinfo') return 'Footer';
-    if (tag === 'button' || role === 'button') return 'Button';
-    if (tag === 'dialog' || role === 'dialog') return 'Modal';
-
-    if (el.classList && el.classList.length) {
-      for (const cls of Array.from(el.classList)) {
-        if (/sidebar/i.test(cls)) return 'Sidebar';
-        if (/device[-_]?card|room[-_]?card|stat[-_]?card/i.test(cls)) return 'DeviceCard';
-        if (/card/i.test(cls)) return 'Card';
-        if (/modal|dialog/i.test(cls)) return 'Modal';
-        if (/toggle|switch/i.test(cls)) return 'ToggleSwitch';
-        if (/slider/i.test(cls)) return 'Slider';
-        if (/navbar|topbar|header/i.test(cls)) return 'TopBar';
-        if (/menu/i.test(cls)) return 'Menu';
-      }
-    }
-    return null;
   }
 
   function anchorFor(el) {
@@ -661,10 +655,10 @@ function annotateClientJs({ transport = 'postMessage', version = '' } = {}) {
   ];
   const fns = [
     geometry.roundPoint, geometry.clampPoint, geometry.rawUnits, geometry.toAnchorUnits, geometry.fromAnchorUnits,
-    geometry.fitsAnchor, geometry.rdp, geometry.simplify, ...model.PURE_FUNCTIONS
+    geometry.fitsAnchor, geometry.rdp, geometry.simplify, ...model.PURE_FUNCTIONS, componentNameFor
   ].map(fn => fn.toString());
   const json = JSON.stringify(cfg).replace(/</g, '\\u003c');
-  return `'use strict';\n(() => {\n${consts.join('\n')}\n${fns.join('\n')}\n(${clientMain.toString()})(${json});\n})();\n`;
+  return `'use strict';\n(() => {\nconst compCache = new WeakMap();\n${consts.join('\n')}\n${fns.join('\n')}\n(${clientMain.toString()})(${json});\n})();\n`;
 }
 
-module.exports = { annotateClientJs };
+module.exports = { annotateClientJs, componentNameFor };

@@ -12,7 +12,7 @@ const lib = path.join(root, 'skills/global_config/plan-canvas/scripts/lib/plan-c
 const geo = require(path.join(lib, 'annotate-client/geometry.js'));
 const model = require(path.join(lib, 'annotate-client/model.js'));
 const toolbar = require(path.join(lib, 'annotate-client/toolbar.js'));
-const { annotateClientJs } = require(path.join(lib, 'annotate-client/index.js'));
+const { annotateClientJs, componentNameFor } = require(path.join(lib, 'annotate-client/index.js'));
 const { artifactSdkJs } = require(path.join(lib, 'sdk.js'));
 
 const box = { left: 100, top: 200, width: 300, height: 50 };
@@ -396,46 +396,19 @@ describe('bundle smoke run against a generic DOM stub (logic only, not a browser
       ...props
     });
 
-    // Helper to evaluate componentNameFor logic within the stubbed window
-    // Since componentNameFor is not exported, we test it through the UI logic
-    // We will simulate a click and check the label in openElementCard.
     const fakeEl = el('DIV');
     const fakeReactEl = el('DIV', {}, [], { __reactFiber$xyz: { type: { name: 'MyReactComponent' } } });
     const fakeVueEl = el('DIV', {}, [], { __vueParentComponent: { type: { name: 'MyVueComponent' } } });
     const fakeDataEl = el('DIV', { 'data-component': 'DataComponent' });
     const fakeTestIdEl = el('DIV', { 'data-testid': 'TestIdComponent' });
-    const fakeSemanticEl = el('ASIDE');
-    const fakeClassEl = el('DIV', {}, ['sidebar', 'other']);
+    const fakeClassEl = el('DIV', {}, ['sidebar']);
 
-    const click = (target) => {
-      const calls = [];
-      return {
-        calls,
-        ev: { target, clientX: 5, clientY: 5, preventDefault: () => {}, stopPropagation: () => {} }
-      };
-    };
-
-    // We can't directly check componentNameFor, but we can verify if the card is opened with correct label
-    // We need a way to capture `openElementCard`. Since `openElementCard` is internal, we can check `componentNameFor` logic independently or rely on the fact that if we implemented it, we can expose it or use a simpler standalone test logic if needed. However, the requirement is to verify it here. Let's extract componentNameFor from the bundle or replicate it if we just want to ensure it's there.
-
-    // Instead of full integration, let's just make sure it parses and we can extract the function string and test it.
-    const code = annotateClientJs({ transport: 'fetch' });
-    const compMatch = code.match(/function componentNameFor\(el\)\s*{[\s\S]*?return null;\s*}/);
-    assert.ok(compMatch, 'componentNameFor function is in the bundle');
-
-    const componentNameForStr = compMatch[0];
-    const componentNameFor = new Function('el', `
-      const document = { body: {}, documentElement: {} };
-      ${componentNameForStr}
-      return componentNameFor(el);
-    `);
-
-    assert.equal(componentNameFor(fakeReactEl), 'MyReactComponent');
-    assert.equal(componentNameFor(fakeVueEl), 'MyVueComponent');
-    assert.equal(componentNameFor(fakeDataEl), 'DataComponent');
-    assert.equal(componentNameFor(fakeTestIdEl), 'TestIdComponent');
-    assert.equal(componentNameFor(fakeSemanticEl), 'Sidebar');
-    assert.equal(componentNameFor(fakeClassEl), 'Sidebar');
-    assert.equal(componentNameFor(fakeEl), null);
+    const fakeDoc = { body: {}, documentElement: {} };
+    assert.equal(componentNameFor(fakeReactEl, fakeDoc), 'MyReactComponent');
+    assert.equal(componentNameFor(fakeVueEl, fakeDoc), 'MyVueComponent');
+    assert.equal(componentNameFor(fakeDataEl, fakeDoc), 'DataComponent');
+    assert.equal(componentNameFor(fakeTestIdEl, fakeDoc), 'TestIdComponent');
+    assert.equal(componentNameFor(fakeClassEl, fakeDoc), null, 'should not guess from CSS classes');
+    assert.equal(componentNameFor(fakeEl, fakeDoc), null);
   });
 });
