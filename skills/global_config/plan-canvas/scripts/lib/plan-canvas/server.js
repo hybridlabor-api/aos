@@ -235,7 +235,6 @@ function homeData(store) {
 function createPlanCanvasServer({
   store,
   host = DEFAULT_HOST,
-  allowHosts = [],
   version = '0.0.0',
   idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
   heartbeatMs = 15000,
@@ -254,7 +253,7 @@ function createPlanCanvasServer({
   // loopback-reachable workspace path — clients are the local CLI and the same-origin canvas page.
   const serverRoot = realRoot(workspaceRoot);
 
-  const allowedHostnames = buildAllowedHostnames(host, allowHosts);
+  const allowedHostnames = buildAllowedHostnames(host);
   const annotate = createAnnotateHandler({
     store,
     version,

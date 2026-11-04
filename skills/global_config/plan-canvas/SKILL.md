@@ -331,7 +331,6 @@ aos-plan-canvas await <file> --reply "Reworked the risk table."
 | `AOS_PLAN_CANVAS_STATE_DIR` | Session state directory | `~/.claude/aos-plan-canvas` |
 | `AOS_PLAN_CANVAS_IDLE_MS` | Idle shutdown timeout (`0` or `off` = never) | 30 minutes |
 | `AOS_PLAN_CANVAS_MERMAID_URL` | Mermaid ESM mirror | pinned jsDelivr CDN |
-| `AOS_PLAN_CANVAS_ALLOW_HOSTS` | Comma-separated list of allowed hostnames (e.g. for tailnet access) | empty |
 
 Plan Canvas is reachable from the AOS Hub (`aos hub`); `aos --autostart-plan-canvas` registers an opt-in login server (idle exit off).
 

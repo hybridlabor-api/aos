@@ -117,7 +117,7 @@ function checkHarness() {
     ['.claude/settings.json', 'project hook wiring'],
   ]) {
     add('harness', rel, existsSync(p(rel)), existsSync(p(rel)) ? what : `missing — ${what} unavailable here`,
-      'npx' + ' -y @hybridlabor-api/aos --project-harness   (run inside the project)');
+      'npx -y @hybridlabor-api/aos --project-harness   (run inside the project)');
   }
 }
 
@@ -125,7 +125,7 @@ function checkHarness() {
 function checkWiki() {
   const dir = p('.openwiki');
   const pages = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
-  add('openwiki', 'OpenWiki initialized', pages.length > 0, pages.length ? `.openwiki/ present (${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''})` : 'no ..openwiki/ present',
+  add('openwiki', 'wiki initialised', pages.length > 0, pages.length ? `${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''}` : 'no .openwiki pages',
     'openwiki --init   (run inside the project; needs provider credentials in ~/.openwiki/.env first)');
 
   // Without this file OpenWiki loads zero rules and indexes .venv, node_modules
@@ -138,7 +138,7 @@ function checkWiki() {
   let watched = false;
   try { watched = (JSON.parse(readFileSync(path.join(HOME, '.openwiki', 'projects.json'), 'utf8')).projects || []).includes(ROOT); }
   catch { /* the daemon has not written it yet */ }
-  add('openwiki', 'watched', watched || pages.length === 0,
+  add('openwiki', 'watched by the daemon', watched || pages.length === 0,
     watched ? 'in projects.json' : pages.length ? 'has a wiki but the daemon never refreshes it' : 'no wiki, nothing to watch',
     'Add this path to ~/.openwiki/projects.json, or let /aos-project-init do it.');
 }
@@ -147,7 +147,7 @@ function checkWiki() {
 async function checkMemb() {
   const dbPath = path.join(HOME, '.MemBDB', 'memb.db');
   if (!existsSync(dbPath)) {
-    add('memB', 'entries for the project slug', false, 'no memB store on this machine', 'Run /aos-setup first.');
+    add('memB', 'project memories', false, 'no memB store on this machine', 'Run /aos-setup first.');
     return;
   }
   try {
@@ -160,37 +160,15 @@ async function checkMemb() {
          OR json_extract(payload, '$.metadata.project_id') = ?
     `).get(PROJECT, PROJECT);
     const n = Number(row?.n || 0);
-    add('memB', 'entries for the project slug', n > 0, n > 0 ? `${n} memories bound to project_id "${PROJECT}"` : `0 memories bound to project_id "${PROJECT}" (advice to ingest)`,
+    add('memB', 'project memories', n > 0, `${n} memories bound to project_id "${PROJECT}"`,
       'Ingest the project: python3 memb_ingest.py <project dir>  (see /aos-project-init, section 5)');
   } catch (e) {
-    add('memB', 'entries for the project slug', false, `could not read the store (${e.message.split('\n')[0]})`,
+    add('memB', 'project memories', false, `could not read the store (${e.message.split('\n')[0]})`,
       'node:sqlite is unflagged only from Node 22.13; on 22.5-22.12 upgrade Node (or pass --experimental-sqlite). Otherwise inspect via the memB WebUI on :8088.');
   }
 }
 
-
-// ---------------------------------------------------------------- workspace
-function checkWorkspace() {
-  const parent = path.dirname(ROOT);
-  if (parent === ROOT || parent === HOME) return;
-  try {
-    const siblings = readdirSync(parent).filter((f) => {
-      try { return lstatSync(path.join(parent, f)).isDirectory(); } catch { return false; }
-    });
-    if (siblings.length >= 3) {
-      const map = path.join(parent, 'WORKSPACE.md');
-      const hasMap = existsSync(map);
-      if (!hasMap) {
-         add('workspace', 'WORKSPACE.md map', true, `parent folder ${parent.replace(HOME, '~')} has ${siblings.length} items but no WORKSPACE.md map`, `Consider creating ${map.replace(HOME, '~')} to map these projects for the router.`);
-      } else {
-         add('workspace', 'WORKSPACE.md map', true, `parent folder has WORKSPACE.md map`, '');
-      }
-    }
-  } catch { /* failed to read workspace */ }
-}
-
 // ---------------------------------------------------------------- report
-
 function report() {
   if (JSON_OUT) {
     console.log(JSON.stringify({ project: PROJECT, root: ROOT.replace(HOME, '~'), ok: results.every((r) => r.ok), results }, null, 2));
@@ -213,6 +191,5 @@ checkAgentDocs();
 checkHarness();
 checkWiki();
 await checkMemb();
-checkWorkspace();
 report();
 process.exit(results.some((r) => !r.ok) ? 1 : 0);

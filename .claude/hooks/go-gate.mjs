@@ -2474,8 +2474,7 @@ function extractClaudeText(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      // Claude Desktop prepends a separate text part holding only a <system-reminder> block.
-      .filter((b) => b && b.type === "text" && typeof b.text === "string" && !/^\s*<system-reminder>[\s\S]*<\/system-reminder>\s*$/.test(b.text))
+      .filter((b) => b && b.type === "text" && typeof b.text === "string")
       .map((b) => b.text)
       .join("\n");
   }
@@ -2507,8 +2506,7 @@ export const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-")
 // and promptSource absent/typed/queued; origin absent -> promptSource absent or
 // typed. Always: turnOrigin absent or "human", not meta/sidechain/compact
 // summary/tool result/skill injection, no scheduler/wakeup/cron/loop keys.
-// suggestion_accepted (model-written text, one keypress) and sdk never count, except a
-// Claude Desktop prompt (entrypoint claude-desktop, origin and turnOrigin human).
+// suggestion_accepted (model-written text, one keypress) and sdk never count.
 //
 // isStrictHumanEntry (required to SET a mode or grant): additionally needs
 // positive evidence, origin.kind "human" or promptSource "typed". The asymmetry
@@ -2526,18 +2524,6 @@ const hasSchedulerMark = (o, depth = 0) => {
   return Object.entries(o).some(([k, v]) => SCHEDULED_KEYS.has(k) || (depth > 0 && typeof v === "string" && SCHEDULED_VALUE.test(v)) ||
     ((k === "origin" || depth > 0) && hasSchedulerMark(v, depth + 1)));
 };
-// Claude Desktop (Code tab) records every typed prompt as promptSource "sdk"; only its own
-// entrypoint plus a human origin and turn counts, so headless SDK runs stay excluded.
-const isDesktopTyped = (e) => e.promptSource === "sdk" && e.entrypoint === "claude-desktop" && e.origin?.kind === "human" && e.turnOrigin === "human";
-// A prompt typed while Claude is still working is recorded as an attachment entry
-// (attachment.type "queued_command", commandMode "prompt") carrying its own human origin.
-export function queuedPrompt(e) {
-  const a = e?.type === "attachment" ? e.attachment : null;
-  if (!a || a.type !== "queued_command" || a.commandMode !== "prompt" || typeof a.prompt !== "string") return null;
-  if (e.isSidechain === true) return null;
-  const human = a.origin?.kind === "human" && !hasSchedulerMark(e);
-  return { text: a.prompt.trim(), uuid: a.source_uuid ?? e.uuid ?? null, ts: Date.parse(a.timestamp ?? e.timestamp), human };
-}
 export function isHumanEntry(e) {
   if (!e || typeof e !== "object") return false;
   if (e.type === "USER_INPUT" || e.source === "USER_EXPLICIT") return true; // Antigravity: no origin info exists
@@ -2547,7 +2533,7 @@ export function isHumanEntry(e) {
   if (hasSchedulerMark(e)) return false;
   if (e.origin !== undefined && (!e.origin || typeof e.origin !== "object")) return false;
   if (e.turnOrigin !== undefined && e.turnOrigin !== "human") return false;
-  if (e.origin !== undefined) return e.origin.kind === "human" && ([undefined, "typed", "queued"].includes(e.promptSource) || isDesktopTyped(e));
+  if (e.origin !== undefined) return e.origin.kind === "human" && [undefined, "typed", "queued"].includes(e.promptSource);
   return e.promptSource === undefined || e.promptSource === "typed";
 }
 export const isStrictHumanEntry = (e) =>
@@ -2797,15 +2783,8 @@ export function claudeGogateCommands(transcriptPath) {
   const out = [];
   try {
     for (const line of fileLines(transcriptPath)) {
-      if (!/gogate/i.test(line) || !(line.includes('"user"') || line.includes('"queued_command"'))) continue;
+      if (!/gogate/i.test(line) || !line.includes('"user"')) continue;
       const e = parseEntry(line);
-      const q = queuedPrompt(e);
-      if (q) {
-        if (!q.human) continue;
-        const parsed = parseGogate(q.text);
-        if (parsed && !parsed.error) out.push({ id: q.uuid, ts: q.ts, hash: textHash(q.text), parsed, strict: true });
-        continue;
-      }
       if (!e || e.type !== "user" || !isHumanEntry(e)) continue;
       const text = extractClaudeText(e.message?.content ?? e.content).trim();
       const parsed = parseGogate(text);
@@ -3428,14 +3407,7 @@ export function lastUserText(transcriptPath) {
         return { text, human: true };
       }
 
-      // 2. Claude Code prompt queued while a turn was running
-      const q = queuedPrompt(entry);
-      if (q) {
-        if (!q.text) continue;
-        return { text: q.text, uuid: q.uuid, human: q.human };
-      }
-
-      // 3. Claude Code transcript entry format
+      // 2. Claude Code transcript entry format
       if (entry.type === "user" || entry.role === "user") {
         if (entry.isSidechain === true) continue;
         const content = entry.message?.content ?? entry.content;

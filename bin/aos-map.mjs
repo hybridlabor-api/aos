@@ -4,24 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-function printHelp() {
-    console.log(`aos-map — Codemap query CLI for architectural overview, node finding, and pathfinding.
-
-Usage:
-  aos-map overview
-  aos-map find <text>
-  aos-map show <part|file>
-  aos-map path <a> <b>
-`);
-}
-
 export async function main(argv = process.argv.slice(2)) {
     const command = argv[0];
-
-    if (!command || command === 'help' || command === '--help' || command === '-h' || argv.includes('--help') || argv.includes('-h')) {
-        printHelp();
-        return 0;
-    }
 
     function loadMap() {
         const mapPath = path.join(process.cwd(), '.aos/map/architecture.json');

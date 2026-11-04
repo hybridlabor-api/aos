@@ -85,9 +85,9 @@ function doctorResults(fakeNpmBody) {
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
 }
 
-test('aos-doctor: flags an older global npm install as a critical error (ok: false) with removal command', () => {
+test('aos-doctor: flags a global npm install of the package with the removal command in the fix', () => {
     if (process.platform === 'win32') return;
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-npmg-doctor-older-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-npmg-doctor-'));
     try {
         const pkgDir = path.join(root, '@hybridlabor-api', 'aos');
         fs.mkdirSync(pkgDir, { recursive: true });
@@ -95,25 +95,8 @@ test('aos-doctor: flags an older global npm install as a critical error (ok: fal
         const row = doctorResults(`echo ${root}`).find((r) => r.name === 'Global npm install');
         assert.ok(row, 'Global npm install check present');
         assert.strictEqual(row.ok, false);
-        assert.strictEqual(row.warningOnly, false);
         assert.match(row.fix, /npm uninstall -g @hybridlabor-api\/aos/);
         assert.match(row.detail, /v1\.0\.0/);
-    } finally { fs.rmSync(root, { recursive: true, force: true }); }
-});
-
-test('aos-doctor: flags an equal or newer global npm install as an informational note (ok: true, warningOnly: true)', () => {
-    if (process.platform === 'win32') return;
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-npmg-doctor-newer-'));
-    try {
-        const pkgDir = path.join(root, '@hybridlabor-api', 'aos');
-        fs.mkdirSync(pkgDir, { recursive: true });
-        // Use a version far in the future so it's guaranteed to be newer than the running version
-        fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ version: '999.0.0' }));
-        const row = doctorResults(`echo ${root}`).find((r) => r.name === 'Global npm install');
-        assert.ok(row, 'Global npm install check present');
-        assert.strictEqual(row.ok, true);
-        assert.strictEqual(row.warningOnly, true);
-        assert.match(row.detail, /v999\.0\.0/);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

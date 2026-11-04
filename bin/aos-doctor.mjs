@@ -105,7 +105,6 @@ const dirCount = (p) => {
 function portOpen(port, timeout = 1200) {
   return new Promise((resolve) => {
     const s = connect({ host: '127.0.0.1', port });
-    s.unref();
     const done = (v) => { s.destroy(); resolve(v); };
     s.setTimeout(timeout);
     s.once('connect', () => done(true));
@@ -170,12 +169,8 @@ function checkAosCore() {
     } else if (g.found && npmGlobalAos.isCurrentGlobal(g, pkg.version)) {
       add('aos-core', 'Global npm install', true, `${tilde(g.root)} (v${g.version}, matches the running version)`);
     } else if (g.found) {
-      if (npmGlobalAos.isOlderVersion(g.version, pkg.version)) {
-        add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version}, running v${pkg.version})`,
-          `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
-      } else {
-        add('aos-core', 'Global npm install', true, `${tilde(g.root)} (v${g.version}, running v${pkg.version})`, '', true);
-      }
+      add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version}, running v${pkg.version})`,
+        `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
     } else {
       add('aos-core', 'Global npm install', true, 'none — only the ~/.local/bin launcher');
     }
@@ -1199,4 +1194,4 @@ await checkGateway();
 report();
 
 const hasCriticalFails = results.some(r => !r.ok && !r.warningOnly);
-process.exitCode = hasCriticalFails ? 1 : 0;
+process.exit(hasCriticalFails ? 1 : 0);

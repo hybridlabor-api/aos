@@ -13,7 +13,7 @@ Implemented in F7b: rows live in `lib/harnesses.json` (placeholders `URL` and `T
 Paths use tokens (`$HOME`, `$CODEX_HOME`, `$CLAUDE_CONFIG_DIR`, `$APPDATA`, `$CWD`). The caller resolves them. The table never reads env.
 
 Entry templates use `{url}`, `{headers}`, `{command}`, `{args}`, `{env}`. `headers` is `{"X-AOS-Token": "{token}"}`. 
-Row fields: `id`, `name`, `mcp.global[]`, `mcp.workspace[]` (each `{path, format, root}`), `entry.remote`, `entry.stdio`, `rules` / `rules_file` (e.g. `CLAUDE.md`, `AGENTS.md`, `.roomodes`, null), `skills` / `skills_dir` (target directory or null), `skills_mode` (`native` | `plugin` | `symlink` | `copy` | `none`), `plugin` (`none` | `commands+agents` | `hooks` | `full`), `verified` (boolean or object).
+Row fields: `id`, `name`, `mcp.global[]`, `mcp.workspace[]` (each `{path, format, root}`), `entry.remote`, `entry.stdio`, `rules {file, write}` (`write` default `"never"`), `skills` (dir or null), `hooks` (`yes`|`no`|`unverified`), `verified {status, source, date}`.
 Example rows:
 
 ```json
@@ -41,8 +41,6 @@ Example rows:
 ```
 
 Notes: Antigravity has two candidate global paths in code; the table lists both and marks the live one only after a check. `verified.status`: `full` | `partial` | `none`. Only `full` rows may be written.
-
-Cursor currently uses `~/.cursor/skills` as its copy destination. Cursor may later read `~/.agents/skills` natively, at which point the native path can replace this destination. The former `<cwd>/.cursor/bdb-skills` location is project-relative and may contain user data from unrelated projects; the installer does not sweep it automatically. Existing copies should be retired from their owning project only after manifest ownership is established, with user-edited files retained.
 ## How the code reads the table
 
 1. Load and validate once: unique ids, known tokens, `format` in `json|jsonc|toml|yaml`.

@@ -57,8 +57,8 @@ implies — the first segment under the workspace root. If the project sits
 outside that root, ask instead of guessing.
 
 **Wiki.** Three separate questions, because they are three separate things:
-initialise a wiki here at all · **watch it**, so it updates every
-2h · setup `.openwikiignore`.
+initialise a wiki here at all · **watch it**, so the daemon refreshes it every
+2h · write `.openwikiignore`.
 
 Watching is not free. Every watched project with changes costs an LLM call per
 cycle, and a free-tier key hits quota on a handful. Recommend watching repos
@@ -85,7 +85,7 @@ your head. Ask; do not default it on.
 
 **AGENTS.md.** If missing, offer the template. If a real `CLAUDE.md` already
 holds content, merge it into `AGENTS.md` first and only then replace it with a
-pointer. Never silently replace it.
+pointer. Never silently overwrite it.
 
 **Stack detection & skill packs.** Inspect the project root:
 - `Cargo.toml` and `src-tauri/tauri.conf.json` (Tauri v2 desktop) or `Cargo.toml` (Rust) → preselect the `rust` group and `app-dev` pack (and the `desktop-app` team / `tauri_expert` role with `pb-tauri-e2e` for Tauri).
@@ -132,15 +132,10 @@ Show every intended write as one list, then write on agreement.
 }
 ```
 
-Then, call the CLI to write all pending files:
-
-```bash
-aos project init --files
-```
-
 Then, only for what the interview enabled:
 
 ```bash
+cp ~/.claude/skills/aos-project-init/assets/openwikiignore.template .openwikiignore
 openwiki --init                # needs provider credentials in ~/.openwiki/.env (see /aos-setup)
 ```
 

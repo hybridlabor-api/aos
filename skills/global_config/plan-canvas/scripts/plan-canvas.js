@@ -96,26 +96,16 @@ function usage() {
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
     '         --timeout-ms <n>  Return {status:"waiting"} after n ms (tests/debug only)',
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
-    '  server: --port <n> --host <h> --allow-host <h>',
+    '  server: --port <n> --host <h>',
     '',
     'Server: 127.0.0.1:4519 (documented port; override only with AOS_PLAN_CANVAS_PORT)',
-    'Environment: AOS_PLAN_CANVAS_PORT, AOS_PLAN_CANVAS_STATE_DIR, AOS_PLAN_CANVAS_IDLE_MS, AOS_PLAN_CANVAS_SKILL_DIRS, AOS_PLAN_CANVAS_ALLOW_HOSTS'
+    'Environment: AOS_PLAN_CANVAS_PORT, AOS_PLAN_CANVAS_STATE_DIR, AOS_PLAN_CANVAS_IDLE_MS, AOS_PLAN_CANVAS_SKILL_DIRS'
   ].join('\n');
 }
 
 function valueAfter(args, name) {
   const index = args.indexOf(name);
   return index >= 0 && index + 1 < args.length ? args[index + 1] : null;
-}
-
-function valuesAfter(args, name) {
-  const result = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === name && i + 1 < args.length) {
-      result.push(args[i + 1]);
-    }
-  }
-  return result;
 }
 
 function serverInfoPath(stateDir) {
@@ -783,12 +773,6 @@ async function cmdStop({ stateDir, port }) {
 async function cmdServer(args, { stateDir, port }) {
   const portArg = valueAfter(args, '--port');
   const hostArg = valueAfter(args, '--host');
-  const allowHostsFlags = valuesAfter(args, '--allow-host');
-  const allowHostsEnv = (process.env.AOS_PLAN_CANVAS_ALLOW_HOSTS || '')
-    .split(',')
-    .map(h => h.trim())
-    .filter(Boolean);
-  const allowHosts = [...allowHostsFlags, ...allowHostsEnv];
   const listenPort = portArg !== null ? Number.parseInt(portArg, 10) : port;
   const store = createSessionStore({ stateDir });
   let shuttingDown = false;
@@ -804,7 +788,6 @@ async function cmdServer(args, { stateDir, port }) {
     store,
     workspaceRoot: process.cwd(),
     host: hostArg || DEFAULT_HOST,
-    allowHosts,
     version: VERSION,
     idleTimeoutMs: resolveIdleTimeoutMs(),
     onIdleShutdown: () => shutdown(0),
