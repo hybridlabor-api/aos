@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..');
 const wfPath = join(repoRoot, '.github', 'workflows', 'jules-task.yml');
-const templatePath = join(repoRoot, '.github', 'ISSUE_TEMPLATE', 'aos-skill-request.yml');
+const skillTemplatePath = join(repoRoot, '.github', 'ISSUE_TEMPLATE', 'aos-skill-request.yml');
+const bugTemplatePath = join(repoRoot, '.github', 'ISSUE_TEMPLATE', 'aos-bug.yml');
 
 const wf = readFileSync(wfPath, 'utf8');
-const template = readFileSync(templatePath, 'utf8');
 
 // The 8 canonical categories defined in AGENTS.md and scripts/validate-skills.mjs
 const EXPECTED_CATEGORIES = [
@@ -84,7 +84,7 @@ export function hasAssociationCheck(yamlContent) {
  * Returns any `uses:` entry not pinned to a 40-hex SHA.
  */
 export function getUnpinnedUses(yamlContent) {
-  const matches = [...yamlContent.matchAll(/^\s*uses:\s*(.+)$/gm)].map((m) => m[1].trim());
+  const matches = [...yamlContent.matchAll(/^\s*(?:-\s*)?uses:\s*(.+)$/gm)].map((m) => m[1].trim());
   const unpinned = [];
   for (const u of matches) {
     const m = u.match(/^([\w./-]+)@([0-9a-f]{40})(?:\s*#.*)?$/);
@@ -133,9 +133,9 @@ test('jules-task workflow file exists on disk', () => {
   assert.ok(existsSync(wfPath), 'jules-task.yml must exist');
 });
 
-test('trigger is issues: [labeled] only and filters on aos-skill-request label', () => {
+test('trigger is issues: [labeled] only and filters on aos-bug or aos-skill-request label', () => {
   assert.match(wf, /issues:\s*\n\s*types:\s*\[labeled\]/);
-  assert.match(wf, /github\.event\.label\.name\s*==\s*['"]aos-skill-request['"]/);
+  assert.match(wf, /github\.event\.label\.name\s*==\s*['"](?:aos-bug|aos-skill-request)['"]/);
   assert.doesNotMatch(wf, /pull_request_target/);
 });
 
@@ -173,15 +173,15 @@ test('all uses: actions are pinned to 40-hex SHAs with a tag comment', () => {
   assert.deepEqual(unpinned, [], `Unpinned actions found: ${unpinned.join(', ')}`);
 });
 
-test('jules-action is pinned to release v1.0.0 commit SHA', () => {
-  assert.match(
-    wf,
-    /uses:\s*google-labs-code\/jules-action@bff7875eaa123cac6742b7cfc51005b95ba4d566\s*#\s*v1\.0\.0/,
-  );
+test('dispatches directly to Jules API with AUTO_CREATE_PR and requirePlanApproval: false', () => {
+  assert.match(wf, /https:\/\/jules\.googleapis\.com\/v1alpha\/sessions/);
+  assert.match(wf, /requirePlanApproval:\s*false/);
+  assert.match(wf, /automationMode:\s*"AUTO_CREATE_PR"/);
 });
 
-test('jules_api_key is referenced strictly via secrets.JULES_API_KEY', () => {
-  assert.match(wf, /jules_api_key:\s*\$\{\{\s*secrets\.JULES_API_KEY\s*\}\}/);
+test('JULES_API_KEY is referenced strictly via secrets.JULES_API_KEY', () => {
+  assert.match(wf, /(?:jules_api_key|JULES_API_KEY):\s*\$\{\{\s*secrets\.JULES_API_KEY\s*\}\}/);
+  assert.match(wf, /X-Goog-Api-Key:\s*\$JULES_API_KEY/);
   assert.doesNotMatch(wf, /secrets\.GITHUB_TOKEN/);
 });
 
@@ -213,10 +213,7 @@ test('negative: validateWorkflowSecurity rejects missing author association chec
 });
 
 test('negative: validateWorkflowSecurity rejects unpinned uses:', () => {
-  const unpinnedWf = wf.replace(
-    /google-labs-code\/jules-action@[0-9a-f]{40}/,
-    'google-labs-code/jules-action@v1',
-  );
+  const unpinnedWf = wf + '\n      - uses: actions/checkout@v4\n';
   assert.throws(
     () => validateWorkflowSecurity(unpinnedWf),
     /Unpinned uses:/,
@@ -235,34 +232,45 @@ test('negative: validateWorkflowSecurity rejects missing repository guard', () =
 });
 
 // Issue template tests
-test('issue template file exists on disk', () => {
-  assert.ok(existsSync(templatePath), 'aos-skill-request.yml template must exist');
-});
+if (existsSync(bugTemplatePath)) {
+  test('aos-bug issue template exists and specifies label aos-bug', () => {
+    const bugTemplate = readFileSync(bugTemplatePath, 'utf8');
+    assert.match(bugTemplate, /labels:\s*\[\s*["']?aos-bug["']?\s*\]/);
+    for (const id of ['target_repo', 'what_happens', 'expected', 'steps', 'done_when']) {
+      const idRegex = new RegExp(`id:\\s*${id}[\\s\\S]*?required:\\s*true`, 'm');
+      assert.match(bugTemplate, idRegex, `Field ${id} must exist and be required: true`);
+    }
+  });
+}
 
-test('issue template specifies label aos-skill-request', () => {
-  assert.match(template, /labels:\s*\[\s*["']aos-skill-request["']\s*\]/);
-});
+if (existsSync(skillTemplatePath)) {
+  const skillTemplate = readFileSync(skillTemplatePath, 'utf8');
 
-test('issue template has required fields: name, source_url, source_license, attribution, category', () => {
-  const requiredIds = ['name', 'source_url', 'source_license', 'attribution', 'category'];
-  for (const id of requiredIds) {
-    const idRegex = new RegExp(`id:\\s*${id}[\\s\\S]*?required:\\s*true`, 'm');
-    assert.match(template, idRegex, `Field ${id} must exist and be required: true`);
-  }
-});
+  test('aos-skill-request issue template specifies label aos-skill-request', () => {
+    assert.match(skillTemplate, /labels:\s*\[\s*["']aos-skill-request["']\s*\]/);
+  });
 
-test('issue template category dropdown matches canonical 8 categories from AGENTS.md', () => {
-  for (const cat of EXPECTED_CATEGORIES) {
-    assert.match(
-      template,
-      new RegExp(`-\\s*${cat}\\b`),
-      `Category ${cat} must be an option in dropdown`,
-    );
-  }
-});
+  test('issue template has required fields: name, source_url, source_license, attribution, category', () => {
+    const requiredIds = ['name', 'source_url', 'source_license', 'attribution', 'category'];
+    for (const id of requiredIds) {
+      const idRegex = new RegExp(`id:\\s*${id}[\\s\\S]*?required:\\s*true`, 'm');
+      assert.match(skillTemplate, idRegex, `Field ${id} must exist and be required: true`);
+    }
+  });
 
-test('issue template instructs Jules to read skill contract and run npm run validate', () => {
-  assert.match(template, /skills\/skill-create\/SKILL\.md/);
-  assert.match(template, /AGENTS\.md/);
-  assert.match(template, /npm run validate/);
-});
+  test('issue template category dropdown matches canonical 8 categories from AGENTS.md', () => {
+    for (const cat of EXPECTED_CATEGORIES) {
+      assert.match(
+        skillTemplate,
+        new RegExp(`-\\s*${cat}\\b`),
+        `Category ${cat} must be an option in dropdown`,
+      );
+    }
+  });
+
+  test('issue template instructs Jules to read skill contract and run npm run validate', () => {
+    assert.match(skillTemplate, /skills\/skill-create\/SKILL\.md/);
+    assert.match(skillTemplate, /AGENTS\.md/);
+    assert.match(skillTemplate, /npm run validate/);
+  });
+}

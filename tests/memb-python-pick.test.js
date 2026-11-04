@@ -30,8 +30,9 @@ describe('ensurePythonVenv', () => {
     });
     test('no suitable python but uv: installs 3.12 and builds the venv on it', () => {
         const calls = [];
-        ensurePythonVenv(tmp(), { pick: () => null, hasUv: true, run: (c, a) => calls.push(a.join(' ')) });
-        assert.deepEqual(calls, ['python install 3.12', 'venv --clear --seed --python 3.12 .venv']);
+        const dir = tmp();
+        ensurePythonVenv(dir, { pick: () => null, hasUv: true, run: (c, a) => calls.push(a.join(' ')) });
+        assert.deepEqual(calls, ['python install 3.12', `venv --clear --seed --python 3.12 ${path.join(dir, '.venv')}`]);
     });
     test('a venv built on Python 3.9 is rebuilt with --clear', () => {
         const dir = tmp();
@@ -42,7 +43,7 @@ describe('ensurePythonVenv', () => {
         const calls = [];
         const r = ensurePythonVenv(dir, { pick: () => ({ cmd: 'python3.12' }), hasUv: false, run: (c, a) => calls.push([c, ...a].join(' ')) });
         assert.equal(r.created, true);
-        assert.deepEqual(calls, ['python3.12 -m venv --clear .venv']);
+        assert.deepEqual(calls, [`python3.12 -m venv --clear ${path.join(dir, '.venv')}`]);
     });
     test('venv failure surfaces stderr, sets the half-built .venv aside and names the OS fix', () => {
         const dir = tmp();

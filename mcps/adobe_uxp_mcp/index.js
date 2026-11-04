@@ -13,16 +13,26 @@ if (require.main === module) {
 }
 
 function startServer(WS_PORT) {
+    const token = process.env.AOS_UXP_TOKEN;
+    if (!token) {
+        process.stderr.write("[adobe_uxp_mcp] Error: AOS_UXP_TOKEN environment variable is required for security.\n");
+        process.exit(1);
+    }
     if (WS_PORT !== DEFAULT_WS_PORT) {
         process.stderr.write(`[adobe_uxp_mcp] WebSocket listening on 127.0.0.1:${WS_PORT}\n`);
     }
-const wss = new WebSocket.Server({ port: WS_PORT });
+const wss = new WebSocket.Server({ host: '127.0.0.1', port: WS_PORT });
 
 // Connected UXP Clients
 const clients = new Map();
 const pendingRequests = new Map();
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+    const url = new URL(req.url, 'http://localhost');
+    if (url.searchParams.get('token') !== process.env.AOS_UXP_TOKEN) {
+        ws.close(4001, 'Unauthorized');
+        return;
+    }
     let clientApp = "unknown";
     
     ws.on('message', (message) => {

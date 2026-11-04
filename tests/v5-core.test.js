@@ -104,19 +104,20 @@ test('F5: an outdated OpenWiki upgrades its CLI once; the second update does no 
     const log = path.join(bin, 'npm.log');
     script(path.join(bin, 'openwiki'), 'echo "OpenWiki v0.5.0"');
     // fake npm: records its args and "installs" the requested version
-    script(path.join(bin, 'npm'), `echo "$@" >> "${log}"\nv=\${3#openwiki@}\nprintf '#!/bin/sh\\necho "OpenWiki v%s"\\n' "$v" > "${path.join(bin, 'openwiki')}"`);
+    script(path.join(bin, 'npm'), `echo "$@" >> "${log}"\nif [ "$1" = "install" ]; then\n  v=\${3#openwiki@}\n  printf '#!/bin/sh\\necho "OpenWiki v%s"\\n' "$v" > "${path.join(bin, 'openwiki')}"\nfi`);
     let refreshed = 0;
     m.host.refreshOpenWikiSilently = async () => { refreshed++; return true; };
     const npmView = async (name) => (name === 'openwiki' ? '0.7.2' : current(name));
     await withPathAsync(`${bin}${path.delimiter}${process.env.PATH}`, async () => {
         assert.strictEqual(await menu.update(m.host, m.opts({ npmView })), 0);
-        assert.strictEqual(fs.readFileSync(log, 'utf8').trim(), 'install -g openwiki@0.7.2');
+        assert.strictEqual(fs.readFileSync(log, 'utf8').trim().split('\n').filter(line => !line.includes('root -g')).join('\n'), 'install -g openwiki@0.7.2');
         assert.strictEqual(refreshed, 1);
         assert.match(m.out.join(''), /✔ OpenWiki 0\.7\.2/);
 
         m.out.length = 0;
         assert.strictEqual(await menu.update(m.host, m.opts({ npmView })), 0);
-        assert.strictEqual(fs.readFileSync(log, 'utf8').trim().split('\n').length, 1, 'npm not run again');
+        const lines = fs.readFileSync(log, 'utf8').trim().split('\n').filter(line => !line.includes('root -g'));
+        assert.strictEqual(lines.length, 1, `npm not run again. Lines were: ${lines.join(', ')}`);
         assert.strictEqual(refreshed, 1, 'daemon not refreshed again');
         // The fake host never records the kernel version, so the plan keeps a Kernel entry; OpenWiki must not be in it.
         assert.doesNotMatch(m.out.join(''), /Plan:[^\n]*OpenWiki/);

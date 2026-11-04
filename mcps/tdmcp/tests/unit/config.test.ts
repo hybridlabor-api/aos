@@ -10,6 +10,11 @@ import {
 } from "../../src/utils/config.js";
 
 describe("loadConfig", () => {
+  it("binds loopback only by default", () => {
+    const config = loadConfig({});
+    expect(config.httpHost).toBe("127.0.0.1");
+  });
+
   it("falls back to defaults with empty env", () => {
     const config = loadConfig({});
     expect(config.tdHost).toBe("127.0.0.1");
@@ -53,9 +58,9 @@ describe("loadConfig", () => {
     expect(loadConfig({ TDMCP_RAG_FUSION_K: "nope" }).ragFusionK).toBe(60);
   });
 
-  it("leaves bridgeToken unset by default and treats empty string as unset", () => {
-    expect(loadConfig({}).bridgeToken).toBeUndefined();
-    expect(loadConfig({ TDMCP_BRIDGE_TOKEN: "" }).bridgeToken).toBeUndefined();
+  it("sets a default bridgeToken even with an empty string", () => {
+    expect(loadConfig({}).bridgeToken).toBeDefined();
+    expect(loadConfig({ TDMCP_BRIDGE_TOKEN: "" }).bridgeToken).toBeDefined();
   });
 
   it("reads a bridge token from the environment", () => {
