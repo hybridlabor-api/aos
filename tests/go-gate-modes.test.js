@@ -100,6 +100,22 @@ describe('origin check', () => {
         ok('git push origin main');
     });
 
+    const queued = (prompt, origin = { kind: 'human' }) => ({ type: 'attachment', uuid: `q${++n}`, timestamp: ts(), attachment: { type: 'queued_command', prompt, commandMode: 'prompt', origin, humanTurn: true, timestamp: ts() } });
+    test('a GO typed while Claude is busy (queued_command attachment) counts; a non-human queued one does not', () => {
+        add(human('do the thing'));
+        add(queued('GO'));
+        ok('git push origin main');
+        add(queued('GO', { kind: 'peer' }));
+        blocked('git push origin main');
+    });
+
+    test('gogate off typed while busy (queued) sets the mode', () => {
+        add(human('work'));
+        runGrant('gogate off');
+        add(queued('gogate off'));
+        ok('git push origin main');
+    });
+
     test('a Claude Desktop GO with the app\'s prepended system-reminder part still counts', () => {
         const parts = [{ type: 'text', text: '<system-reminder>\nscratch workspace note\n</system-reminder>\n\n' }, { type: 'text', text: 'go' }];
         add({ ...user('', DESKTOP), message: { role: 'user', content: parts } });
