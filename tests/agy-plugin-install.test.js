@@ -52,6 +52,8 @@ function fakeRunner(home, { installedVersion = null, enabled = true, missing = f
             assert.ok(fs.existsSync(path.join(args[2], 'mcp_config.json')));
             assert.ok(fs.existsSync(path.join(args[2], 'rules', 'AGENTS.md')));
             fs.mkdirSync(pdir, { recursive: true });
+            // real agy replaces the plugin dir; Linux cpSync onto existing symlinks to its own source throws
+            fs.rmSync(pdir, { recursive: true, force: true });
             fs.cpSync(args[2], pdir, { recursive: true, force: true });
         }
         return { status: 0, stdout: '', stderr: '' };
