@@ -1,6 +1,16 @@
+async function getHomeDir($: any): Promise<string> {
+  const home = await $.env.get('HOME').catch(() => '')
+  if (home) return home
+  const userProfile = await $.env.get('USERPROFILE').catch(() => '')
+  if (userProfile) return userProfile
+  const homeDrive = await $.env.get('HOMEDRIVE').catch(() => '')
+  const homePath = await $.env.get('HOMEPATH').catch(() => '')
+  if (homeDrive && homePath) return `${homeDrive}${homePath}`
+  return ''
+}
+
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import { getHomeDir } from "./home"
 
 import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateBlock, GateProfile, GateState, PlanComponent, PlanTask } from '../types'
 
