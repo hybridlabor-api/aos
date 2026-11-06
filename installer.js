@@ -516,14 +516,24 @@ function venvPyVersion(dir) {
     try { return parsePyVersion((/^version(?:_info)?\s*=\s*(.+)$/m.exec(fs.readFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'utf8')) || [])[1]); } catch (e) { return null; }
 }
 
+// pyvenv.cfg `home` names the base Python dir; when that base is gone (e.g. a Store Python removed) the venv's interpreter exists but cannot start.
+function venvUsable(dir) {
+    try {
+        const home = (/^home\s*=\s*(.+)$/m.exec(fs.readFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'utf8')) || [])[1];
+        return Boolean(home) && fs.existsSync(home.trim());
+    } catch (e) { return false; }
+}
+
 // Creates dir/.venv with a Python >= 3.10, or throws MEMB_PYTHON_FIX without leaving an empty venv behind.
-// A venv built on an older Python is rebuilt (--clear). opts.pick / opts.hasUv / opts.run are test seams.
+// A venv built on an older Python, or whose base is gone, is rebuilt (--clear). opts.pick / opts.hasUv / opts.run are test seams.
 function ensurePythonVenv(dir, opts = {}) {
     const win = (opts.platform || process.platform) === 'win32';
     const venvPy = win ? path.join(dir, '.venv', 'Scripts', 'python.exe') : path.join(dir, '.venv', 'bin', 'python');
     // A venv tool can exit 0 and still leave no interpreter (seen on Windows); never report that as created.
     const requireInterpreter = () => { if (!fs.existsSync(venvPy)) throw new Error(`venv has no interpreter at ${venvPy}`); };
-    if (fs.existsSync(venvPy)) {
+    if (fs.existsSync(venvPy) && !venvUsable(dir)) {
+        log.step(`[memb] existing venv base Python is missing; rebuilding ${path.join(dir, '.venv')}.`);
+    } else if (fs.existsSync(venvPy)) {
         const v = venvPyVersion(dir);
         if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
         log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
