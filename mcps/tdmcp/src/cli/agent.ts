@@ -2992,6 +2992,7 @@ const ENV_NAMES: Record<keyof TdmcpConfig, string> = {
   logLevel: "TDMCP_LOG_LEVEL",
   requestTimeoutMs: "TDMCP_REQUEST_TIMEOUT_MS",
   httpPort: "TDMCP_HTTP_PORT",
+  httpHost: "TDMCP_HTTP_HOST",
   events: "TDMCP_EVENTS",
   rawPython: "TDMCP_RAW_PYTHON",
   yolo: "TDMCP_YOLO",
