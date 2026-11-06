@@ -87,7 +87,7 @@ test('--purge removes AOS state only while it is AOS-owned and names everything 
     try {
         const j = (...p) => path.join(home, ...p);
         install(home, [j('.agents', 'rules', 'r.md')]);
-        write(j('.aos', 'hub', 'hub.json')); write(j('.aos', 'logs', 'u.log')); write(j('.aos', 'codex-hooks.json')); write(j('.aos', 'status.json'));
+        write(j('.aos', 'hub', 'hub.json')); write(j('.aos', 'logs', 'u.log')); write(j('.aos', 'codex-hooks.json'), JSON.stringify({ hookHash: 'abc', trustedHashes: [], changedAt: '2026-11-05T00:00:00.000Z' })); write(j('.aos', 'status.json'));
         write(j('.aos', 'pipeline.json'), '{"edited":true}');                       // user-edited: stays
         write(j('.aos', 'backups', 'uninstall-1', 'b.json'));
         write(j('.aos', 'v5-settings.json.removed-20260101'));
