@@ -519,8 +519,10 @@ function venvPyVersion(dir) {
 // Creates dir/.venv with a Python >= 3.10, or throws MEMB_PYTHON_FIX without leaving an empty venv behind.
 // A venv built on an older Python is rebuilt (--clear). opts.pick / opts.hasUv / opts.run are test seams.
 function ensurePythonVenv(dir, opts = {}) {
-    const win = process.platform === 'win32';
+    const win = (opts.platform || process.platform) === 'win32';
     const venvPy = win ? path.join(dir, '.venv', 'Scripts', 'python.exe') : path.join(dir, '.venv', 'bin', 'python');
+    // A venv tool can exit 0 and still leave no interpreter (seen on Windows); never report that as created.
+    const requireInterpreter = () => { if (!fs.existsSync(venvPy)) throw new Error(`venv has no interpreter at ${venvPy}`); };
     if (fs.existsSync(venvPy)) {
         const v = venvPyVersion(dir);
         if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
@@ -538,6 +540,7 @@ function ensurePythonVenv(dir, opts = {}) {
         try {
             if (!sys) run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
             run(uvBin(), ['venv', '--clear', '--seed', '--python', target, path.join(dir, '.venv')]);
+            requireInterpreter();
             return { created: true, viaUv: true };
         } catch (e) {
             if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
@@ -545,6 +548,7 @@ function ensurePythonVenv(dir, opts = {}) {
     }
     try {
         run(sys.cmd, ['-m', 'venv', '--clear', path.join(dir, '.venv')]);
+        requireInterpreter();
     } catch (e) {
         // Rename, never delete: the half-built venv stays as .venv.broken-<stamp> (as lib/v5/packages.js does).
         if (path.isAbsolute(dir)) try { fs.renameSync(path.join(dir, '.venv'), path.join(dir, `.venv.broken-${Date.now()}`)); } catch (_) { /* nothing half-built */ }

@@ -7,6 +7,11 @@ const { pickPython, ensurePythonVenv } = require('../installer.js');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-pypick-'));
 const stub = (table) => (cmd) => { if (cmd in table) return table[cmd]; throw new Error('ENOENT'); };
+const mkInterp = (dir, platform = process.platform) => {
+    const py = path.join(dir, '.venv', platform === 'win32' ? path.join('Scripts', 'python.exe') : path.join('bin', 'python'));
+    fs.mkdirSync(path.dirname(py), { recursive: true });
+    fs.writeFileSync(py, '');
+};
 
 describe('pickPython', () => {
     test('prefers the newest versioned interpreter that is >= 3.10', () => {
@@ -31,8 +36,21 @@ describe('ensurePythonVenv', () => {
     test('no suitable python but uv: installs 3.12 and builds the venv on it', () => {
         const calls = [];
         const dir = tmp();
-        ensurePythonVenv(dir, { pick: () => null, hasUv: true, run: (c, a) => calls.push(a.join(' ')) });
+        ensurePythonVenv(dir, { pick: () => null, hasUv: true, run: (c, a) => { calls.push(a.join(' ')); if (a[0] === 'venv') mkInterp(dir); } });
         assert.deepEqual(calls, ['python install 3.12', `venv --clear --seed --python 3.12 ${path.join(dir, '.venv')}`]);
+    });
+    test('win32: a venv that reports success without Scripts\\python.exe is an error, not a silent success', () => {
+        const dir = tmp();
+        assert.throws(
+            () => ensurePythonVenv(dir, { platform: 'win32', pick: () => null, hasUv: true, run: () => {} }),
+            /Scripts[\\/]python\.exe/,
+        );
+    });
+    test('win32: a venv that writes Scripts\\python.exe is accepted', () => {
+        const dir = tmp();
+        const r = ensurePythonVenv(dir, { platform: 'win32', pick: () => null, hasUv: true, run: (c, a) => { if (a[0] === 'venv') mkInterp(dir, 'win32'); } });
+        assert.equal(r.created, true);
+        assert.ok(fs.existsSync(path.join(dir, '.venv', 'Scripts', 'python.exe')));
     });
     test('a venv built on Python 3.9 is rebuilt with --clear', () => {
         const dir = tmp();
@@ -41,7 +59,7 @@ describe('ensurePythonVenv', () => {
         fs.writeFileSync(path.join(bin, process.platform === 'win32' ? 'python.exe' : 'python'), '');
         fs.writeFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'home = /usr/bin\nversion = 3.9.6\n');
         const calls = [];
-        const r = ensurePythonVenv(dir, { pick: () => ({ cmd: 'python3.12' }), hasUv: false, run: (c, a) => calls.push([c, ...a].join(' ')) });
+        const r = ensurePythonVenv(dir, { pick: () => ({ cmd: 'python3.12' }), hasUv: false, run: (c, a) => { calls.push([c, ...a].join(' ')); mkInterp(dir); } });
         assert.equal(r.created, true);
         assert.deepEqual(calls, [`python3.12 -m venv --clear ${path.join(dir, '.venv')}`]);
     });
