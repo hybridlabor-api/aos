@@ -41,3 +41,15 @@ test('the Codex hook trust snapshot is planned for removal on every uninstall, n
     const p = plan({ home, manifestPath: path.join(home, 'none.json') });
     assert.ok(p.state.some((e) => e.path === snap), 'codex-hooks.json is in the removal plan');
 });
+
+test('an empty Antigravity hooks file is planned for removal on every uninstall, one with any key is kept', async () => {
+    const { plan } = await load();
+    const home = tmp();
+    const hooks = path.join(home, '.gemini', 'config', 'hooks.json');
+    fs.mkdirSync(path.dirname(hooks), { recursive: true });
+    fs.writeFileSync(hooks, '{}\n');
+    const manifestPath = path.join(home, 'none.json');
+    assert.ok(plan({ home, manifestPath }).state.some((e) => e.path === hooks), 'empty {} is in the removal plan');
+    fs.writeFileSync(hooks, '{"hooks":{}}\n');
+    assert.ok(!plan({ home, manifestPath }).state.some((e) => e.path === hooks), 'a file with a key stays');
+});

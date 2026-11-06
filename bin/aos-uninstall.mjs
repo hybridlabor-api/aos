@@ -115,6 +115,9 @@ const aosStateEntries = (home) => {
     // Editable by the user after install: removed only while it is still byte-identical to the shipped default.
     { path: j('.aos', 'pipeline.json'), what: 'default helper-agent model suggestions (unedited)',
       owned: (f) => { try { return readFileSync(f).equals(readFileSync(shippedPipeline)); } catch { return false; } } },
+    // An empty Antigravity hooks file holds no config at all, so it goes on every uninstall.
+    { path: j('.gemini', 'config', 'hooks.json'), what: 'empty Antigravity hooks file', always: true,
+      owned: (f) => { if (!isRegularFile(f)) return false; const c = readJsonSafe(f); return !!c && typeof c === 'object' && !Array.isArray(c) && !Object.keys(c).length; } },
     // Antigravity hook and MCP files: AOS's only when every handler / server entry equals what AOS writes (content,
     // never the name). They hold user config too, so they are moved to ~/.aos/backups, not deleted (backup: true).
     { path: j('.gemini', 'config', 'hooks.json'), what: 'Antigravity hooks (AOS handlers only)', backup: true,
@@ -277,7 +280,7 @@ function plan(opts = {}) {
   const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
   const state = aosStateEntries(home).filter((e) => existsSync(e.path) && (PURGE || e.always) && (!e.owned || e.owned(e.path)));
-  const stateKept = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && e.owned && !e.owned(e.path)) : [];
+  const stateKept = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && e.owned && !e.owned(e.path) && !state.some((s) => s.path === e.path)) : [];
   // Everything AOS recorded writing: the folders above these are the only ones the empty-folder pass may remove.
   const recorded = [...manifestPaths, ...ur.generatedMap(home).keys()];
   const emptyDirs = sweep.pruneRecordedEmptyDirs({ home, files: recorded, dry: true, platform, alsoGone: [...ours, ...edited, ...gone] }).removed;
