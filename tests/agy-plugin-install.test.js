@@ -175,6 +175,21 @@ test('real package stages commands, agents, skills, hooks, mcp, and rules', () =
     assert.ok(fs.lstatSync(staged).isSymbolicLink() || fs.existsSync(path.join(staged, 'SKILL.md')), 'skill link or copy fallback created');
 });
 
+test('win32 staging copies commands instead of linking a junction', () => {
+    const src = mk('win-src');
+    const dest = mk('win-dest');
+    fs.mkdirSync(path.join(src, 'commands'));
+    fs.writeFileSync(path.join(src, 'commands', 'setup.md'), 'x');
+    fs.writeFileSync(path.join(src, 'plugin.json'), JSON.stringify({ name: 'bdb-aos', version: '1.0.0' }));
+    fs.mkdirSync(path.join(src, '.claude', 'agents'), { recursive: true });
+    const real = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try { agy.stagePlugin(src, dest); } finally { Object.defineProperty(process, 'platform', real); }
+    const cmd = path.join(dest, 'commands');
+    assert.ok(!fs.lstatSync(cmd).isSymbolicLink(), 'commands must be a real copy, not a link');
+    assert.ok(fs.existsSync(path.join(cmd, 'setup.md')));
+});
+
 function oldPluginSkills(home) {
     const sk = path.join(home, '.gemini', 'config', 'plugins', 'bdb-aos', 'skills');
     fs.mkdirSync(path.join(sk, 'alpha'), { recursive: true });
