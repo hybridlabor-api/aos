@@ -115,7 +115,6 @@ Never call `aos-uninstall`, `aos-gate`, `aos-cli` unprompted: they are for the h
 - `aos-setup-doctor` - Used by the aos-setup skill before installing. For an installed system use `aos doctor`.
 - `aos-project-doctor` - After or before /aos-project-init, to see what is missing in a project.
 - `aos-evolve` - Record redacted task failure signatures for evolution analysis or check evolution kill switch status.
-- `aos-map` - Check the architectural map graph before searching the whole repo for context.
 <!-- aos:cli-reference:end -->
 
 ---

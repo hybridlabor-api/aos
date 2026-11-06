@@ -67,7 +67,6 @@ Generated from `lib/cli-specs` (`node scripts/build-cli-reference.mjs`); full re
 | `aos-setup-doctor` | Used by the aos-setup skill before installing. For an installed system use `aos doctor`. | `node aos-doctor.mjs --json` |
 | `aos-project-doctor` | After or before /aos-project-init, to see what is missing in a project. | `node aos-project-doctor.mjs . --json` |
 | `aos-evolve` | Record redacted task failure signatures for evolution analysis or check evolution kill switch status. | `aos-evolve status` |
-| `aos-map` | Check the architectural map graph before searching the whole repo for context. | `aos-map path frontend backend` |
 
 Probe with `aos help --all --json`; `<cli> --help` never has side effects.
 <!-- aos:cli-table:end -->
