@@ -38,6 +38,27 @@ test('AGENTS.md is kept and backed up on uninstall if edited', (t) => {
     assert.ok(fs.existsSync(path.join(HOME, 'AGENTS.md')), 'AGENTS.md should be kept by uninstall if edited');
 });
 
+test('edited AGENTS.md is kept in place and a .bak copy is written on uninstall', (t) => {
+    const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-home-'));
+    const testEnv = { ...process.env, HOME, USERPROFILE: HOME };
+    const repoRoot = path.resolve(__dirname, '..');
+
+    const original = '# Global Agent Rules\n';
+    const agentsMd = path.join(HOME, 'AGENTS.md');
+    fs.writeFileSync(agentsMd, original);
+    fs.mkdirSync(path.join(HOME, '.agents'), { recursive: true });
+    const sha256 = require('crypto').createHash('sha256').update(original).digest('hex');
+    fs.writeFileSync(path.join(HOME, '.agents', '.bdb-install-manifest.json'),
+        JSON.stringify({ [agentsMd]: { sha256 } }));
+    fs.appendFileSync(agentsMd, '\nUser Edit Here');
+
+    execWithEnv(`node ${path.join(repoRoot, 'bin', 'aos-uninstall.mjs')} --yes`, testEnv);
+    assert.ok(fs.existsSync(path.join(HOME, 'AGENTS.md')), 'edited AGENTS.md should stay in place');
+    const baks = fs.readdirSync(HOME).filter((n) => n.startsWith('AGENTS.md.') && n.endsWith('.bak'));
+    assert.strictEqual(baks.length, 1, 'edited AGENTS.md should have one .bak copy');
+    assert.ok(fs.readFileSync(path.join(HOME, baks[0]), 'utf8').includes('User Edit Here'), '.bak should hold the edited content');
+});
+
 test('pre-existing user AGENTS.md not in manifest is kept on uninstall', (t) => {
     const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-home-'));
     const testEnv = { ...process.env, HOME, USERPROFILE: HOME };

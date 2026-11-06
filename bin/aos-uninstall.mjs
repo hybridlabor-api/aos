@@ -572,7 +572,7 @@ async function execute(p) {
   for (const f of edited.filter((x) => !unsaved.has(x))) {
     try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch (e) { unsaved.add(f); failures.push(`${tilde(f)} not removed: backup failed (${e.message})`); }
   }
-  for (const f of [...ours, ...edited].filter((x) => !unsaved.has(x))) {
+  for (const f of ours.filter((x) => !unsaved.has(x))) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
