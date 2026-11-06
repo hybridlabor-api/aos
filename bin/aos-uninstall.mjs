@@ -107,7 +107,9 @@ const aosStateEntries = (home) => {
   return [
     { path: j('.aos', 'hub'), what: 'AOS hub state and logs' },
     { path: j('.aos', 'logs'), what: 'AOS update and service logs' },
-    { path: j('.aos', 'codex-hooks.json'), what: 'Codex hook trust snapshot' },
+    // AOS trust snapshot, stale once AOS hooks leave config.toml: removed on every uninstall, shape-checked.
+    { path: j('.aos', 'codex-hooks.json'), what: 'Codex hook trust snapshot', always: true,
+      owned: (f) => { const c = readJsonSafe(f); return !!c && typeof c.hookHash === 'string'; } },
     { path: j('.aos', 'status.json'), what: 'hub watcher status' },
     { path: j('.agents', 'gateway'), what: 'MCP gateway state' },
     // Editable by the user after install: removed only while it is still byte-identical to the shipped default.
@@ -274,7 +276,7 @@ function plan(opts = {}) {
     .map((m) => m.path);
   const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
-  const state = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && (!e.owned || e.owned(e.path))) : [];
+  const state = aosStateEntries(home).filter((e) => existsSync(e.path) && (PURGE || e.always) && (!e.owned || e.owned(e.path)));
   const stateKept = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && e.owned && !e.owned(e.path)) : [];
   // Everything AOS recorded writing: the folders above these are the only ones the empty-folder pass may remove.
   const recorded = [...manifestPaths, ...ur.generatedMap(home).keys()];
