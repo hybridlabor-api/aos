@@ -3442,7 +3442,8 @@ async function installDeja() {
     return dejaOnPath ? undefined : false;
 }
 
-async function installMemB(interactive) {
+async function installMemB(interactive, deps = {}) {
+    const seam = { membDir: path.join(moduleBasePath(), 'memB'), download: downloadOrUpdateModule, installDeja, ensureVenv: ensurePythonVenv, runPip: runPipWithRetry, reconcile: reconcileMembVenv, ...deps };
     let installWebUI = true;
     if (interactive && !isAutoYes) {
         installWebUI = pick(await askConfirm({
@@ -3450,7 +3451,7 @@ async function installMemB(interactive) {
             initialValue: true
         }));
     }
-    const membDir = path.join(moduleBasePath(), 'memB');
+    const membDir = seam.membDir;
     // On Windows the memB WebUI process holds open file handles inside membDir.
     // The atomic rename inside downloadOrUpdateModule fails with EPERM as long as
     // those handles are live — retry backoff cannot help. Kill the process on
@@ -3472,11 +3473,11 @@ async function installMemB(interactive) {
     // registration, each of which then failed on its own terms or, worse,
     // "succeeded" against a stale tree -- and the run still ended in a success
     // banner. Stop at the module that could not be fetched.
-    if (!downloadOrUpdateModule('@hybridlabor-api/memb', membDir, 'memB Vector Engine')) {
+    if (!seam.download('@hybridlabor-api/memb', membDir, 'memB Vector Engine')) {
         log.warn('Skipping memB setup: the module could not be downloaded.');
         return false;
     }
-    await installDeja();
+    await seam.installDeja();
     if (DRY_RUN) {
         log.step('[dry-run] would bootstrap memB venv + pip requirements');
         return;
@@ -3492,7 +3493,9 @@ async function installMemB(interactive) {
                 ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
                 : path.join(membDir, '.venv', 'bin', 'python');
 
-            const createdViaUv = Boolean(ensurePythonVenv(membDir).viaUv);
+            const createdViaUv = Boolean(seam.ensureVenv(membDir).viaUv);
+            // A venv tool can exit 0 and still leave no interpreter; pip, reconcile and repair against it only fail noisily.
+            if (!fs.existsSync(venvPython)) throw new Error(`memB venv has no interpreter at ${venvPython}`);
 
             // `uv venv --seed` is supposed to seed pip/setuptools/wheel into the venv, but
             // this has been observed to silently under-deliver (venv created, pip missing) --
@@ -3519,12 +3522,12 @@ async function installMemB(interactive) {
             const pipInstall = (pkgsArg) => `"${venvPython}" -m pip install ${pkgsArg} --timeout 30 --no-input`;
             const installCmd = (pkgsArg) => hasUv ? uvInstall(pkgsArg) : pipInstall(pkgsArg);
 
-            runPipWithRetry(installCmd('--upgrade setuptools'), { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
-            const reconcile = reconcileMembVenv(membDir, { venvPython, hasUv });
+            seam.runPip(installCmd('--upgrade setuptools'), { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
+            const reconcile = seam.reconcile(membDir, { venvPython, hasUv });
             if (reconcile.status === 'failed') log.warn('memB requirements reconcile failed; inspect the venv before starting the daemon.');
 
             if (installWebUI && fs.existsSync(serverPy)) {
-                runPipWithRetry(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
+                seam.runPip(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
             }
 
             // A partially upgraded venv can contain pydantic while missing or
@@ -3539,7 +3542,7 @@ async function installMemB(interactive) {
                 const repairPackages = installWebUI && fs.existsSync(serverPy)
                     ? '--force-reinstall "pydantic>=2.7.3" "pydantic-core>=2.18.4" fastapi uvicorn'
                     : '--force-reinstall "pydantic>=2.7.3" "pydantic-core>=2.18.4"';
-                const repaired = runPipWithRetry(
+                const repaired = seam.runPip(
                     installCmd(repairPackages),
                     { cwd: membDir, stdio: 'inherit' },
                     'repair memB Python dependencies',
@@ -9519,6 +9522,7 @@ module.exports = {
     // Manifest store (exported for verification tests)
     computeFileHash,
     reconcileMembVenv,
+    installMemB,
     pickPython,
     ensurePythonVenv,
     getInstallManifestPath,
