@@ -411,6 +411,8 @@ function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { std
 // manifest, so they outlive it. Only shipped server names are touched, only these subtrees, and directories are
 // removed afterwards only when empty: files the user put there stay.
 const MCP_GENERATED = ['node_modules', 'dist', '.venv', '__pycache__'];
+// Per-server build output: after-effects-mcp compiles its TypeScript into build/ (and copies scripts/*.jsx there).
+const MCP_BUILD_OUTPUT = { 'after-effects-mcp': ['build'] };
 const pruneEmpty = (dir) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
   try { rmdirSync(dir); } catch { /* not empty */ }
@@ -468,7 +470,8 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
     const dir = path.join(root, name);
     let st; try { st = lstatSync(dir); } catch { continue; }
     if (!st.isDirectory() || sweep.behindLink({ home, file: dir })) continue;
-    const trees = MCP_GENERATED.map((g) => path.join(dir, g)).filter(existsSync);
+    const generated = [...MCP_GENERATED, ...(MCP_BUILD_OUTPUT[name] || [])];
+    const trees = generated.map((g) => path.join(dir, g)).filter(existsSync);
     const rec = mcpMarker.readMarker(dir);
     if (!rec) {
       // Files listed in the install manifest leave with it; their build trees go here.
@@ -488,7 +491,7 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
       for (const e of readdirSync(cur, { withFileTypes: true })) {
         const rel = relDir ? `${relDir}/${e.name}` : e.name;
         const full = path.join(cur, e.name);
-        if (!relDir && (MCP_GENERATED.includes(e.name) || e.name === mcpMarker.MARKER)) continue;
+        if (!relDir && (generated.includes(e.name) || e.name === mcpMarker.MARKER)) continue;
         if (relDir && e.isDirectory() && e.name === '__pycache__') { nested.push(full); continue; }
         if (e.isDirectory()) walk(full, rel);
         else if (rec.files[rel] && mcpMarker.sha(full) === rec.files[rel]) doomed.push(full);

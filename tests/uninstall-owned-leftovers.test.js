@@ -53,3 +53,20 @@ test('an empty Antigravity hooks file is planned for removal on every uninstall,
     fs.writeFileSync(hooks, '{"hooks":{}}\n');
     assert.ok(!plan({ home, manifestPath }).state.some((e) => e.path === hooks), 'a file with a key stays');
 });
+
+test('after-effects build output goes with its copy even when the copy record does not list it', async () => {
+    const { removeGeneratedMcpTrees } = await load();
+    const mcpMarker = require('../lib/mcp-copy-marker.js');
+    const home = tmp();
+    const appData = path.join(home, 'AppData', 'Roaming');
+    const dir = path.join(appData, 'Claude', 'mcps', 'after-effects-mcp');
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), '{}');
+    fs.writeFileSync(path.join(dir, 'src', 'index.ts'), 'export {};');
+    mcpMarker.writeMarker(dir, null, 'test');
+    fs.mkdirSync(path.join(dir, 'build', 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'build', 'index.js'), '// built');
+    fs.writeFileSync(path.join(dir, 'build', 'scripts', 'a.jsx'), '// jsx');
+    removeGeneratedMcpTrees({ home, appData, names: ['after-effects-mcp'] });
+    assert.ok(!fs.existsSync(path.join(dir, 'build')), 'build/ and build/scripts/*.jsx are removed');
+});
