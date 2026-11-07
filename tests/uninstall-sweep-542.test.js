@@ -179,3 +179,27 @@ test('Claude Desktop config: an AOS-only file is deleted, one with another serve
         } finally { rm(home); }
     }
 });
+
+test('Claude Desktop config: servers written with an absolute node / deja path are removed, a foreign server stays', () => {
+    for (const foreign of [false, true]) {
+        const home = sandbox();
+        try {
+            const j = (...p) => path.join(home, ...p);
+            install(home, [j('.agents', 'rules', 'r.md')]);
+            const cfg = process.platform === 'win32' ? j('AppData', 'Roaming', 'Claude', 'claude_desktop_config.json') : j('Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+            const node = process.platform === 'win32' ? 'C:\\Program Files\\nodejs\\node.exe' : '/usr/local/bin/node';
+            const mcps = `${path.dirname(cfg)}/mcps`;
+            const mcpServers = {
+                mcsc: { command: node, args: [`${mcps}/mcsc/server.js`] },
+                bdb_unreal_mcp: { command: node, args: [`${mcps}/unreal_mcp/dist/cli.js`] },
+                deja: process.platform === 'win32' ? { command: 'cmd', args: ['/c', 'C:\\npm\\deja.cmd', 'mcp'] } : { command: '/usr/local/bin/deja', args: ['mcp'] },
+            };
+            if (foreign) mcpServers.mine = { command: node, args: ['/my/server.js'] };
+            write(cfg, JSON.stringify({ mcpServers }));
+            const r = uninstall(home, '--yes');
+            assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+            if (!foreign) return assert.ok(!fs.existsSync(cfg), 'skeleton file removed\n' + r.stdout);
+            assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(cfg, 'utf8')).mcpServers), ['mine']);
+        } finally { rm(home); }
+    }
+});
