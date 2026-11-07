@@ -37,7 +37,7 @@ describe('ensurePythonVenv', () => {
         const calls = [];
         const dir = tmp();
         ensurePythonVenv(dir, { pick: () => null, hasUv: true, run: (c, a) => { calls.push(a.join(' ')); if (a[0] === 'venv') mkInterp(dir); } });
-        assert.deepEqual(calls, ['python install 3.12', `venv --clear --seed --python 3.12 ${path.join(dir, '.venv')}`]);
+        assert.deepEqual(calls, ['python install --no-bin 3.12', `venv --clear --seed --python 3.12 ${path.join(dir, '.venv')}`]);
     });
     test('win32: a venv that reports success without Scripts\\python.exe is an error, not a silent success', () => {
         const dir = tmp();

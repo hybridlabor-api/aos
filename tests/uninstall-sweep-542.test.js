@@ -151,3 +151,15 @@ test('Windows services: the visualizer is stopped by its "visualize --port N" co
         assert.match(ps, /\$_\.ProcessId -ne \$PID/);
     } finally { rm(home); }
 });
+
+test('a hooks.json left empty by the AOS handler removal is deleted in the same uninstall', () => {
+    const home = sandbox();
+    try {
+        const j = (...p) => path.join(home, ...p);
+        install(home, [j('.agents', 'rules', 'r.md')]);
+        write(j('.gemini', 'config', 'hooks.json'), JSON.stringify({ 'aos-go-gate': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "/h/.gemini/config/hooks/go-gate.mjs" || exit 0' }] }] } }));
+        const r = uninstall(home, '--yes');
+        assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+        assert.ok(!fs.existsSync(j('.gemini', 'config', 'hooks.json')), 'hooks.json removed\n' + r.stdout);
+    } finally { rm(home); }
+});

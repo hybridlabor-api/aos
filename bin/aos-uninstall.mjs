@@ -815,7 +815,10 @@ async function execute(p) {
     if (dirs.length) console.log(`  ${dirs.length} empty folders AOS created removed`);
   });
 
-  for (const d of [...(p.state || []), ...data]) {
+  // The plan was built before the harness steps above: a hooks file they emptied is only deletable now.
+  const planned = p.state || [];
+  const stateNow = DRY ? planned : [...planned, ...aosStateEntries(HOME).filter((e) => e.always && existsSync(e.path) && e.owned && e.owned(e.path) && !planned.some((x) => x.path === e.path))];
+  for (const d of [...stateNow, ...data]) {
     try {
       if (d.backup) {
         const dest = sweep.moveToBackup({ home: HOME, file: d.path, stamp });

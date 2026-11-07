@@ -49,7 +49,7 @@ test('purge: Antigravity hooks/MCP files are decided by content and moved to ~/.
     assert.strictEqual(b.bk.length, 0);
 
     const c = purgeWith(chained, {});
-    assert.ok(c.hooks && c.mcp, 'a chained command and an empty config are not AOS-only');
+    assert.ok(c.mcp, 'an empty config is not AOS-only'); // the harness step empties hooks.json first; an empty file then goes with the uninstall
     assert.strictEqual(c.bk.length, 0);
 });
 

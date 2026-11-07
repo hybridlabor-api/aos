@@ -54,6 +54,6 @@ describe('ensurePythonVenv with a PATH python whose base dir is bogus (Store ali
         });
         assert.equal(r.viaUv, true);
         assert.match(calls[calls.length - 1], /venv --clear --seed --python 3\.12 /);
-        assert.ok(calls.some((c) => c === 'python install 3.12'));
+        assert.ok(calls.some((c) => c === 'python install --no-bin 3.12'));
     });
 });
