@@ -209,4 +209,16 @@ describe('AOS Evolve Deny-List & Production Path Guard (Hard Safety Boundary B2)
     assert.equal(matchesPattern('bin/aos-acp.mjs', 'bin/aos-acp*.mjs'), true);
     assert.equal(matchesPattern('bin/aos-acp-client.mjs', 'bin/aos-acp*.mjs'), true);
   });
+
+  test('a not-yet-created root behind a symlinked parent is still its own boundary; real escapes stay denied', () => {
+    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-deny-real-'));
+    const link = path.join(os.tmpdir(), `aos-deny-link-${process.pid}`);
+    try {
+      fs.symlinkSync(real, link);
+      const root = path.join(link, 'fresh', 'evolve');
+      assert.equal(isDenied(path.join(root, 'failure.json.lock'), root, []), false, 'inside the uncreated root');
+      assert.equal(isDenied(path.join(link, 'fresh', 'other.txt'), root, []), true, 'sibling outside the root');
+      assert.equal(isDenied(path.join(root, '..', '..', 'x'), root, []), true, '.. escape');
+    } finally { fs.rmSync(link, { force: true }); fs.rmSync(real, { recursive: true, force: true }); }
+  });
 });
