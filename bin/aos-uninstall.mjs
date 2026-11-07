@@ -118,6 +118,10 @@ const aosStateEntries = (home) => {
     // An empty Antigravity hooks file holds no config at all, so it goes on every uninstall.
     { path: j('.gemini', 'config', 'hooks.json'), what: 'empty Antigravity hooks file', always: true,
       owned: (f) => { if (!isRegularFile(f)) return false; const c = readJsonSafe(f); return !!c && typeof c === 'object' && !Array.isArray(c) && !Object.keys(c).length; } },
+    // Claude Desktop config with nothing left after the AOS server removal ({} or an empty mcpServers only); any other key or server keeps it.
+    { path: process.platform === 'win32' ? path.join(process.env.APPDATA || home, 'Claude', 'claude_desktop_config.json') : j('Library', 'Application Support', 'Claude', 'claude_desktop_config.json'),
+      what: 'empty Claude Desktop config', always: true,
+      owned: (f) => { if (!isRegularFile(f)) return false; const c = readJsonSafe(f); if (!c || typeof c !== 'object' || Array.isArray(c)) return false; const k = Object.keys(c); return !k.length || (k.length === 1 && k[0] === 'mcpServers' && !!c.mcpServers && typeof c.mcpServers === 'object' && !Object.keys(c.mcpServers).length); } },
     // Antigravity hook and MCP files: AOS's only when every handler / server entry equals what AOS writes (content,
     // never the name). They hold user config too, so they are moved to ~/.aos/backups, not deleted (backup: true).
     { path: j('.gemini', 'config', 'hooks.json'), what: 'Antigravity hooks (AOS handlers only)', backup: true,

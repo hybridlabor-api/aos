@@ -163,3 +163,19 @@ test('a hooks.json left empty by the AOS handler removal is deleted in the same 
         assert.ok(!fs.existsSync(j('.gemini', 'config', 'hooks.json')), 'hooks.json removed\n' + r.stdout);
     } finally { rm(home); }
 });
+
+test('Claude Desktop config: an AOS-only file is deleted, one with another server or key stays', () => {
+    const cases = [[{ mcpServers: {} }, false, true], [{}, false], [{ mcpServers: { mine: { command: 'x' } } }, true], [{ theme: 'dark' }, true]];
+    for (const [extra, stays, bare] of cases) {
+        const home = sandbox();
+        try {
+            const j = (...p) => path.join(home, ...p);
+            install(home, [j('.agents', 'rules', 'r.md')]);
+            const cfg = process.platform === 'win32' ? j('AppData', 'Roaming', 'Claude', 'claude_desktop_config.json') : j('Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+            write(cfg, bare ? '{"mcpServers":{}}' : JSON.stringify({ ...extra, mcpServers: { github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github@2025.4.8'] }, ...(extra.mcpServers || {}) } }));
+            const r = uninstall(home, '--yes');
+            assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+            assert.strictEqual(fs.existsSync(cfg), stays, r.stdout);
+        } finally { rm(home); }
+    }
+});
