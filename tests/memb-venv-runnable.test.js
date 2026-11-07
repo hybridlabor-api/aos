@@ -37,3 +37,23 @@ describe('ensurePythonVenv reuse of a venv whose base Python is gone', () => {
         assert.equal(r.created, false);
     });
 });
+
+describe('ensurePythonVenv with a PATH python whose base dir is bogus (Store alias under a redirected profile)', () => {
+    test('uv-built venv with a missing base is rebuilt on uv-managed 3.12', () => {
+        const dir = tmp();
+        const calls = [];
+        const r = ensurePythonVenv(dir, {
+            platform: 'win32',
+            pick: () => ({ cmd: 'python' }),
+            hasUv: true,
+            run: (c, a) => {
+                calls.push(a.join(' '));
+                if (a[0] !== 'venv') return;
+                mkWinVenv(dir, `home = ${a.includes('python') ? path.join(dir, 'bogus') : dir}\nversion = 3.12.1\n`);
+            },
+        });
+        assert.equal(r.viaUv, true);
+        assert.match(calls[calls.length - 1], /venv --clear --seed --python 3\.12 /);
+        assert.ok(calls.some((c) => c === 'python install 3.12'));
+    });
+});

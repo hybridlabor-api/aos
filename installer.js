@@ -549,8 +549,14 @@ function ensurePythonVenv(dir, opts = {}) {
         const target = sys ? sys.cmd : '3.12';
         try {
             if (!sys) run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
-            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, path.join(dir, '.venv')]);
-            requireInterpreter();
+            const mk = (t) => { run(uvBin(), ['venv', '--clear', '--seed', '--python', t, path.join(dir, '.venv')]); requireInterpreter(); };
+            mk(target);
+            // A PATH python can be a Store alias whose base dir does not exist under a redirected profile: the venv is built but cannot start.
+            if (sys && !venvUsable(dir)) {
+                log.step('[memb] PATH Python produced a venv without a usable base; rebuilding on uv-managed Python 3.12.');
+                run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
+                mk('3.12');
+            }
             return { created: true, viaUv: true };
         } catch (e) {
             if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
