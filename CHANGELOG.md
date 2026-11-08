@@ -1,5 +1,56 @@
 # Changelog
 
+## [5.4.6](https://github.com/hybridlabor-api/aos/compare/v5.4.5...v5.4.6) (2026-11-08)
+
+
+### Features
+
+* **a2a:** add early TASK_STATE_QUEUED_PULL_ONLY return for idle agy peers ([#245](https://github.com/hybridlabor-api/aos/issues/245)) ([6e36e5a](https://github.com/hybridlabor-api/aos/commit/6e36e5ab9e06a8c1fb9947d6f1759068575832b4))
+* aos project init writes the full project structure from one module ([#227](https://github.com/hybridlabor-api/aos/issues/227)) ([ce56c6c](https://github.com/hybridlabor-api/aos/commit/ce56c6c2c8355566cbc2bcdeeb35380437c48fad))
+* **codemap:** add CodeMap schema and validator ([#232](https://github.com/hybridlabor-api/aos/issues/232)) ([096cdd8](https://github.com/hybridlabor-api/aos/commit/096cdd8f1510fc47f464800bbf5a67dab3753e48))
+* **codemap:** CodeMap endpoint and request matching ([#231](https://github.com/hybridlabor-api/aos/issues/231)) ([487d49e](https://github.com/hybridlabor-api/aos/commit/487d49e91f3b9608d5027eb8850cc0dbd8d213d9))
+* **evolve:** add aos-evolve probe runner ([#228](https://github.com/hybridlabor-api/aos/issues/228)) ([ee7ea1a](https://github.com/hybridlabor-api/aos/commit/ee7ea1a734383e6f018e741577d96bc6956b94cc))
+* **evolve:** capture assigns named failure modes and attaches traces ([#230](https://github.com/hybridlabor-api/aos/issues/230)) ([b6287ca](https://github.com/hybridlabor-api/aos/commit/b6287ca61b4cb8c659dccb6186de5c61c469d43f))
+* **harness:** harness layer stage 1 (agy plugin, harness table) ([#236](https://github.com/hybridlabor-api/aos/issues/236)) ([0913383](https://github.com/hybridlabor-api/aos/commit/091338387bf0214b6bb9db3bfda4f0bad4787cff))
+* **hub:** add inbox watches for upstream MCP polling ([#221](https://github.com/hybridlabor-api/aos/issues/221)) ([81f9d77](https://github.com/hybridlabor-api/aos/commit/81f9d7727b63cda25f14a344e902ae14fb70ebe6))
+* **plan-canvas:** add --allow-host for tailnet hosts ([#238](https://github.com/hybridlabor-api/aos/issues/238)) ([e7ed384](https://github.com/hybridlabor-api/aos/commit/e7ed384c9eabb3553e67d98dc972ea99558cb0e5))
+* **plan-canvas:** add Component Inspector to annotate-client ([#217](https://github.com/hybridlabor-api/aos/issues/217)) ([80689b6](https://github.com/hybridlabor-api/aos/commit/80689b68f341ebb3224faabe464061f0a2e7a930))
+* **project-init:** add standard sections to AGENTS.md template ([#225](https://github.com/hybridlabor-api/aos/issues/225)) ([4264dc5](https://github.com/hybridlabor-api/aos/commit/4264dc5d378488f51d0b92d76551642d430c7e05))
+* **project-init:** project doctor checks openwiki watch, ingest advice and WORKSPACE.md ([#229](https://github.com/hybridlabor-api/aos/issues/229)) ([6d689ca](https://github.com/hybridlabor-api/aos/commit/6d689ca5bdea9276321627489237be8a440b6506))
+
+
+### Bug Fixes
+
+* **agy:** stage real copies on win32 again ([6e24e09](https://github.com/hybridlabor-api/aos/commit/6e24e09d3cda222d88824702e7f4ae8394d0c781))
+* **codemap:** restore work deleted by the aos-map squash, keep aos-map CLI ([ad5f8c8](https://github.com/hybridlabor-api/aos/commit/ad5f8c886b2c337c7233d3e6adc085e18f07a532))
+* **doctor:** exit cleanly without libuv assertion on Windows ([#239](https://github.com/hybridlabor-api/aos/issues/239)) ([d2857f3](https://github.com/hybridlabor-api/aos/commit/d2857f3a4da7c0743b951c7ebbbfb7d9bce7f720))
+* **doctor:** explicit openwiki init commands and env warnings ([#243](https://github.com/hybridlabor-api/aos/issues/243)) ([432295f](https://github.com/hybridlabor-api/aos/commit/432295fef7e1dab23a20a0208f294b7e3dc061c0))
+* **evolve:** resolve a not-yet-created deny-list root through symlinks like the target ([85d54d6](https://github.com/hybridlabor-api/aos/commit/85d54d6fa16013f7185e88d0cd23cc68cc3df1dc))
+* **fleet:** inline getHomeDir to satisfy source-guard ($ not passed to imported fn) ([b49b23e](https://github.com/hybridlabor-api/aos/commit/b49b23e40aeee569452102f3c4675d5f293d24ab))
+* **go-gate:** accept typed prompts from Claude Desktop and prompts queued while busy ([#235](https://github.com/hybridlabor-api/aos/issues/235)) ([dffb00c](https://github.com/hybridlabor-api/aos/commit/dffb00c7e7e45d2bb3146688f97ac983581e038e))
+* **installer:** installer never downgrades a newer hook file ([#242](https://github.com/hybridlabor-api/aos/issues/242)) ([b5e1262](https://github.com/hybridlabor-api/aos/commit/b5e1262adb64290fcbd1fadbe74635324eb682c3))
+* **installer:** resolve memB venv path creation on Windows and freeze uv sync ([#244](https://github.com/hybridlabor-api/aos/issues/244)) ([841b090](https://github.com/hybridlabor-api/aos/commit/841b09078b3b79dbd7acea319b9e177a37da03d5))
+* **launcher:** flag a stale global npm aos as critical and warn first in aos update ([#233](https://github.com/hybridlabor-api/aos/issues/233)) ([88c1336](https://github.com/hybridlabor-api/aos/commit/88c1336610833ce85441598f38814a0c1a9b4026))
+* **mcp:** pin Blender MCP servers and update the community server to upstream ([#212](https://github.com/hybridlabor-api/aos/issues/212)) ([083de89](https://github.com/hybridlabor-api/aos/commit/083de8976967408fe12b71db4a3cc09771a69f45))
+* **mcp:** recognise node and deja written as absolute paths as AOS-owned so uninstall removes them ([d6e1d0a](https://github.com/hybridlabor-api/aos/commit/d6e1d0a33f58450c8ad425a2684044258fe2e40d))
+* **memb:** create and verify the Windows memB venv before import check ([37384e5](https://github.com/hybridlabor-api/aos/commit/37384e53e2b54094a6bd8d3c4ba567c8beeb8408))
+* **memb:** fail fast when the memB venv interpreter is missing, skip repair ([2912608](https://github.com/hybridlabor-api/aos/commit/29126086818bcb92d70d62ec644dabc63a5b93b1))
+* **memb:** rebuild a memB venv whose base Python is missing ([e6391e6](https://github.com/hybridlabor-api/aos/commit/e6391e6204937f7ac365e2e8701123fae0c1e257))
+* **memb:** rebuild on uv-managed Python when the PATH Python yields a venv without a usable base ([225d983](https://github.com/hybridlabor-api/aos/commit/225d983229f328d5e7ce90ac7ebfca51d210c24e))
+* **tdmcp:** add httpHost to the env name map and fix the http test transport ([f2dbf70](https://github.com/hybridlabor-api/aos/commit/f2dbf700d22eb844f35fe9c7188115762ae206de))
+* **uninstall:** correctly resolve paths when sweeping left over files on Windows ([#240](https://github.com/hybridlabor-api/aos/issues/240)) ([b8a21fc](https://github.com/hybridlabor-api/aos/commit/b8a21fc0061180e93028ce8127c80dd190c162db))
+* **uninstall:** define manifest reference in ruleFiles loop ([4a82f4e](https://github.com/hybridlabor-api/aos/commit/4a82f4edbda8843049265c8cdf07235febc9c372))
+* **uninstall:** delete a Claude Desktop config left with no servers and no other keys ([57eed93](https://github.com/hybridlabor-api/aos/commit/57eed93c56486ff56059094fca282854ce4128ad))
+* **uninstall:** delete a hooks.json emptied by the handler removal; install uv Python with --no-bin ([73efc85](https://github.com/hybridlabor-api/aos/commit/73efc851198f9921f653f8daf783730b48d7c927))
+* **uninstall:** keep a user-edited AGENTS.md and back it up ([056b6da](https://github.com/hybridlabor-api/aos/commit/056b6da481e6c4a2f6bee73570d24afacd6280a7))
+* **uninstall:** remove after-effects build output on uninstall ([1942ff6](https://github.com/hybridlabor-api/aos/commit/1942ff60e67d8f508bb06c1e20ea93c9e756c86e))
+* **uninstall:** remove AOS plugin-migration backups and restore index ([523336c](https://github.com/hybridlabor-api/aos/commit/523336c3244fd80ce6c833f1899720eece62bb7a))
+* **uninstall:** remove AOS-owned codex plugin state, writable-root record and hook snapshot ([383fcad](https://github.com/hybridlabor-api/aos/commit/383fcad042d8fa311d0f7bfcd78adf48d0dd7ff7))
+* **uninstall:** remove empty gemini hooks file left by AOS ([e01a989](https://github.com/hybridlabor-api/aos/commit/e01a989a40afdfb3c96d91184a167986af3ebdd5))
+* **uninstall:** track and remove unedited AGENTS.md on uninstall ([#241](https://github.com/hybridlabor-api/aos/issues/241)) ([dcff128](https://github.com/hybridlabor-api/aos/commit/dcff128aa769663cb0a2be0f7df8a35b496c0e84))
+* Windows install, uninstall and memB fixes for the 5.4.6 test matrix ([40d66c5](https://github.com/hybridlabor-api/aos/commit/40d66c552c0c3c82e311a0ebf8de029ab2abb250))
+* Windows: fleet status band never shows the go-gate segment (HOME unset) ([#237](https://github.com/hybridlabor-api/aos/issues/237)) ([cb2e745](https://github.com/hybridlabor-api/aos/commit/cb2e74559ac791bbb05601ae89e2666dd72bebf1))
+
 ## [5.4.5](https://github.com/hybridlabor-api/aos/compare/v5.4.4...v5.4.5) (2026-11-01)
 
 
