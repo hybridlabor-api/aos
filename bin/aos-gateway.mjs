@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const req = createRequire(import.meta.url);
-const { gatewayDir, lazyLoadingOn, asyncLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, HUB_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
+const { gatewayDir, lazyLoadingOn, asyncLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, HUB_PORT, GATEWAY_SERVERS, hubEntryNames } = req('../lib/gateway/config.js');
 const hubApi = req('../lib/gateway/hub.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
@@ -34,9 +34,10 @@ export function costText(upstreams) {
 export function hubText(h) {
     if (!h) return null;
     const last = h.lastUse ? `, last use ${h.lastUse}` : '';
-    if (h.state === 'idle') return h.lastUse ? `idle (stopped after idle${last})` : 'idle (starts on first call)';
-    if (h.state === 'failed') return `failed${last}${h.error ? `: ${h.error}` : ''}`;
-    return `${h.state}${last}`;
+    const changed = h.catalogChanged ? '; catalog changed since it was recorded (see gateway.log; aos-gateway warm <name> accepts it)' : '';
+    if (h.state === 'idle') return `${h.lastUse ? `idle (stopped after idle${last})` : 'idle (starts on first call)'}${changed}`;
+    if (h.state === 'failed') return `failed${last}${h.error ? `: ${h.error}` : ''}${changed}`;
+    return `${h.state}${last}${changed}`;
 }
 export const hubCostText = (s) => `${Object.keys(s.hub.servers).length} on demand, ${s.hub.running} running now (cap ${s.hub.cap}, idle stop after ${Math.round(s.hub.idleMs / 60000)} min)`;
 
@@ -91,15 +92,7 @@ function upstreamNames(dir) {
 // failed, that exited early or did not answer MCP initialize in 60 s (3 tries) stays "unknown" until the next start: nothing
 // retries it, and `1mcp mcp restart` needs an admin login AOS never sets up. The reason is in 1mcp's own log line.
 const NEVER_CONNECTED = new Set(['unknown', 'disconnected', 'error']);
-export function redactLine(text) {
-    return String(text)
-        .replace(/\b(gh[pousr]_|github_pat_|sk-|AIza)[\w-]{8,}/g, '***')
-        .replace(/\bBearer\s+[\w.~+/=-]+/gi, 'Bearer ***')
-        .replace(/\bBasic\s+[A-Za-z0-9+/=_-]{6,}/g, 'Basic ***')
-        .replace(/\/\/[^\s/@:]+:[^\s/@]+@/g, '//***@')
-        .replace(/("(?:[\w-]*(?:token|api_?key|secret|passw(?:or)?d|credential)[\w-]*)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi, '$1"***"')
-        .replace(/([?&;]|\b)((?:[\w-]*(?:token|key|secret|passw(?:or)?d|pat|auth|credential)[\w-]*))=[^&\s"';]+/gi, '$1$2=***');
-}
+export const { redactLine } = req('../lib/gateway/redact.js');
 export function redactLog(text) {
     return redactLine(text).replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
 }
@@ -217,6 +210,10 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         const h = token && TOKEN_RE.test(token) ? await get(hubPort, '/status', 2000, { authorization: `Bearer ${token}` }) : null;
         try { if (h && h.status === 200) hub = JSON.parse(h.body); } catch { /* not the hub */ }
     }
+    const hubEntries = hubEntryNames(dir);
+    const hubMissing = hubEntries.filter((n) => !(hub && hub.servers && Object.prototype.hasOwnProperty.call(hub.servers, n)));
+    const hubWarning = !running || !hubMissing.length ? null
+        : `mcp.json routes ${hubMissing.join(', ')} to the on-demand hub, but ${!hub ? `the hub does not answer on ${hubPort}` : `its sidecar has no entry${hub.sidecarError ? ` (${hub.sidecarError})` : ''}`}; run aos update`;
     for (const [i, u] of upstreams.entries()) {
         const h = hub && hub.servers && hub.servers[u.name];
         if (!h || problem || u.busy) continue;
@@ -263,6 +260,7 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         upstreams,
         ...(toolCount !== null ? { toolCount, nodeCount, sizeWarning } : {}),
         ...(hub ? { hub } : {}),
+        ...(hubWarning ? { hubWarning } : {}),
         ...(inUse ? { error: problem } : {}),
     };
 }
@@ -359,23 +357,28 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     let logFile = { write() {}, close() {} }; // opened once the start is not refused
     const log = logIn || ((m) => { logFile.write(`${new Date().toISOString()} ${m}\n`); if (process.stderr.isTTY) console.error(m); });
     const script = entry || oneMcpEntry(dir);
-    let probe = await get(upstreamPort, '/health');
-    if (probe.error !== 'ECONNREFUSED' && await reapOrphan(dir, script, upstreamPort)) probe = { error: 'ECONNREFUSED' };
-    if (probe.error !== 'ECONNREFUSED') throw new Error(`port ${upstreamPort} is already in use (not by this gateway's 1mcp); refusing to forward to a foreign process`);
-
-    logFile = openLog(dir, logMaxBytes);
-    const forwarder = createForwarder({ port, upstreamPort, token });
-    try { await forwarder.listen(); } catch (e) {
-        throw new Error(e.code === 'EADDRINUSE' ? `port ${port} in use by another process` : `cannot listen: ${e.message}`);
-    }
-    // The hub must listen before 1mcp connects to its HTTP upstreams; no sidecar entries (AOS_GATEWAY_ONDEMAND=0) = no hub.
+    // mcp.json carries the token in its hub entries: the hub port is taken first, so no other process can squat it and
+    // read that token from 1mcp. A bind failure refuses the start. No hub entries and no sidecar (AOS_GATEWAY_ONDEMAND=0) = no hub.
+    const hubEntries = hubEntryNames(dir);
+    const side = hubApi.loadSidecar(dir);
     let hub = null;
-    if (Object.keys(hubApi.readSidecar(dir)).length) {
+    if (hubEntries.length || Object.keys(side.servers).length) {
         hub = hubApi.createHub({ dir, token, port: hubPort, log, onStderr: (name, line) => logFile.write(`[${name}] ${redactLine(line)}\n`), ...hubOptions });
         try { await hub.listen(); } catch (e) {
-            await forwarder.close();
-            throw new Error(e.code === 'EADDRINUSE' ? `port ${hubPort} (on-demand hub) in use by another process` : `hub cannot listen: ${e.message}`);
+            throw new Error(e.code === 'EADDRINUSE' ? `port ${hubPort} (on-demand hub) in use by another process; refusing to start while mcp.json points 1mcp at it` : `hub cannot listen: ${e.message}`);
         }
+    }
+    const refuse = async (msg) => { if (hub) await hub.close(); throw new Error(msg); };
+    let probe = await get(upstreamPort, '/health');
+    if (probe.error !== 'ECONNREFUSED' && await reapOrphan(dir, script, upstreamPort)) probe = { error: 'ECONNREFUSED' };
+    if (probe.error !== 'ECONNREFUSED') await refuse(`port ${upstreamPort} is already in use (not by this gateway's 1mcp); refusing to forward to a foreign process`);
+
+    logFile = openLog(dir, logMaxBytes);
+    const missing = hubEntries.filter((n) => !(n in side.servers));
+    if (missing.length) log(`aos-gateway: WARNING mcp.json routes ${missing.join(', ')} to the on-demand hub but the sidecar has no entry (${side.error || 'not listed'}); those servers fail until "aos update" regenerates the config`);
+    const forwarder = createForwarder({ port, upstreamPort, token });
+    try { await forwarder.listen(); } catch (e) {
+        await refuse(e.code === 'EADDRINUSE' ? `port ${port} in use by another process` : `cannot listen: ${e.message}`);
     }
     const pidFile = path.join(dir, 'gateway.pid');
     fs.writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
@@ -519,6 +522,7 @@ async function main() {
             }
             const cost = s.hub ? hubCostText(s) : costText(s.upstreams);
             if (cost) console.log(`  processes: ${cost}`);
+            if (s.hubWarning) console.log(`  WARN hub: ${s.hubWarning}`);
             for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.heavy ? ' (heavy)' : ''}${u.error ? ` - ${u.error}` : u.hub ? ` - ${hubText(u.hub)}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }

@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { createHub, reapStaleChildren, idleMsOf, maxUpstreamsOf, CHILDREN_FILE } = require('../lib/gateway/hub.js');
+const { createHub, reapStaleChildren, idleMsOf, maxUpstreamsOf, CHILDREN_FILE, loadSidecar, warm } = require('../lib/gateway/hub.js');
 const { hubSplit, writeGatewayConfig, gatewayConfigTexts, SIDECAR_FILE } = require('../lib/gateway/config.js');
 const { gatewayStatus, hubText } = await import('../bin/aos-gateway.mjs');
 
@@ -17,7 +17,13 @@ const TOKEN = 'a'.repeat(64);
 const FAKE = `
 const fs = require('fs');
 if (process.env.FAKE_LOG) fs.appendFileSync(process.env.FAKE_LOG, process.pid + '\\n');
+if (process.env.FAKE_STDERR) fs.writeSync(2, process.env.FAKE_STDERR + '\\n');
 if (process.env.FAKE_CRASH) process.exit(3);
+if (process.env.FAKE_GRANDCHILD) {
+  const g = require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+  fs.writeFileSync(process.env.FAKE_GRANDCHILD, String(g.pid));
+}
+const desc = process.env.FAKE_DESC || 'echo';
 let buf = '';
 process.stdin.on('data', (d) => {
   buf += d; let i;
@@ -26,7 +32,9 @@ process.stdin.on('data', (d) => {
     if (m.id === undefined) continue;
     const out = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\\n');
     if (m.method === 'initialize') out({ protocolVersion: m.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '1' } });
-    else if (m.method === 'tools/list') out({ tools: [{ name: 'echo', inputSchema: { type: 'object' } }, { name: 'sleep', inputSchema: { type: 'object' } }] });
+    else if (m.method === 'tools/list') out({ tools: [{ name: 'echo', description: desc, inputSchema: { type: 'object' } }, { name: 'sleep', inputSchema: { type: 'object' } }] });
+    else if (m.method === 'tools/call' && m.params.name === 'die') process.exit(0);
+    else if (m.method === 'tools/call' && m.params.name === 'big') process.stdout.write('x'.repeat(5000) + '\\n');
     else if (m.method === 'tools/call') setTimeout(() => out({ content: [{ type: 'text', text: 'pid ' + process.pid }] }), m.params.name === 'sleep' ? 600 : 0);
     else process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'nope' } }) + '\\n');
   }
@@ -47,7 +55,7 @@ function setup(names, extraEnv = {}) {
 
 async function startHub(dir, opts = {}) {
     let spawns = 0;
-    const hub = createHub({ dir, token: TOKEN, port: 0, spawnFn: (...a) => { spawns++; return spawn(...a); }, cmdOf: () => '', ...opts });
+    const hub = createHub({ dir, token: TOKEN, port: 0, spawnFn: (...a) => { spawns++; return spawn(...a); }, ...opts });
     const port = await hub.listen();
     const rpc = async (name, method, params, { token = TOKEN, id = 1 } = {}) => {
         const r = await fetch(`http://127.0.0.1:${port}/${name}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) }) });
@@ -79,7 +87,7 @@ test('mcp.json rewrite: stdio -> hub http, http/sse/disabled untouched, sidecar 
         off: { type: 'stdio', command: 'node', args: ['x.js'], disabled: true },
         adopted_one: { type: 'stdio', command: 'uvx', args: ['thing'], cwd: '/tmp', env: { PATH: '/bin' }, tags: ['aos', 'adopted_one'] },
     };
-    fs.writeFileSync(path.join(dir, 'mcp.json'), 'old\n');
+    fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: { old: { type: 'http', url: 'http://127.0.0.1:7792/old/mcp', headers: { Authorization: `Bearer ${TOKEN}` } }, gh: { command: 'x', env: { PATH: '/secret-path' } } } }));
     writeGatewayConfig(dir, servers, {});
     const mcp = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
     assert.deepEqual(mcp.github, { type: 'http', url: 'http://127.0.0.1:7792/github/mcp', headers: { Authorization: `Bearer ${TOKEN}` }, tags: ['aos', 'github'], requestTimeout: 180000 });
@@ -91,7 +99,10 @@ test('mcp.json rewrite: stdio -> hub http, http/sse/disabled untouched, sidecar 
     assert.deepEqual(Object.keys(side).sort(), ['adopted_one', 'github']);
     assert.deepEqual(side.adopted_one, { command: 'uvx', args: ['thing'], cwd: '/tmp', env: { PATH: '/bin' }, inheritParentEnv: true });
     if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, SIDECAR_FILE)).mode & 0o777, 0o600);
-    assert.equal(fs.readFileSync(path.join(dir, 'mcp.json.prev'), 'utf8'), 'old\n');
+    // The backup keeps the shape but never the token or env values.
+    const prevText = fs.readFileSync(path.join(dir, 'mcp.json.prev'), 'utf8');
+    assert.ok(!prevText.includes(TOKEN) && !prevText.includes('/secret-path'));
+    assert.deepEqual(JSON.parse(prevText).mcpServers.gh, { command: 'x', env: { PATH: '' } });
     assert.equal(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8'), gatewayConfigTexts(dir, servers, {}).mcp);
 
     writeGatewayConfig(dir, servers, { AOS_GATEWAY_ONDEMAND: '0' });
@@ -218,21 +229,31 @@ test('stale pid cleanup signals only pids whose command line matches the record'
     const s = setup(['github']);
     const foreign = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
     const ours = spawn(process.execPath, [s.script, 'github'], { stdio: ['pipe', 'ignore', 'ignore'] });
+    const longer = spawn(process.execPath, [s.script, 'github', 'extra'], { stdio: ['pipe', 'ignore', 'ignore'] });
+    const restarted = spawn(process.execPath, [s.script, 'github'], { stdio: ['pipe', 'ignore', 'ignore'] });
+    const own = { name: 'github', command: process.execPath, args: [s.script, 'github'], argv: [process.execPath, s.script, 'github'] };
     try {
+        await new Promise((r) => setTimeout(r, 100));
         fs.writeFileSync(path.join(s.dir, CHILDREN_FILE), JSON.stringify({
-            [foreign.pid]: { name: 'github', command: process.execPath, args: [s.script, 'github'] },
-            [ours.pid]: { name: 'github', command: process.execPath, args: [s.script, 'github'] },
-            1: { name: 'github', command: 'init', args: [] },
+            [foreign.pid]: own, // same record, foreign command line
+            [ours.pid]: own,
+            [longer.pid]: own, // the record is a prefix of its argv: not exact, left alone
+            [restarted.pid]: { ...own, started: 'Thu Jan  1 00:00:00 1970' }, // pid reused by a later start
+            1: { name: 'github', command: 'init', args: [], argv: ['init'] },
         }));
         const killed = [];
-        const reaped = reapStaleChildren(s.dir, { kill: (pid) => { killed.push(pid); process.kill(pid, 'SIGKILL'); } });
+        const reaped = reapStaleChildren(s.dir, { kill: (pid, sig, group) => { killed.push([pid, group]); process.kill(pid, 'SIGKILL'); } });
         if (process.platform !== 'win32') {
             assert.deepEqual(reaped, [ours.pid]);
-            assert.deepEqual(killed, [ours.pid]);
-            assert.ok(alive(foreign.pid));
+            assert.deepEqual(killed, [[ours.pid, false]], 'not a group leader (pgid != pid): only the pid');
+            for (const p of [foreign, longer, restarted]) assert.ok(alive(p.pid));
         }
         assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.dir, CHILDREN_FILE), 'utf8')), {});
-    } finally { foreign.kill('SIGKILL'); ours.kill('SIGKILL'); }
+
+        // The record must also match the current sidecar entry: a changed sidecar leaves the pid alone.
+        fs.writeFileSync(path.join(s.dir, CHILDREN_FILE), JSON.stringify({ [longer.pid]: { ...own, args: [s.script, 'github', 'extra'], argv: [process.execPath, s.script, 'github', 'extra'] } }));
+        assert.deepEqual(reapStaleChildren(s.dir, { kill: () => assert.fail('signalled a pid the sidecar does not name') }), []);
+    } finally { for (const p of [foreign, ours, longer, restarted]) p.kill('SIGKILL'); }
 });
 
 test('status: a never-started on-demand server is ok "idle (starts on first call)", a failed one WARN, never FAIL', async () => {
@@ -278,4 +299,136 @@ test('serve starts the hub before 1mcp when the sidecar has entries, and stop() 
     const h2 = await startServe({ dir: s.dir, port: 0, upstreamPort, hubPort: 0, entry: 'x', log: () => {}, spawnFn: (c, a, o) => spawn(process.execPath, [fake1mcp], o) });
     assert.equal(h2.hubPort, null);
     await h2.stop();
+});
+
+const writeSidecar = (s, names, env = {}) => fs.writeFileSync(path.join(s.dir, SIDECAR_FILE), JSON.stringify({ servers: Object.fromEntries(names.map((n) => [n, { command: process.execPath, args: [s.script, n], env: { FAKE_LOG: s.log, ...env }, inheritParentEnv: false }])) }), { mode: 0o600 });
+
+test('(2) a leader that exits on its own takes its process group with it (POSIX)', { skip: process.platform === 'win32' }, async () => {
+    const s = setup(['github']);
+    const gfile = path.join(s.dir, 'grandchild.pid');
+    writeSidecar(s, ['github'], { FAKE_GRANDCHILD: gfile });
+    const { hub, rpc } = await startHub(s.dir);
+    try {
+        await rpc('github', 'tools/call', { name: 'echo' });
+        const g = Number(fs.readFileSync(gfile, 'utf8'));
+        assert.ok(alive(g));
+        const r = await rpc('github', 'tools/call', { name: 'die' });
+        assert.match(r.body.error.message, /exited/);
+        assert.ok(await until(() => !alive(g)), 'grandchild swept with the group');
+    } finally { await hub.close(); }
+});
+
+test('(3) stderr secrets are redacted in JSON-RPC errors and /status', async () => {
+    const s = setup(['bad'], { bad: { FAKE_CRASH: '1', FAKE_STDERR: 'auth failed for ghp_abcdefghijklmnop1234 Bearer abc.def' } });
+    const { hub, rpc } = await startHub(s.dir);
+    try {
+        const r = await rpc('bad', 'tools/call', { name: 'echo' });
+        assert.match(r.body.error.message, /auth failed for \*\*\*/);
+        const all = JSON.stringify(r.body) + JSON.stringify(hub.statusOf());
+        assert.ok(!all.includes('ghp_abcdefghijklmnop1234') && !all.includes('abc.def'), all);
+    } finally { await hub.close(); }
+});
+
+test('(4) sidecar rejection reasons; hub entries without a sidecar still bind the hub first, warn, and a taken hub port refuses the start', async () => {
+    const s = setup(['github']);
+    if (process.platform !== 'win32') {
+        fs.chmodSync(path.join(s.dir, SIDECAR_FILE), 0o644);
+        assert.match(loadSidecar(s.dir).error, /group\/others/);
+        fs.chmodSync(path.join(s.dir, SIDECAR_FILE), 0o600);
+    }
+    fs.writeFileSync(path.join(s.dir, SIDECAR_FILE), '{nope', { mode: 0o600 });
+    assert.match(loadSidecar(s.dir).error, /not valid JSON/);
+    fs.unlinkSync(path.join(s.dir, SIDECAR_FILE));
+    assert.match(loadSidecar(s.dir).error, /missing/);
+
+    const { startServe } = await import('../bin/aos-gateway.mjs');
+    fs.writeFileSync(path.join(s.dir, 'token'), TOKEN, { mode: 0o600 });
+    fs.writeFileSync(path.join(s.dir, 'mcp.json'), JSON.stringify({ mcpServers: { github: { type: 'http', url: 'http://127.0.0.1:7792/github/mcp' } } }));
+    const free = () => new Promise((resolve) => { const srv = http.createServer(); srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); }); });
+    const upstreamPort = await free();
+    const one = path.join(s.dir, 'one.js');
+    fs.writeFileSync(one, `require('http').createServer((q,r)=>{r.writeHead(200);r.end('{}');}).listen(${upstreamPort},'127.0.0.1');`);
+    const logs = [];
+    const h = await startServe({ dir: s.dir, port: 0, upstreamPort, hubPort: 0, entry: 'x', log: (m) => logs.push(m), spawnFn: (c, a, o) => spawn(process.execPath, [one], o) });
+    try {
+        assert.ok(h.hubPort > 0, 'hub bound although the sidecar is missing');
+        assert.ok(logs.some((m) => /WARNING mcp.json routes github to the on-demand hub/.test(m)), logs.join('\n'));
+        await new Promise((r) => setTimeout(r, 300));
+        const st = await gatewayStatus({ dir: s.dir, port: h.port, upstreamPort, hubPort: h.hubPort });
+        assert.match(st.hubWarning, /routes github to the on-demand hub, but its sidecar has no entry \(.*missing\)/);
+    } finally { await h.stop(); }
+    const squat = http.createServer();
+    await new Promise((r) => squat.listen(0, '127.0.0.1', r));
+    try {
+        await assert.rejects(startServe({ dir: s.dir, port: 0, upstreamPort, hubPort: squat.address().port, entry: 'x', log: () => {}, spawnFn: () => assert.fail('1mcp must not start') }), /on-demand hub\) in use/);
+    } finally { squat.close(); }
+});
+
+test('(5) a changed tool is logged and flagged, never swapped in silently; warm accepts it', async () => {
+    const s = setup(['github'], { github: { FAKE_DESC: 'v1' } });
+    let h = await startHub(s.dir);
+    await h.rpc('github', 'tools/list');
+    await h.hub.close();
+    assert.ok(readHash(s.dir));
+    writeSidecar(s, ['github'], { FAKE_DESC: 'v2' });
+    const logs = [];
+    h = await startHub(s.dir, { log: (m) => logs.push(m) });
+    try {
+        await h.rpc('github', 'tools/call', { name: 'echo' });
+        assert.ok(logs.includes('aos-gateway hub: catalog changed: github: echo'), logs.join('\n'));
+        assert.equal(h.hub.statusOf().servers.github.catalogChanged, true);
+        assert.match(hubText(h.hub.statusOf().servers.github), /catalog changed/);
+    } finally { await h.hub.close(); }
+    const cat = await warm(s.dir, 'github');
+    assert.equal(cat.changed, undefined);
+    assert.equal(cat.tools[0].description, 'v2');
+});
+const readHash = (dir) => JSON.parse(fs.readFileSync(path.join(dir, 'catalog', 'github.json'), 'utf8')).toolHashes.echo;
+
+test('(6) the cap slot is reserved synchronously: concurrent waiters never overshoot', async () => {
+    const s = setup(['a', 'b', 'c', 'd']);
+    let live = 0, peak = 0;
+    const { hub, rpc } = await startHub(s.dir, { maxUpstreams: 1, spawnFn: (...x) => { const c = spawn(...x); live++; peak = Math.max(peak, live); c.once('exit', () => live--); return c; } });
+    try {
+        const slow = rpc('a', 'tools/call', { name: 'sleep' });
+        await new Promise((r) => setTimeout(r, 100));
+        const lists = await Promise.all(['b', 'c', 'd'].map((n) => rpc(n, 'tools/list')));
+        for (const l of lists) assert.equal(l.body.result.tools.length, 2);
+        await slow;
+        assert.equal(peak, 1);
+    } finally { await hub.close(); }
+});
+
+test('(7) __proto__/constructor/prototype stay eager and are reported, never dropped or routed', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-gwhub-names-'));
+    fs.writeFileSync(path.join(dir, 'token'), TOKEN, { mode: 0o600 });
+    const servers = JSON.parse('{"__proto__": {"command": "node", "args": ["p.js"]}, "constructor": {"command": "node", "args": ["c.js"]}, "ok": {"command": "node", "args": ["o.js"]}}');
+    const logs = [];
+    writeGatewayConfig(dir, servers, {}, (m) => logs.push(m));
+    const mcp = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
+    assert.ok(Object.prototype.hasOwnProperty.call(mcp, '__proto__'));
+    assert.deepEqual(mcp.__proto__, { command: 'node', args: ['p.js'] });
+    assert.deepEqual(mcp.constructor, { command: 'node', args: ['c.js'] });
+    assert.equal(mcp.ok.type, 'http');
+    assert.match(logs.join('\n'), /__proto__, constructor cannot be served on demand/);
+    assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, SIDECAR_FILE), 'utf8')).servers), ['ok']);
+});
+
+test('(8) an oversized stdout line fails the call at once; an oversized catalog keeps the previous one', async () => {
+    const s = setup(['github']);
+    let h = await startHub(s.dir, { maxLine: 1000 });
+    try {
+        const r = await h.rpc('github', 'tools/call', { name: 'big' });
+        assert.match(r.body.error.message, /sent a line over 1000 bytes/);
+        assert.ok((await h.rpc('github', 'tools/call', { name: 'echo' }, { id: 2 })).body.result, 'the child keeps serving after the dropped line');
+    } finally { await h.hub.close(); }
+    const before = fs.readFileSync(path.join(s.dir, 'catalog', 'github.json'), 'utf8');
+    writeSidecar(s, ['github'], { FAKE_DESC: 'huge' });
+    const logs = [];
+    h = await startHub(s.dir, { maxCatalog: 10, log: (m) => logs.push(m) });
+    try {
+        await h.rpc('github', 'tools/call', { name: 'echo' });
+        assert.equal(fs.readFileSync(path.join(s.dir, 'catalog', 'github.json'), 'utf8'), before);
+        assert.ok(logs.some((m) => /catalog over 10 bytes; kept the previous catalog/.test(m)), logs.join('\n'));
+    } finally { await h.hub.close(); }
 });
