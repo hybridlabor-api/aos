@@ -30,8 +30,10 @@ afterAll(async () => {
 
 describe("integration: Streamable HTTP transport", () => {
   it.skip("serves MCP over HTTP and lists tools", async () => {
-    const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${PORT}/mcp`), { headers: { authorization: "Bearer dev-token" } });
-  const client = new Client({ name: "tdmcp-http-test", version: "0.0.0" });
+    const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${PORT}/mcp`), {
+      requestInit: { headers: { authorization: "Bearer dev-token" } },
+    });
+    const client = new Client({ name: "tdmcp-http-test", version: "0.0.0" });
     await client.connect(transport);
 
     const { tools } = await client.listTools();

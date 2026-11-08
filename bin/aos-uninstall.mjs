@@ -107,12 +107,21 @@ const aosStateEntries = (home) => {
   return [
     { path: j('.aos', 'hub'), what: 'AOS hub state and logs' },
     { path: j('.aos', 'logs'), what: 'AOS update and service logs' },
-    { path: j('.aos', 'codex-hooks.json'), what: 'Codex hook trust snapshot' },
+    // AOS trust snapshot, stale once AOS hooks leave config.toml: removed on every uninstall, shape-checked.
+    { path: j('.aos', 'codex-hooks.json'), what: 'Codex hook trust snapshot', always: true,
+      owned: (f) => { const c = readJsonSafe(f); return !!c && typeof c.hookHash === 'string'; } },
     { path: j('.aos', 'status.json'), what: 'hub watcher status' },
     { path: j('.agents', 'gateway'), what: 'MCP gateway state' },
     // Editable by the user after install: removed only while it is still byte-identical to the shipped default.
     { path: j('.aos', 'pipeline.json'), what: 'default helper-agent model suggestions (unedited)',
       owned: (f) => { try { return readFileSync(f).equals(readFileSync(shippedPipeline)); } catch { return false; } } },
+    // An empty Antigravity hooks file holds no config at all, so it goes on every uninstall.
+    { path: j('.gemini', 'config', 'hooks.json'), what: 'empty Antigravity hooks file', always: true,
+      owned: (f) => { if (!isRegularFile(f)) return false; const c = readJsonSafe(f); return !!c && typeof c === 'object' && !Array.isArray(c) && !Object.keys(c).length; } },
+    // Claude Desktop config with nothing left after the AOS server removal ({} or an empty mcpServers only); any other key or server keeps it.
+    { path: process.platform === 'win32' ? path.join(process.env.APPDATA || home, 'Claude', 'claude_desktop_config.json') : j('Library', 'Application Support', 'Claude', 'claude_desktop_config.json'),
+      what: 'empty Claude Desktop config', always: true,
+      owned: (f) => { if (!isRegularFile(f)) return false; const c = readJsonSafe(f); if (!c || typeof c !== 'object' || Array.isArray(c)) return false; const k = Object.keys(c); return !k.length || (k.length === 1 && k[0] === 'mcpServers' && !!c.mcpServers && typeof c.mcpServers === 'object' && !Object.keys(c.mcpServers).length); } },
     // Antigravity hook and MCP files: AOS's only when every handler / server entry equals what AOS writes (content,
     // never the name). They hold user config too, so they are moved to ~/.aos/backups, not deleted (backup: true).
     { path: j('.gemini', 'config', 'hooks.json'), what: 'Antigravity hooks (AOS handlers only)', backup: true,
@@ -274,8 +283,8 @@ function plan(opts = {}) {
     .map((m) => m.path);
   const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
-  const state = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && (!e.owned || e.owned(e.path))) : [];
-  const stateKept = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && e.owned && !e.owned(e.path)) : [];
+  const state = aosStateEntries(home).filter((e) => existsSync(e.path) && (PURGE || e.always) && (!e.owned || e.owned(e.path)));
+  const stateKept = PURGE ? aosStateEntries(home).filter((e) => existsSync(e.path) && e.owned && !e.owned(e.path) && !state.some((s) => s.path === e.path)) : [];
   // Everything AOS recorded writing: the folders above these are the only ones the empty-folder pass may remove.
   const recorded = [...manifestPaths, ...ur.generatedMap(home).keys()];
   const emptyDirs = sweep.pruneRecordedEmptyDirs({ home, files: recorded, dry: true, platform, alsoGone: [...ours, ...edited, ...gone] }).removed;
@@ -406,6 +415,8 @@ function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { std
 // manifest, so they outlive it. Only shipped server names are touched, only these subtrees, and directories are
 // removed afterwards only when empty: files the user put there stay.
 const MCP_GENERATED = ['node_modules', 'dist', '.venv', '__pycache__'];
+// Per-server build output: after-effects-mcp compiles its TypeScript into build/ (and copies scripts/*.jsx there).
+const MCP_BUILD_OUTPUT = { 'after-effects-mcp': ['build'] };
 const pruneEmpty = (dir) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
   try { rmdirSync(dir); } catch { /* not empty */ }
@@ -463,7 +474,8 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
     const dir = path.join(root, name);
     let st; try { st = lstatSync(dir); } catch { continue; }
     if (!st.isDirectory() || sweep.behindLink({ home, file: dir })) continue;
-    const trees = MCP_GENERATED.map((g) => path.join(dir, g)).filter(existsSync);
+    const generated = [...MCP_GENERATED, ...(MCP_BUILD_OUTPUT[name] || [])];
+    const trees = generated.map((g) => path.join(dir, g)).filter(existsSync);
     const rec = mcpMarker.readMarker(dir);
     if (!rec) {
       // Files listed in the install manifest leave with it; their build trees go here.
@@ -483,7 +495,7 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
       for (const e of readdirSync(cur, { withFileTypes: true })) {
         const rel = relDir ? `${relDir}/${e.name}` : e.name;
         const full = path.join(cur, e.name);
-        if (!relDir && (MCP_GENERATED.includes(e.name) || e.name === mcpMarker.MARKER)) continue;
+        if (!relDir && (generated.includes(e.name) || e.name === mcpMarker.MARKER)) continue;
         if (relDir && e.isDirectory() && e.name === '__pycache__') { nested.push(full); continue; }
         if (e.isDirectory()) walk(full, rel);
         else if (rec.files[rel] && mcpMarker.sha(full) === rec.files[rel]) doomed.push(full);
@@ -564,7 +576,7 @@ async function execute(p) {
   for (const f of edited.filter((x) => !unsaved.has(x))) {
     try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch (e) { unsaved.add(f); failures.push(`${tilde(f)} not removed: backup failed (${e.message})`); }
   }
-  for (const f of [...ours, ...edited].filter((x) => !unsaved.has(x))) {
+  for (const f of ours.filter((x) => !unsaved.has(x))) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
@@ -807,7 +819,10 @@ async function execute(p) {
     if (dirs.length) console.log(`  ${dirs.length} empty folders AOS created removed`);
   });
 
-  for (const d of [...(p.state || []), ...data]) {
+  // The plan was built before the harness steps above: a hooks file they emptied is only deletable now.
+  const planned = p.state || [];
+  const stateNow = DRY ? planned : [...planned, ...aosStateEntries(HOME).filter((e) => e.always && existsSync(e.path) && e.owned && e.owned(e.path) && !planned.some((x) => x.path === e.path))];
+  for (const d of [...stateNow, ...data]) {
     try {
       if (d.backup) {
         const dest = sweep.moveToBackup({ home: HOME, file: d.path, stamp });

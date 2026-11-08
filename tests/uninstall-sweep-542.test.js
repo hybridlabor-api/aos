@@ -87,7 +87,7 @@ test('--purge removes AOS state only while it is AOS-owned and names everything 
     try {
         const j = (...p) => path.join(home, ...p);
         install(home, [j('.agents', 'rules', 'r.md')]);
-        write(j('.aos', 'hub', 'hub.json')); write(j('.aos', 'logs', 'u.log')); write(j('.aos', 'codex-hooks.json')); write(j('.aos', 'status.json'));
+        write(j('.aos', 'hub', 'hub.json')); write(j('.aos', 'logs', 'u.log')); write(j('.aos', 'codex-hooks.json'), JSON.stringify({ hookHash: 'abc', trustedHashes: [], changedAt: '2026-11-05T00:00:00.000Z' })); write(j('.aos', 'status.json'));
         write(j('.aos', 'pipeline.json'), '{"edited":true}');                       // user-edited: stays
         write(j('.aos', 'backups', 'uninstall-1', 'b.json'));
         write(j('.aos', 'v5-settings.json.removed-20260101'));
@@ -150,4 +150,56 @@ test('Windows services: the visualizer is stopped by its "visualize --port N" co
         assert.match(ps, /GetOwner/, 'only this user\'s processes');
         assert.match(ps, /\$_\.ProcessId -ne \$PID/);
     } finally { rm(home); }
+});
+
+test('a hooks.json left empty by the AOS handler removal is deleted in the same uninstall', () => {
+    const home = sandbox();
+    try {
+        const j = (...p) => path.join(home, ...p);
+        install(home, [j('.agents', 'rules', 'r.md')]);
+        write(j('.gemini', 'config', 'hooks.json'), JSON.stringify({ 'aos-go-gate': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "/h/.gemini/config/hooks/go-gate.mjs" || exit 0' }] }] } }));
+        const r = uninstall(home, '--yes');
+        assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+        assert.ok(!fs.existsSync(j('.gemini', 'config', 'hooks.json')), 'hooks.json removed\n' + r.stdout);
+    } finally { rm(home); }
+});
+
+test('Claude Desktop config: an AOS-only file is deleted, one with another server or key stays', () => {
+    const cases = [[{ mcpServers: {} }, false, true], [{}, false], [{ mcpServers: { mine: { command: 'x' } } }, true], [{ theme: 'dark' }, true]];
+    for (const [extra, stays, bare] of cases) {
+        const home = sandbox();
+        try {
+            const j = (...p) => path.join(home, ...p);
+            install(home, [j('.agents', 'rules', 'r.md')]);
+            const cfg = process.platform === 'win32' ? j('AppData', 'Roaming', 'Claude', 'claude_desktop_config.json') : j('Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+            write(cfg, bare ? '{"mcpServers":{}}' : JSON.stringify({ ...extra, mcpServers: { github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github@2025.4.8'] }, ...(extra.mcpServers || {}) } }));
+            const r = uninstall(home, '--yes');
+            assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+            assert.strictEqual(fs.existsSync(cfg), stays, r.stdout);
+        } finally { rm(home); }
+    }
+});
+
+test('Claude Desktop config: servers written with an absolute node / deja path are removed, a foreign server stays', () => {
+    for (const foreign of [false, true]) {
+        const home = sandbox();
+        try {
+            const j = (...p) => path.join(home, ...p);
+            install(home, [j('.agents', 'rules', 'r.md')]);
+            const cfg = process.platform === 'win32' ? j('AppData', 'Roaming', 'Claude', 'claude_desktop_config.json') : j('Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+            const node = process.platform === 'win32' ? 'C:\\Program Files\\nodejs\\node.exe' : '/usr/local/bin/node';
+            const mcps = `${path.dirname(cfg)}/mcps`;
+            const mcpServers = {
+                mcsc: { command: node, args: [`${mcps}/mcsc/server.js`] },
+                bdb_unreal_mcp: { command: node, args: [`${mcps}/unreal_mcp/dist/cli.js`] },
+                deja: process.platform === 'win32' ? { command: 'cmd', args: ['/c', 'C:\\npm\\deja.cmd', 'mcp'] } : { command: '/usr/local/bin/deja', args: ['mcp'] },
+            };
+            if (foreign) mcpServers.mine = { command: node, args: ['/my/server.js'] };
+            write(cfg, JSON.stringify({ mcpServers }));
+            const r = uninstall(home, '--yes');
+            assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+            if (!foreign) return assert.ok(!fs.existsSync(cfg), 'skeleton file removed\n' + r.stdout);
+            assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(cfg, 'utf8')).mcpServers), ['mine']);
+        } finally { rm(home); }
+    }
 });

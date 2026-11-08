@@ -1257,6 +1257,7 @@ aos-evolve capture <failure.json | --error "..."> [--skill <name>] [options]
 aos-evolve status [--json]
 aos-evolve disable
 aos-evolve enable
+aos-evolve probe [--target <probe>] [--set default]
 ```
 
 | Command | Usage | What it does |
@@ -1265,10 +1266,13 @@ aos-evolve enable
 | `status` | `aos-evolve status [--json]` | Display evolution engine status and failure count. |
 | `disable` | `aos-evolve disable` | Activate kill switch to disable evolution loop. |
 | `enable` | `aos-evolve enable` | Remove kill switch to re-enable evolution loop. |
+| `probe` | `aos-evolve probe [--target <probe>] [--set default]` | Run the fixed probe set 3 times, records results, and checks for regression/improvement. |
 
 | Option | What it does |
 |---|---|
 | `--skill` | Target skill directory name. |
+| `--target` | Target probe to ensure improvement. |
+| `--set` | Probe set to run (default: default). |
 | `--error` | Raw error message or transcript excerpt to capture. |
 | `--kind` | Failure kind: test \| build \| review \| advisor-repeat \| user. |
 | `--harness` | Execution harness: claude \| agy \| opencode \| codex. |

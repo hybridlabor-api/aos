@@ -516,12 +516,24 @@ function venvPyVersion(dir) {
     try { return parsePyVersion((/^version(?:_info)?\s*=\s*(.+)$/m.exec(fs.readFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'utf8')) || [])[1]); } catch (e) { return null; }
 }
 
+// pyvenv.cfg `home` names the base Python dir; when that base is gone (e.g. a Store Python removed) the venv's interpreter exists but cannot start.
+function venvUsable(dir) {
+    try {
+        const home = (/^home\s*=\s*(.+)$/m.exec(fs.readFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'utf8')) || [])[1];
+        return Boolean(home) && fs.existsSync(home.trim());
+    } catch (e) { return false; }
+}
+
 // Creates dir/.venv with a Python >= 3.10, or throws MEMB_PYTHON_FIX without leaving an empty venv behind.
-// A venv built on an older Python is rebuilt (--clear). opts.pick / opts.hasUv / opts.run are test seams.
+// A venv built on an older Python, or whose base is gone, is rebuilt (--clear). opts.pick / opts.hasUv / opts.run are test seams.
 function ensurePythonVenv(dir, opts = {}) {
-    const win = process.platform === 'win32';
+    const win = (opts.platform || process.platform) === 'win32';
     const venvPy = win ? path.join(dir, '.venv', 'Scripts', 'python.exe') : path.join(dir, '.venv', 'bin', 'python');
-    if (fs.existsSync(venvPy)) {
+    // A venv tool can exit 0 and still leave no interpreter (seen on Windows); never report that as created.
+    const requireInterpreter = () => { if (!fs.existsSync(venvPy)) throw new Error(`venv has no interpreter at ${venvPy}`); };
+    if (fs.existsSync(venvPy) && !venvUsable(dir)) {
+        log.step(`[memb] existing venv base Python is missing; rebuilding ${path.join(dir, '.venv')}.`);
+    } else if (fs.existsSync(venvPy)) {
         const v = venvPyVersion(dir);
         if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
         log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
@@ -536,8 +548,15 @@ function ensurePythonVenv(dir, opts = {}) {
     if (hasUv) {
         const target = sys ? sys.cmd : '3.12';
         try {
-            if (!sys) run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
-            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, path.join(dir, '.venv')]);
+            if (!sys) run(uvBin(), ['python', 'install', '--no-bin', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
+            const mk = (t) => { run(uvBin(), ['venv', '--clear', '--seed', '--python', t, path.join(dir, '.venv')]); requireInterpreter(); };
+            mk(target);
+            // A PATH python can be a Store alias whose base dir does not exist under a redirected profile: the venv is built but cannot start.
+            if (sys && !venvUsable(dir)) {
+                log.step('[memb] PATH Python produced a venv without a usable base; rebuilding on uv-managed Python 3.12.');
+                run(uvBin(), ['python', 'install', '--no-bin', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
+                mk('3.12');
+            }
             return { created: true, viaUv: true };
         } catch (e) {
             if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
@@ -545,6 +564,7 @@ function ensurePythonVenv(dir, opts = {}) {
     }
     try {
         run(sys.cmd, ['-m', 'venv', '--clear', path.join(dir, '.venv')]);
+        requireInterpreter();
     } catch (e) {
         // Rename, never delete: the half-built venv stays as .venv.broken-<stamp> (as lib/v5/packages.js does).
         if (path.isAbsolute(dir)) try { fs.renameSync(path.join(dir, '.venv'), path.join(dir, `.venv.broken-${Date.now()}`)); } catch (_) { /* nothing half-built */ }
@@ -1219,23 +1239,36 @@ function initSessionManifest(existingManifest, sourceDirs) {
     _sessionHashes = buildKnownSourceHashes(sourceDirs);
 }
 
+// Resolves tokens in harness skill directory paths from lib/harnesses.json
+function resolveHarnessSkillDir(dirStr, targetHome = homeDir) {
+    if (!dirStr || typeof dirStr !== 'string') return null;
+    if (dirStr.startsWith('~')) {
+        return path.join(targetHome, dirStr.slice(1).replace(/^[\\/]+/, ''));
+    }
+    if (dirStr.startsWith('$HOME')) {
+        return path.join(targetHome, dirStr.slice(5).replace(/^[\\/]+/, ''));
+    }
+    if (dirStr.startsWith('$CLAUDE_CONFIG_DIR')) {
+        return path.join(claudeConfigDir(targetHome), dirStr.slice(18).replace(/^[\\/]+/, ''));
+    }
+    return path.resolve(dirStr);
+}
+
 // The exact roots syncSkillsToGlobalHarnesses and the Gemini/Antigravity
-// config-skills path write into. Pruning only touches a manifest entry whose
-// path starts under one of these -- never one that merely contains a
-// "skills" segment somewhere deeper, which is what let the MCP-bundle and
-// workspace_agents cases above leak in during testing.
+// config-skills path write into, driven directly from lib/harnesses.json. Pruning only touches
+// a manifest entry whose path starts under one of these.
 function globalSkillDestRoots() {
-    return [
-        path.join(homeDir, '.agents', 'skills'),
-        path.join(claudeConfigDir(homeDir), 'skills'),
-        path.join(homeDir, '.codex', 'skills'),
-        path.join(homeDir, '.cursor', 'skills'),
-        path.join(homeDir, '.roo', 'skills'),
-        path.join(homeDir, '.config', 'opencode', 'skills'),
-        path.join(homeDir, '.windsurf', 'bdb-skills'),
-        path.join(homeDir, '.aider', 'bdb-skills'),
-        path.join(geminiDir, 'config', 'skills'),
-    ];
+    let rows = [];
+    try { rows = require('./lib/harnesses.json'); } catch (_) {}
+    const roots = new Set();
+    roots.add(path.join(homeDir, '.agents', 'skills'));
+    for (const row of rows) {
+        if (!row.skills_dir) continue;
+        const resolved = resolveHarnessSkillDir(row.skills_dir, homeDir);
+        if (resolved) roots.add(resolved);
+    }
+    roots.add(path.join(geminiDir, 'config', 'skills'));
+    return [...roots];
 }
 
 // Retires skills the package no longer ships (lib/retired-skills.js). Edited or foreign files are
@@ -2231,7 +2264,7 @@ function cleanEmptySkillDirs(dir) {
 // skills (e.g. hardware-pcb) also present in ~/.agents/skills are backed up and retired when file
 // hashes match; edited copies stay and are reported.
 function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, rootDir = null, label = 'Codex', tag = 'codex-skills', keep = null, onlyNames = null } = {}) {
-    if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return { removed: [], leftover: [] };
+    if (DRY_RUN || !manifest) return { removed: [], leftover: [] };
     const targetHome = home || homeDir;
     const root = rootDir || path.join(targetHome, '.codex', 'skills');
     if (!fs.existsSync(root)) return { removed: [], leftover: [] };
@@ -2394,19 +2427,23 @@ function agyExcludeList(skillsBase, excludeSkills = []) {
     return [...new Set([...excludeSkills, ...agyLeafNames(skillsBase).filter((n) => !isAgyRouter(n))])];
 }
 
-function retireAgySkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+function retireAgySkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir, retireRouters = null } = {}) {
     const root = path.join(home, '.gemini', 'config', 'skills');
     if (!manifest || !fs.existsSync(root)) return { removed: [], leftover: [] };
     const agentsSkills = path.join(home, '.agents', 'skills');
     const prefix = path.resolve(root) + path.sep;
+    const pluginActive = retireRouters !== null ? Boolean(retireRouters) : (
+        fs.existsSync(path.join(home, '.gemini', 'config', 'plugins', 'bdb-aos')) ||
+        fs.existsSync(path.join(home, '.agents', '.bdb-agy-plugin.json'))
+    );
     // Only skills that ~/.agents/skills also holds are retired, so no skill ever disappears from agy entirely.
     const owned = {};
     for (const [f, v] of Object.entries(manifest)) {
         if (typeof f !== 'string' || !path.resolve(f).startsWith(prefix)) continue;
         const name = path.resolve(f).slice(prefix.length).split(path.sep)[0];
-        if (!isAgyRouter(name) && fs.existsSync(path.join(agentsSkills, name))) owned[f] = v;
+        if ((pluginActive || !isAgyRouter(name)) && fs.existsSync(path.join(agentsSkills, name))) owned[f] = v;
     }
-    const keep = new Set(fs.readdirSync(root).filter((n) => isAgyRouter(n)));
+    const keep = pluginActive ? null : new Set(fs.readdirSync(root).filter((n) => isAgyRouter(n)));
     const sub = { ...owned };
     const r = retireCodexSkillCopies(sub, { home, rootDir: root, label: 'Antigravity', tag: 'agy-skills', keep, onlyNames: new Set(Object.keys(owned).map((f) => path.resolve(f).slice(prefix.length).split(path.sep)[0])) });
     for (const f of Object.keys(owned)) if (!(f in sub)) delete manifest[f];
@@ -2519,32 +2556,42 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
     }
 }
 
+const HARNESS_ID_TO_DETECT_KEY = {
+    claude: 'claudecode',
+    cursor: 'cursor',
+    windsurf: 'windsurf',
+    aider: 'aider',
+    roo: 'vscode',
+    opencode: 'opencode',
+    codex: 'codex',
+    agy: 'antigravity',
+};
+
 function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
     const pluginCovered = ignorePluginCoverage ? new Set() : runPluginMigration().covered;
 
-    // Mirror only into harnesses that are actually present. This list used to
-    // be unconditional, which both wrote skills nobody would read and planted
-    // the very directories detectPlatforms() then read back as proof the
-    // harness existed. ~/.agents is ours and always written.
+    // Mirror only into harnesses that are actually present, driven directly from lib/harnesses.json.
+    // ~/.agents is ours and always written.
     const detectedKeys = new Set(detectPlatforms().map((d) => d.key));
-    // No `|| fs.existsSync(d.dir)` fallback here on purpose: that fallback
-    // used to mean a directory AOS itself planted in a past run (before a
-    // harness was ever really detected) kept being "detected" forever,
-    // regardless of what detectPlatforms() found this run -- the exact
-    // circularity the block comment above warns about, just one layer down.
-    // A harness that stops being detected now simply stops receiving skill
-    // updates instead of perpetuating a false positive.
-    return [
+    let rows = [];
+    try { rows = require('./lib/harnesses.json'); } catch (_) {}
+
+    const dests = [
         { dir: path.join(homeDir, '.agents', 'skills'), key: null },
-        { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
-        { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
-        { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
-        // Skipped once skills.paths lists ~/.agents/skills: a second copy is listed twice (#187).
-        ...(opencodeUsesAgentsSkills() ? [] : [{ dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' }]),
-        // Same dirs the fresh install writes for platforms 6 and 8 (resolveTargetPaths), so update refreshes them too.
-        { dir: path.join(homeDir, '.windsurf', 'bdb-skills'), key: 'windsurf' },
-        { dir: path.join(homeDir, '.aider', 'bdb-skills'), key: 'aider' },
-    ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
+    ];
+
+    for (const row of rows) {
+        if (!row.skills_dir || row.skills_mode === 'none' || row.skills_mode === 'plugin') continue;
+        if (row.id === 'opencode' && opencodeUsesAgentsSkills(homeDir)) continue;
+        if (row.skills_mode === 'native' && row.id !== 'opencode') continue;
+        const key = HARNESS_ID_TO_DETECT_KEY[row.id] || row.id;
+        const resolved = resolveHarnessSkillDir(row.skills_dir, homeDir);
+        if (resolved) {
+            dests.push({ dir: resolved, key });
+        }
+    }
+
+    return dests.filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
 const TAURI_PILOT_VERSION = '0.8.1';
@@ -3411,7 +3458,8 @@ async function installDeja() {
     return dejaOnPath ? undefined : false;
 }
 
-async function installMemB(interactive) {
+async function installMemB(interactive, deps = {}) {
+    const seam = { membDir: path.join(moduleBasePath(), 'memB'), download: downloadOrUpdateModule, installDeja, ensureVenv: ensurePythonVenv, runPip: runPipWithRetry, reconcile: reconcileMembVenv, ...deps };
     let installWebUI = true;
     if (interactive && !isAutoYes) {
         installWebUI = pick(await askConfirm({
@@ -3419,7 +3467,7 @@ async function installMemB(interactive) {
             initialValue: true
         }));
     }
-    const membDir = path.join(moduleBasePath(), 'memB');
+    const membDir = seam.membDir;
     // On Windows the memB WebUI process holds open file handles inside membDir.
     // The atomic rename inside downloadOrUpdateModule fails with EPERM as long as
     // those handles are live — retry backoff cannot help. Kill the process on
@@ -3441,11 +3489,11 @@ async function installMemB(interactive) {
     // registration, each of which then failed on its own terms or, worse,
     // "succeeded" against a stale tree -- and the run still ended in a success
     // banner. Stop at the module that could not be fetched.
-    if (!downloadOrUpdateModule('@hybridlabor-api/memb', membDir, 'memB Vector Engine')) {
+    if (!seam.download('@hybridlabor-api/memb', membDir, 'memB Vector Engine')) {
         log.warn('Skipping memB setup: the module could not be downloaded.');
         return false;
     }
-    await installDeja();
+    await seam.installDeja();
     if (DRY_RUN) {
         log.step('[dry-run] would bootstrap memB venv + pip requirements');
         return;
@@ -3461,7 +3509,9 @@ async function installMemB(interactive) {
                 ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
                 : path.join(membDir, '.venv', 'bin', 'python');
 
-            const createdViaUv = Boolean(ensurePythonVenv(membDir).viaUv);
+            const createdViaUv = Boolean(seam.ensureVenv(membDir).viaUv);
+            // A venv tool can exit 0 and still leave no interpreter; pip, reconcile and repair against it only fail noisily.
+            if (!fs.existsSync(venvPython)) throw new Error(`memB venv has no interpreter at ${venvPython}`);
 
             // `uv venv --seed` is supposed to seed pip/setuptools/wheel into the venv, but
             // this has been observed to silently under-deliver (venv created, pip missing) --
@@ -3488,12 +3538,12 @@ async function installMemB(interactive) {
             const pipInstall = (pkgsArg) => `"${venvPython}" -m pip install ${pkgsArg} --timeout 30 --no-input`;
             const installCmd = (pkgsArg) => hasUv ? uvInstall(pkgsArg) : pipInstall(pkgsArg);
 
-            runPipWithRetry(installCmd('--upgrade setuptools'), { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
-            const reconcile = reconcileMembVenv(membDir, { venvPython, hasUv });
+            seam.runPip(installCmd('--upgrade setuptools'), { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
+            const reconcile = seam.reconcile(membDir, { venvPython, hasUv });
             if (reconcile.status === 'failed') log.warn('memB requirements reconcile failed; inspect the venv before starting the daemon.');
 
             if (installWebUI && fs.existsSync(serverPy)) {
-                runPipWithRetry(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
+                seam.runPip(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
             }
 
             // A partially upgraded venv can contain pydantic while missing or
@@ -3508,7 +3558,7 @@ async function installMemB(interactive) {
                 const repairPackages = installWebUI && fs.existsSync(serverPy)
                     ? '--force-reinstall "pydantic>=2.7.3" "pydantic-core>=2.18.4" fastapi uvicorn'
                     : '--force-reinstall "pydantic>=2.7.3" "pydantic-core>=2.18.4"';
-                const repaired = runPipWithRetry(
+                const repaired = seam.runPip(
                     installCmd(repairPackages),
                     { cwd: membDir, stdio: 'inherit' },
                     'repair memB Python dependencies',
@@ -4682,10 +4732,10 @@ function resolveTargetPaths(platformValue, customPaths) {
         // per-platform path did not.
         if (process.platform !== 'linux') extraMcpConfigPaths = [path.join(homeDir, '.claude.json')];
     } else if (platformValue === '3') {
-        targetSkillDir = path.join(currentDir, '.cursor', 'bdb-skills');
-        targetLegacyDir = path.join(currentDir, '.cursor', 'bdb-skills', 'legacy');
-        targetWorkspaceDir = path.join(currentDir, '.cursor', 'workspace_skills');
-        targetMcpDir = path.join(currentDir, '.cursor');
+        targetSkillDir = path.join(homeDir, '.cursor', 'skills');
+        targetLegacyDir = path.join(homeDir, '.cursor', 'skills', 'legacy');
+        targetWorkspaceDir = path.join(homeDir, '.cursor', 'workspace_skills');
+        targetMcpDir = path.join(homeDir, '.cursor');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '5') {
         // Codex reads ~/.agents/skills too; a second copy under ~/.codex/skills would list every skill twice.
@@ -8657,33 +8707,8 @@ async function main() {
         return;
     }
     if (args[0] === 'project') {
-        const pAgents = path.join(currentDir, 'AGENTS.md');
-        const pClaude = path.join(currentDir, 'CLAUDE.md');
-        const pGemini = path.join(currentDir, 'GEMINI.md');
-        const tmplPath = path.join(srcDir, 'skills', 'global_config', 'aos-project-init', 'assets', 'AGENTS.template.md');
-        if (!fs.existsSync(pAgents)) {
-            const template = fs.existsSync(tmplPath) ? fs.readFileSync(tmplPath, 'utf8') : '# Agents\n';
-            fs.writeFileSync(pAgents, template.replace('<PROJECT NAME>', path.basename(currentDir)));
-            log.step(`Wrote ${pAgents}`);
-        } else {
-            log.step(`Skipped ${pAgents} (already exists)`);
-        }
-        for (const pt of [pClaude, pGemini]) {
-            if (fs.existsSync(pt)) {
-                log.step(`Skipped ${pt} (already exists)`);
-            } else {
-                if (process.platform === 'win32') {
-                    fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
-                } else {
-                    try {
-                        fs.symlinkSync('AGENTS.md', pt);
-                    } catch (e) {
-                        fs.writeFileSync(pt, '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n');
-                    }
-                }
-                log.step(`Wrote ${pt} pointer to AGENTS.md`);
-            }
-        }
+        const { runProjectInit } = require('./lib/project-init.js');
+        runProjectInit({ args, currentDir, srcDir, log, platform: process.platform });
         return;
     }
     if (args[0] === 'context') {
@@ -9513,6 +9538,7 @@ module.exports = {
     // Manifest store (exported for verification tests)
     computeFileHash,
     reconcileMembVenv,
+    installMemB,
     pickPython,
     ensurePythonVenv,
     getInstallManifestPath,
