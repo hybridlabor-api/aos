@@ -2815,6 +2815,48 @@ export function claudeGogateCommands(transcriptPath) {
   return out;
 }
 
+// Antigravity has no prompt hook that could write the store, so its modes and grants are read from the transcript alone.
+// Positive human evidence is the entry type itself (USER_INPUT / USER_EXPLICIT; agent and A2A text is injected as ephemeral
+// messages, never as such an entry) and only the plain form counts. An entry time is used when the entry carries one; else the
+// gate stamps the first time it saw that command (state.agy_seen), so a typed duration always runs from a real clock.
+export function agyGogateCommands(transcriptPath, key, now = Date.now()) {
+  const out = [];
+  try {
+    for (const line of fileLines(transcriptPath)) {
+      if (!/gogate/i.test(line)) continue;
+      const e = parseEntry(line);
+      if (!e || !(e.type === "USER_INPUT" || e.source === "USER_EXPLICIT")) continue;
+      const text = extractAgyText(e.content);
+      const parsed = parseGogate(text);
+      if (!parsed || parsed.error) continue;
+      out.push({ id: null, ts: Date.parse(e.timestamp ?? e.createdAt ?? e.time), hash: textHash(text), parsed, strict: parsed.form === "plain" });
+    }
+  } catch (e) { if (e.code === "SCANLIMIT") throw e; return []; }
+  const st = readState(key);
+  const seen = st && typeof st.agy_seen === "object" && st.agy_seen ? { ...st.agy_seen } : {};
+  let dirty = false;
+  const count = {};
+  for (const c of out) {
+    const k = `${c.hash}#${count[c.hash] = (count[c.hash] ?? -1) + 1}`;
+    if (Number.isFinite(c.ts)) continue;
+    if (!Number.isFinite(seen[k])) { seen[k] = now; dirty = true; }
+    c.ts = seen[k];
+  }
+  if (dirty) try { writeState(key, { ...(st && typeof st === "object" ? st : {}), agy_seen: seen }); } catch { /* unstamped entries stay at `now` */ }
+  return out;
+}
+
+// Store entries for transcript-only harnesses: each usable gogate command vouches for itself.
+function synthesizeStore(cmds, source) {
+  const src = (c) => ({ transcript: source, uuid: c.id, issued_at: new Date(c.ts).toISOString(), text_hash: c.hash });
+  const ok = cmds.filter((c) => Number.isFinite(c.ts));
+  return {
+    modes: ok.filter((c) => ["soft", "off"].includes(c.parsed.cmd)).map((c) => ({ mode: c.parsed.cmd, source: src(c) })),
+    grants: ok.filter((c) => c.parsed.cmd === "grant").flatMap((c) => c.parsed.scopes.map((scope) => ({ scope, until: new Date(c.ts + c.parsed.ms).toISOString(), ...(c.parsed.session ? { session_key: KEY_PLACEHOLDER } : {}), source: src(c) }))),
+  };
+}
+const KEY_PLACEHOLDER = "\0self";
+
 const WEAK_HINT = "it came from a slash command, which Claude Code stores without human-origin data; type the plain form as the whole message instead, e.g. `gogate grant merge 2h` or `gogate off`";
 const OC_HINT = "OpenCode accepts only the plain form (`gogate off`, `gogate grant merge 2h`) typed as the whole message";
 
@@ -2829,9 +2871,9 @@ const OC_HINT = "OpenCode accepts only the plain form (`gogate off`, `gogate gra
 //   plain text part), so there only the plain form counts (and the known agent routes that
 //   post a prompt are blocked); `off` and grants behave like on Claude.
 // - Grants need a strict entry after the last hard; `until` is clamped to the typed duration.
-export function effectiveGate(key, { source, cmds, opencode = false }, now = Date.now()) {
+export function effectiveGate(key, { source, cmds, opencode = false, transcriptOnly = false }, now = Date.now()) {
   const st = readState(key);
-  const state = st && typeof st === "object" ? st : {};
+  const state = transcriptOnly ? synthesizeStore(cmds, source) : st && typeof st === "object" ? st : {};
   const rejected = [];
   const usable = (c) => c.parsed.cmd === "hard" || c.strict;
   for (const c of cmds) {
@@ -2870,7 +2912,7 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
     if (!c.strict) { rejected.push(`grant ${g?.scope} ignored: ${opencode ? OC_HINT : WEAK_HINT}`); continue; }
     if (cmds.indexOf(c) < lastHard) { rejected.push(`grant ${g.scope} revoked by a later hard`); continue; }
     if (revokeTs && !(Number.isFinite(c.ts) && c.ts > revokeTs)) { rejected.push(`grant ${g.scope} revoked from the trail UI`); continue; }
-    if (c.parsed.session && g.session_key !== key) { rejected.push(`session grant ${g.scope} belongs to another session`); continue; }
+    if (c.parsed.session && g.session_key !== (transcriptOnly ? KEY_PLACEHOLDER : key)) { rejected.push(`session grant ${g.scope} belongs to another session`); continue; }
     const until = Math.min(Date.parse(g.until), c.ts + c.parsed.ms);
     if (!(now < until)) continue; // expired
     grants.push({ scope: g.scope, until, session: !!c.parsed.session });
@@ -3838,10 +3880,10 @@ function main(rawInput) {
     }
   }
 
-  // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).
-  const key = !isAgy && input.session_id ? sessionKey(input.session_id) : "";
+  // Modes and grants: Claude Code via go-grant.mjs (session_id), Antigravity from its transcript (conversationId).
+  const key = isAgy ? (typeof input.conversationId === "string" ? sessionKey(input.conversationId) : "") : input.session_id ? sessionKey(input.session_id) : "";
   if (key && !cooling && !tooLong && !codexOpaque) {
-    const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
+    const eff = effectiveGate(key, isAgy ? { source: transcriptPath, cmds: agyGogateCommands(transcriptPath, key), transcriptOnly: true } : { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
     if (eff.mode === "off" && !neverGrantable(command)) {
       gateLog(key, `off: allowed ${JSON.stringify(command.slice(0, 200))}`);
