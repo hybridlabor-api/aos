@@ -106,15 +106,12 @@ test('media server selection: forced list and non-interactive detection defaults
     };
     assert.deepEqual(selection.mediaServersFor(home, { platform: 'darwin', fsImpl: fsNoApps }), []);
 
-    // Non-interactive with apps detected -> detected list
+    // Non-interactive with apps detected -> still empty: media servers are opt-in (#255)
     const fsApps = {
         readdirSync: (d) => (d === '/Applications' ? ['TouchDesigner', 'Resolume Arena'] : []),
         readFileSync: (p) => fs.readFileSync(p),
     };
-    assert.deepEqual(
-        selection.mediaServersFor(home, { platform: 'darwin', fsImpl: fsApps }),
-        ['bdb_resolume_mcp', 'bdb_td_backup']
-    );
+    assert.deepEqual(selection.mediaServersFor(home, { platform: 'darwin', fsImpl: fsApps }), []);
 
     // Forced list via options forces servers regardless of app detection
     assert.deepEqual(

@@ -160,7 +160,7 @@ test('resolveAndSaveSelection: first migration keeps running upstreams, saves af
     assert.ok(!readJson(settingsOf(home)).gateway.servers.includes('bdb_unreal_mcp'));
 });
 
-test('resolveAndSaveSelection: Pro MEDIA tier from the manifest adds only the media servers whose app is detected', () => {
+test('resolveAndSaveSelection: Pro MEDIA tier adds no media server for a detected app, only on request (#255)', () => {
     const home = tmp();
     fs.mkdirSync(path.join(home, '.agents'), { recursive: true });
     fs.writeFileSync(path.join(home, '.agents', '.bdb-manifest.json'), JSON.stringify({ tier: '1' }));
@@ -170,10 +170,13 @@ test('resolveAndSaveSelection: Pro MEDIA tier from the manifest adds only the me
     for (const n of selection.SERVER_GROUPS.media) assert.ok(!bare.includes(n), `${n} needs its app`);
     // Unreal is the one media app detectable under a Linux HOME
     fs.mkdirSync(path.join(home, 'UnrealEngine', 'Engine'), { recursive: true });
-    const { servers } = pkg.resolveAndSaveSelection(linux, () => {});
+    assert.ok(!pkg.resolveAndSaveSelection(linux, () => {}).servers.includes('bdb_unreal_mcp'), 'detected app alone is not a request');
+    const said = [];
+    const { servers } = pkg.resolveAndSaveSelection({ ...linux, env: { AOS_MEDIA_SERVERS: 'unreal' } }, (m) => said.push(m));
     assert.ok(servers.includes('bdb_unreal_mcp'));
     for (const n of ['bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup']) assert.ok(!servers.includes(n), n);
     assert.ok(!servers.includes('zavora_computer_use'), 'desktop group is opt-in');
+    assert.ok(said.some((m) => /heavy opt-in server\(s\).*bdb_unreal_mcp.*aos-gateway remove/.test(m)), 'a selected heavy server gets the cost line');
 });
 
 test('an unparseable v5-settings.json is never overwritten; writes are atomic', () => {
@@ -258,8 +261,8 @@ test('mediaServersFor: with/without detection, forced list, and tier gating', ()
         readFileSync: () => JSON.stringify({ tier: '2' }),
     };
 
-    // With detection on Pro MEDIA
-    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsDetected }), ['bdb_resolume_mcp']);
+    // A detected app alone selects nothing: media servers are opt-in (#255)
+    assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsDetected }), []);
 
     // Without detection on Pro MEDIA (no apps found)
     assert.deepEqual(selection.mediaServersFor('/h', { platform: 'darwin', fsImpl: fsEmpty }), []);
@@ -307,4 +310,17 @@ test('doctor: selected media server without app is a warning, not a gateway fail
     // gateway upstreams check does NOT fail for grandma3
     const upstreamsRow = checks.find((c) => c.name === 'gateway upstreams');
     assert.strictEqual(upstreamsRow, undefined, 'gateway upstreams should not fail for missing media app');
+});
+
+test('OPT_IN_SERVERS: heavy media, creator and desktop servers, never in base (#255)', () => {
+    for (const n of ['bdb_unreal_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'adobe_uxp_mcp', 'bdb_blender_mcp',
+        'bdb_after_effects_mcp', 'bdb_td_backup', 'open_design_mcp', 'zavora_computer_use']) assert.ok(selection.OPT_IN_SERVERS.includes(n), n);
+    assert.ok(selection.SERVER_GROUPS.base.every((n) => !selection.OPT_IN_SERVERS.includes(n)));
+    // Fresh derivation (no stored selection, nothing running) gives base only
+    assert.deepEqual(selection.resolveGatewayServers({}).servers, [...selection.SERVER_GROUPS.base]);
+    // A stored selection with heavy servers is kept as it is (never silently dropped)
+    const stored = ['github', 'bdb_unreal_mcp', 'bdb_blender_mcp'];
+    assert.deepEqual(selection.resolveGatewayServers({ settingServers: stored }).servers, stored);
+    // First migration keeps what runs today, heavy or not
+    assert.ok(selection.resolveGatewayServers({ keep: ['bdb_davinci_mcp'] }).servers.includes('bdb_davinci_mcp'));
 });
