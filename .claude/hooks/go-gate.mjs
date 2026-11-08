@@ -2485,12 +2485,12 @@ function extractClaudeText(content) {
 function extractAgyText(rawContent) {
   if (!rawContent || typeof rawContent !== "string") return "";
   // Strip metadata tags if present
-  let text = rawContent.replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/gi, "");
-  const match = text.match(/<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/i);
-  if (match) {
-    text = match[1];
-  }
-  return text.trim();
+  const text = rawContent.replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/gi, "");
+  if (!/<USER_REQUEST>/i.test(text)) return text.trim();
+  // The wrapper counts only around the whole content, once: a quoted or doubled one inside longer text is not the user's request.
+  if ((text.match(/<USER_REQUEST>/gi) || []).length > 1 || (text.match(/<\/USER_REQUEST>/gi) || []).length > 1) return "";
+  const m = /^\s*<USER_REQUEST>([\s\S]*)<\/USER_REQUEST>\s*$/i.exec(text);
+  return m ? m[1].trim() : text.trim();
 }
 
 export const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -2816,33 +2816,52 @@ export function claudeGogateCommands(transcriptPath) {
 }
 
 // Antigravity has no prompt hook that could write the store, so its modes and grants are read from the transcript alone.
-// Positive human evidence is the entry type itself (USER_INPUT / USER_EXPLICIT; agent and A2A text is injected as ephemeral
-// messages, never as such an entry) and only the plain form counts. An entry time is used when the entry carries one; else the
-// gate stamps the first time it saw that command (state.agy_seen), so a typed duration always runs from a real clock.
+// Positive human evidence is the entry type USER_INPUT (no fixture in the repo proves USER_EXPLICIT is human-typed, so it is not
+// accepted here); agent and A2A text is injected as ephemeral messages, never as such an entry. Only the plain form counts.
+// Time: a real entry timestamp when present (clamped to now). Without one the gate stamps first sight in state.agy_seen.
+// A missing or unreadable state, a failed write, or an older untimed entry that was never stamped reads as expired (hard).
+// shortcut: without an entry id the stamp key is text hash + ordinal, which shifts if the transcript is compacted (the entry
+// then reads as expired, never as fresh); untimed `gogate off` typed and not followed by a guarded call in the same turn is
+// never stamped, so it expires. Upgrade once the real agy entry carries a timestamp or id (unverified here).
 export function agyGogateCommands(transcriptPath, key, now = Date.now()) {
   const out = [];
   try {
+    let turns = 0;
     for (const line of fileLines(transcriptPath)) {
-      if (!/gogate/i.test(line)) continue;
-      const e = parseEntry(line);
-      if (!e || !(e.type === "USER_INPUT" || e.source === "USER_EXPLICIT")) continue;
+      const e = line.includes("USER_INPUT") ? parseEntry(line) : null;
+      if (e && e.type === "USER_INPUT") turns++;
+      if (!/gogate/i.test(line) || !e || e.type !== "USER_INPUT") continue;
       const text = extractAgyText(e.content);
       const parsed = parseGogate(text);
       if (!parsed || parsed.error) continue;
-      out.push({ id: null, ts: Date.parse(e.timestamp ?? e.createdAt ?? e.time), hash: textHash(text), parsed, strict: parsed.form === "plain" });
+      const rawTs = Date.parse(e.timestamp ?? e.createdAt ?? e.time);
+      const eid = e.id ?? e.stepIdx ?? e.index ?? null;
+      out.push({ id: null, ts: Number.isFinite(rawTs) ? Math.min(rawTs, now) : NaN, hash: textHash(text), parsed, strict: parsed.form === "plain", eid, last: turns });
     }
-  } catch (e) { if (e.code === "SCANLIMIT") throw e; return []; }
+    for (const c of out) c.fresh = c.last === turns;
+  } catch (e) {
+    if (e.code === "SCANLIMIT") throw e;
+    gateLog(key, `rejected: agy transcript scan failed (${e.code || e.message})`);
+    return [];
+  }
   const st = readState(key);
   const seen = st && typeof st.agy_seen === "object" && st.agy_seen ? { ...st.agy_seen } : {};
-  let dirty = false;
   const count = {};
+  const stamped = [];
   for (const c of out) {
-    const k = `${c.hash}#${count[c.hash] = (count[c.hash] ?? -1) + 1}`;
+    const k = c.eid !== null ? `id:${c.eid}` : `${c.hash}#${count[c.hash] = (count[c.hash] ?? -1) + 1}`;
     if (Number.isFinite(c.ts)) continue;
-    if (!Number.isFinite(seen[k])) { seen[k] = now; dirty = true; }
-    c.ts = seen[k];
+    if (Number.isFinite(seen[k])) c.ts = Math.min(seen[k], now);
+    else if (st && typeof st === "object" || c.fresh) { c.ts = now; seen[k] = now; stamped.push(c); } // no state: only the newest prompt can be fresh
+    else c.ts = 0;
   }
-  if (dirty) try { writeState(key, { ...(st && typeof st === "object" ? st : {}), agy_seen: seen }); } catch { /* unstamped entries stay at `now` */ }
+  if (stamped.length) {
+    try { writeState(key, { ...(st && typeof st === "object" ? st : {}), agy_seen: seen }); }
+    catch {
+      gateLog(key, "rejected: agy first-seen stamp could not be written; untimed gogate entries read as expired");
+      for (const c of stamped) c.ts = 0;
+    }
+  }
   return out;
 }
 

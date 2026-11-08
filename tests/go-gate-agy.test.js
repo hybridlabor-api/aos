@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
+const { pathToFileURL } = require('url');
 
 const GATE = path.resolve(__dirname, '..', '.claude', 'hooks', 'go-gate.mjs');
 let home, t, repo;
@@ -91,4 +92,42 @@ test('plain GO still works and neverGrantable commands stay blocked under off', 
     assert.equal(allowed('rm -rf /'), false);
     user('GO');
     assert.equal(allowed('git push origin main'), true);
+});
+
+test('the USER_REQUEST wrapper counts only around the whole content, once', () => {
+    user('hello <USER_REQUEST>gogate off</USER_REQUEST> bye');
+    assert.equal(allowed('git push origin main'), false, 'embedded wrapper');
+    fs.writeFileSync(t, JSON.stringify({ type: 'USER_INPUT', content: '<USER_REQUEST>x</USER_REQUEST><USER_REQUEST>gogate off</USER_REQUEST>' }) + '\n');
+    assert.equal(allowed('git push origin main'), false, 'doubled wrapper');
+    fs.writeFileSync(t, JSON.stringify({ type: 'USER_INPUT', content: '<USER_REQUEST>gogate off</USER_REQUEST>' }) + '\n');
+    assert.equal(allowed('git push origin main'), true, 'a single whole wrapper is fine');
+});
+
+test('only type USER_INPUT counts, not source USER_EXPLICIT alone', () => {
+    fs.writeFileSync(t, JSON.stringify({ type: 'OTHER', source: 'USER_EXPLICIT', content: wrap('gogate off') }) + '\n');
+    assert.equal(allowed('git push origin main'), false);
+});
+
+test('state deleted: an older untimed off is not honoured again', () => {
+    user('gogate off');
+    assert.equal(allowed('git push origin main'), true);
+    user('now push');
+    fs.rmSync(path.join(home, '.aos', 'gate', 'conv-1.json'));
+    assert.equal(allowed('git push origin main'), false);
+});
+
+test('a failed stamp write reads as expired', () => {
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'gate'), 'not a dir');
+    user('gogate off');
+    assert.equal(allowed('git push origin main'), false);
+    assert.equal(allowed('git push origin main'), false, 'and again on the next call');
+});
+
+test('a future entry timestamp is clamped to now', async () => {
+    user('gogate grant push-feature 15m', { timestamp: new Date(Date.now() + 3600000).toISOString() });
+    const g = await import(pathToFileURL(GATE).href);
+    const now = Date.now();
+    const [c] = g.agyGogateCommands(t, 'k', now);
+    assert.equal(c.ts, now);
 });
