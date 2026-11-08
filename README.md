@@ -4,7 +4,7 @@
 
 **Language / Sprache / Idioma**: **English** · [Deutsch](README.de.md) · [Português](README.pt.md)
 
-# AOS² — 5.4.2 “Ouroboros”
+# AOS² — 5.4.6 “Ouroboros”
 
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![NPM Downloads](https://img.shields.io/npm/dw/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
@@ -86,7 +86,7 @@ The loop has six steps:
 5. **Gate.** The go-gate blocks every release command until you type GO.
 6. **You merge.** You read the pull request and merge it. AOS never merges a change to itself without you.
 
-**Today** only step 2 and the kill switch exist: `aos-evolve capture`, `status`, `enable` and `disable`. Steps 3 to 6 are the target; no command proposes, probes or merges a fix yet. Evolve stays off until a person runs `aos-evolve enable`. Kill switch: `aos-evolve disable` or `AOS_EVOLVE=off`.
+**Today** steps 2 and 4 and the kill switch exist: `aos-evolve capture` (named failure modes and traces), `probe` (a fixed probe set, run three times), `status`, `enable` and `disable`. Steps 3, 5 and 6 are the target; no command proposes or merges a fix yet. Evolve stays off until a person runs `aos-evolve enable`. Kill switch: `aos-evolve disable` or `AOS_EVOLVE=off`.
 
 ## The five layers
 
@@ -278,6 +278,7 @@ Full catalogs (every skill, subagent, playbook and MCP server) are in the collap
 | **go-gate** | Modes `hard`, `soft`, `off`, time-limited grants and `GO #<pr>`. See [Modes, grants and GO](#modes-grants-and-go). |
 | **Coordination** | Five patterns, each mapped to an AOS mode. See [Five ways to coordinate](#five-ways-to-coordinate). |
 | **Since 5.4.0** | `fabric-swarm` and `fabric-loop`. One hook process per Claude event instead of one per hook. Factory runs with the go-gate off and only hard blocks left; `aos-factory --unattended` runs it in a container. The `aos-fabric` CLI (`start`, `next`, `report`, `status`, `cancel`, `drive`) runs a fabric pipeline in any harness. `aos-gateway status` names the root cause of a server that never connected. The hub has a Router tab. `aos update` asks the update mode once. `aos-uninstall` lists everything it keeps. |
+| **Since 5.4.6** | The go-gate accepts prompts you type in the Claude Desktop code tab, so `gogate off` and `gogate soft` take effect there on macOS and Windows. Uninstall removes AOS plugin state, empty hook files and migration backups on Windows. `aos-map` finds endpoints and paths in a project, `aos project init` writes the project structure from one module, and `aos-evolve` gets `probe`. |
 
 ## What's new in v5
 
@@ -1139,6 +1140,8 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 | `aos-acp` | Start workers whose guarded commands need a GO token; `--sandbox coop\|wsl2` wraps one launch. |
 | `aos-gateway` | Local MCP gateway: serve, enable, direct, adopt, status. |
 | `aos-gogate` | Read-only gate status and presets. |
+| `aos-evolve` | Record failures (`capture`), run the fixed probe set (`probe`), `status`, kill switch (`enable`, `disable`). |
+| `aos-map` | Query a project's code map: `find`, `show`, `path`, `overview`. |
 | `aos-gate` | Read or change the machine-wide gate profile. |
 | `aos-sessions` | Read-only overview of every live session and ACP worker. |
 | `aos-config` | Machine-level AOS configuration. |
