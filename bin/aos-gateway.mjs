@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Local MCP gateway: token-checking forwarder on 127.0.0.1:7790 in front of @1mcp/agent on 127.0.0.1:7791.
-// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args '<json>'
+// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | warm <server> | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args '<json>'
 import '../lib/cli-help-guard.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -11,7 +11,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const req = createRequire(import.meta.url);
-const { gatewayDir, lazyLoadingOn, asyncLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
+const { gatewayDir, lazyLoadingOn, asyncLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, HUB_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
+const hubApi = req('../lib/gateway/hub.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
 const { shippedPresets, livePresets } = req('../lib/v5/pkg-gateway.js');
@@ -28,6 +29,16 @@ export function costText(upstreams) {
     return `${upstreams.length} upstream${upstreams.length === 1 ? '' : 's'}, each its own process from gateway start (measured 55-170 MB each)`
         + `${heavy.length ? `; heavy opt-in: ${heavy.join(', ')}` : ''}; remove unused ones with: aos-gateway remove <name>`;
 }
+
+// On-demand hub state of one upstream (#255): a server that never ran is healthy, not failed.
+export function hubText(h) {
+    if (!h) return null;
+    const last = h.lastUse ? `, last use ${h.lastUse}` : '';
+    if (h.state === 'idle') return h.lastUse ? `idle (stopped after idle${last})` : 'idle (starts on first call)';
+    if (h.state === 'failed') return `failed${last}${h.error ? `: ${h.error}` : ''}`;
+    return `${h.state}${last}`;
+}
+export const hubCostText = (s) => `${Object.keys(s.hub.servers).length} on demand, ${s.hub.running} running now (cap ${s.hub.cap}, idle stop after ${Math.round(s.hub.idleMs / 60000)} min)`;
 
 export const lazyText = (s) => !s.running ? 'not running' : s.lazyLoading === null ? 'unknown (restart the gateway to record it)'
     : `${s.lazyLoading ? 'on (meta-tools tool_list/tool_schema/tool_invoke)' : 'off'}${s.restartPending ? `; restart pending (gateway.json says ${s.lazyLoading ? 'off' : 'on'}; run aos-gateway restart)` : ''}`;
@@ -49,11 +60,11 @@ export const LABEL = 'com.bdb.aos.gateway';
 export const WIN_TASK = 'AOS MCP Gateway';
 
 // Always resolves: response, error, abnormal close or the overall timeout, whichever comes first.
-const get = (port, urlPath, timeoutMs = 2000) => new Promise((resolve) => {
+const get = (port, urlPath, timeoutMs = 2000, headers = {}) => new Promise((resolve) => {
     let done = false;
     let timer = null;
     const finish = (v) => { if (done) return; done = true; clearTimeout(timer); resolve(v); };
-    const r = http.get({ host: '127.0.0.1', port, path: urlPath }, (res) => {
+    const r = http.get({ host: '127.0.0.1', port, path: urlPath, headers }, (res) => {
         let body = '';
         res.on('data', (c) => { if (body.length < 1e6) body += c; });
         res.on('end', () => finish({ status: res.statusCode, headers: res.headers, body }));
@@ -155,7 +166,7 @@ export function runHint(output) {
 
 // 1mcp's /health is the path the S1 spike polled (200 = up). Per-upstream health is UNVERIFIED: every
 // upstream reports the state of 1mcp as a whole until a per-server endpoint is confirmed.
-export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT }) {
+export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, hubPort = HUB_PORT }) {
     const fw = await get(port, '/healthcheck');
     const running = fw.status === 200 && fw.headers['x-aos-gateway'] === '1';
     const inUse = !running && fw.error !== 'ECONNREFUSED';
@@ -199,6 +210,18 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         if (inner.status === 503) return { name, ok: false, degraded: true, error: '1mcp health returned 503 without per-server details (some upstreams not connected)' };
         return { name, ok: false, error: inner.error ? `1mcp not reachable on ${upstreamPort} (${inner.error})` : `1mcp health returned ${inner.status}` };
     });
+    let hub = null;
+    if (running) {
+        let token = null;
+        try { token = fs.readFileSync(path.join(dir, 'token'), 'utf8').trim(); } catch { /* no token: no hub view */ }
+        const h = token && TOKEN_RE.test(token) ? await get(hubPort, '/status', 2000, { authorization: `Bearer ${token}` }) : null;
+        try { if (h && h.status === 200) hub = JSON.parse(h.body); } catch { /* not the hub */ }
+    }
+    for (const [i, u] of upstreams.entries()) {
+        const h = hub && hub.servers && hub.servers[u.name];
+        if (!h || problem || u.busy) continue;
+        upstreams[i] = h.state === 'failed' ? { name: u.name, ok: false, degraded: true, hub: h, error: hubText(h) } : { name: u.name, ok: true, hub: h };
+    }
     for (const u of upstreams) if (OPT_IN_SERVERS.includes(u.name)) u.heavy = true;
     // Upstream values are the state of 1mcp as a whole, not per-server health.
     // Effective = what the running serve recorded when it started 1mcp; configured = gateway.json now.
@@ -239,6 +262,7 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         upstreamsScope: 'global',
         upstreams,
         ...(toolCount !== null ? { toolCount, nodeCount, sizeWarning } : {}),
+        ...(hub ? { hub } : {}),
         ...(inUse ? { error: problem } : {}),
     };
 }
@@ -330,7 +354,7 @@ export function clearStaleOwner(dir, isAlive = (pid) => { try { process.kill(pid
 }
 
 // Core of `serve`, testable: no process-wide handlers, no process.exit. Rejects when it must refuse to start.
-export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, spawnFn = spawn, log: logIn, backoffMs = 1000, entry, logMaxBytes } = {}) {
+export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, hubPort = HUB_PORT, spawnFn = spawn, log: logIn, backoffMs = 1000, entry, logMaxBytes, hubOptions = {} } = {}) {
     const token = readToken(dir);
     let logFile = { write() {}, close() {} }; // opened once the start is not refused
     const log = logIn || ((m) => { logFile.write(`${new Date().toISOString()} ${m}\n`); if (process.stderr.isTTY) console.error(m); });
@@ -343,6 +367,15 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     const forwarder = createForwarder({ port, upstreamPort, token });
     try { await forwarder.listen(); } catch (e) {
         throw new Error(e.code === 'EADDRINUSE' ? `port ${port} in use by another process` : `cannot listen: ${e.message}`);
+    }
+    // The hub must listen before 1mcp connects to its HTTP upstreams; no sidecar entries (AOS_GATEWAY_ONDEMAND=0) = no hub.
+    let hub = null;
+    if (Object.keys(hubApi.readSidecar(dir)).length) {
+        hub = hubApi.createHub({ dir, token, port: hubPort, log, onStderr: (name, line) => logFile.write(`[${name}] ${redactLine(line)}\n`), ...hubOptions });
+        try { await hub.listen(); } catch (e) {
+            await forwarder.close();
+            throw new Error(e.code === 'EADDRINUSE' ? `port ${hubPort} (on-demand hub) in use by another process` : `hub cannot listen: ${e.message}`);
+        }
     }
     const pidFile = path.join(dir, 'gateway.pid');
     fs.writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
@@ -386,7 +419,8 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
 
     return {
         port: forwarder.server.address().port,
-        killNow() { if (alive()) { try { child.kill('SIGKILL'); } catch { /* already gone */ } } },
+        hubPort: hub ? hub.server.address().port : null,
+        killNow() { if (alive()) { try { child.kill('SIGKILL'); } catch { /* already gone */ } } if (hub) hub.killNow(); },
         async stop() {
             if (stopping) return;
             stopping = true;
@@ -399,6 +433,7 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
                     child.kill('SIGTERM');
                 });
             }
+            if (hub) await hub.close();
             try { fs.unlinkSync(pidFile); } catch { /* already gone */ }
             try { fs.unlinkSync(runtimeFile); } catch { /* already gone */ }
             logFile.close();
@@ -482,9 +517,9 @@ async function main() {
             if (s.sizeWarning) {
                 console.log(`  WARN size: ${s.sizeWarning}`);
             }
-            const cost = costText(s.upstreams);
+            const cost = s.hub ? hubCostText(s) : costText(s.upstreams);
             if (cost) console.log(`  processes: ${cost}`);
-            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.heavy ? ' (heavy)' : ''}${u.error ? ` - ${u.error}` : ''}`);
+            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.heavy ? ' (heavy)' : ''}${u.error ? ` - ${u.error}` : u.hub ? ` - ${hubText(u.hub)}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
         // No process.exit here: on Windows it aborted on a still-closing HTTP socket (libuv async.c assertion, exit 127).
@@ -539,6 +574,15 @@ async function main() {
         const hint = runHint(text(r));
         if (hint) console.error(hint);
         process.exit(r.status ?? 1);
+    }
+    if (cmd === 'warm') {
+        const name = rest.find((a) => !a.startsWith('-'));
+        if (!name) { console.error('usage: aos-gateway warm <server>'); process.exit(2); }
+        try {
+            const cat = await hubApi.warm(gatewayDir(os.homedir()), name);
+            console.log(`warm ${name}: catalog recorded (${(cat && cat.tools || []).length} tools)`);
+        } catch (e) { console.error(`aos-gateway warm: ${e.message}`); process.exit(1); }
+        process.exit(0);
     }
     if (cmd === 'adopt') {
         const home = os.homedir();
@@ -605,7 +649,7 @@ async function main() {
         console.log(`${cmd} ${server}: ${result.selected.length} servers selected (${result.dryRun ? 'dry-run' : 'mcp.json rewritten'}); run "aos-gateway status" to confirm`);
         process.exit(0);
     }
-    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add | remove | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args <json>');
+    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add | remove | warm <server> | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args <json>');
     process.exit(2);
 }
 
