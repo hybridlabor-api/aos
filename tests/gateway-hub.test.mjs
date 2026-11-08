@@ -343,13 +343,14 @@ test('(4) sidecar rejection reasons; hub entries without a sidecar still bind th
 
     const { startServe } = await import('../bin/aos-gateway.mjs');
     fs.writeFileSync(path.join(s.dir, 'token'), TOKEN, { mode: 0o600 });
-    fs.writeFileSync(path.join(s.dir, 'mcp.json'), JSON.stringify({ mcpServers: { github: { type: 'http', url: 'http://127.0.0.1:7792/github/mcp' } } }));
     const free = () => new Promise((resolve) => { const srv = http.createServer(); srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); }); });
     const upstreamPort = await free();
+    const hubPort = await free();
+    fs.writeFileSync(path.join(s.dir, 'mcp.json'), JSON.stringify({ mcpServers: { github: { type: 'http', url: `http://127.0.0.1:${hubPort}/github/mcp` } } }));
     const one = path.join(s.dir, 'one.js');
     fs.writeFileSync(one, `require('http').createServer((q,r)=>{r.writeHead(200);r.end('{}');}).listen(${upstreamPort},'127.0.0.1');`);
     const logs = [];
-    const h = await startServe({ dir: s.dir, port: 0, upstreamPort, hubPort: 0, entry: 'x', log: (m) => logs.push(m), spawnFn: (c, a, o) => spawn(process.execPath, [one], o) });
+    const h = await startServe({ dir: s.dir, port: 0, upstreamPort, hubPort, entry: 'x', log: (m) => logs.push(m), spawnFn: (c, a, o) => spawn(process.execPath, [one], o) });
     try {
         assert.ok(h.hubPort > 0, 'hub bound although the sidecar is missing');
         assert.ok(logs.some((m) => /WARNING mcp.json routes github to the on-demand hub/.test(m)), logs.join('\n'));
@@ -358,9 +359,9 @@ test('(4) sidecar rejection reasons; hub entries without a sidecar still bind th
         assert.match(st.hubWarning, /routes github to the on-demand hub, but its sidecar has no entry \(.*missing\)/);
     } finally { await h.stop(); }
     const squat = http.createServer();
-    await new Promise((r) => squat.listen(0, '127.0.0.1', r));
+    await new Promise((r) => squat.listen(hubPort, '127.0.0.1', r));
     try {
-        await assert.rejects(startServe({ dir: s.dir, port: 0, upstreamPort, hubPort: squat.address().port, entry: 'x', log: () => {}, spawnFn: () => assert.fail('1mcp must not start') }), /on-demand hub\) in use/);
+        await assert.rejects(startServe({ dir: s.dir, port: 0, upstreamPort, hubPort, entry: 'x', log: () => {}, spawnFn: () => assert.fail('1mcp must not start') }), /on-demand hub\) in use/);
     } finally { squat.close(); }
 });
 
@@ -397,6 +398,26 @@ test('(6) the cap slot is reserved synchronously: concurrent waiters never overs
         await slow;
         assert.equal(peak, 1);
     } finally { await hub.close(); }
+});
+
+test('cold start: catalog recordings run one at a time and their children stop right after', async () => {
+    const names = ['s0', 's1', 's2', 's3', 's4'];
+    const s = setup(names);
+    let live = 0, peak = 0;
+    const { hub, rpc } = await startHub(s.dir, { spawnFn: (...x) => { const c = spawn(...x); live++; peak = Math.max(peak, live); c.once('exit', () => live--); return c; } });
+    try {
+        const lists = await Promise.all(names.map((n) => rpc(n, 'tools/list')));
+        for (const l of lists) assert.equal(l.body.result.tools.length, 2);
+        assert.equal(peak, 1);
+        assert.ok(await until(() => live === 0), `${live} catalog children left running`);
+        assert.equal(s.starts().length, names.length);
+    } finally { await hub.close(); }
+});
+
+test('hubEntryNames uses the given hub port', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-gwhub-port-'));
+    fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: { a: { url: 'http://127.0.0.1:7999/a/mcp' }, b: { url: 'http://127.0.0.1:7792/b/mcp' } } }));
+    assert.deepEqual([require('../lib/gateway/config.js').hubEntryNames(dir, 7999), require('../lib/gateway/config.js').hubEntryNames(dir)], [['a'], ['b']]);
 });
 
 test('(7) __proto__/constructor/prototype stay eager and are reported, never dropped or routed', async () => {

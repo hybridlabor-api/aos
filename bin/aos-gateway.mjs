@@ -210,7 +210,7 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         const h = token && TOKEN_RE.test(token) ? await get(hubPort, '/status', 2000, { authorization: `Bearer ${token}` }) : null;
         try { if (h && h.status === 200) hub = JSON.parse(h.body); } catch { /* not the hub */ }
     }
-    const hubEntries = hubEntryNames(dir);
+    const hubEntries = hubEntryNames(dir, hubPort);
     const hubMissing = hubEntries.filter((n) => !(hub && hub.servers && Object.prototype.hasOwnProperty.call(hub.servers, n)));
     const hubWarning = !running || !hubMissing.length ? null
         : `mcp.json routes ${hubMissing.join(', ')} to the on-demand hub, but ${!hub ? `the hub does not answer on ${hubPort}` : `its sidecar has no entry${hub.sidecarError ? ` (${hub.sidecarError})` : ''}`}; run aos update`;
@@ -359,8 +359,8 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     const script = entry || oneMcpEntry(dir);
     // mcp.json carries the token in its hub entries: the hub port is taken first, so no other process can squat it and
     // read that token from 1mcp. A bind failure refuses the start. No hub entries and no sidecar (AOS_GATEWAY_ONDEMAND=0) = no hub.
-    const hubEntries = hubEntryNames(dir);
-    const side = hubApi.loadSidecar(dir);
+    const hubEntries = hubEntryNames(dir, hubPort);
+    const side =hubApi.loadSidecar(dir);
     let hub = null;
     if (hubEntries.length || Object.keys(side.servers).length) {
         hub = hubApi.createHub({ dir, token, port: hubPort, log, onStderr: (name, line) => logFile.write(`[${name}] ${redactLine(line)}\n`), ...hubOptions });
