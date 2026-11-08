@@ -97,3 +97,38 @@ test('the module scan never kills the installer or its ancestors, and a failing 
     const out2 = stopModuleProcesses(DIR, { platform: 'win32', env: {}, selfPid: 100, list: table, sleep: () => {}, kill: () => {}, listHolders: () => { throw new Error('scan failed'); } });
     assert.deepStrictEqual(out2.map((p) => p.ProcessId), [200, 201]);
 });
+
+test('retryLocked releases holders and retries on lock errors, rethrows other errors at once', () => {
+    const { retryLocked } = require('../lib/stop-module-processes.js');
+    let calls = 0, released = 0; const slept = [];
+    const opts = { release: () => { released++; }, sleep: (ms) => slept.push(ms) };
+    const r = retryLocked(() => { if (++calls < 3) throw new Error('Zugriff verweigert'); return 'ok'; }, opts);
+    assert.equal(r, 'ok'); assert.equal(calls, 3); assert.equal(released, 2); assert.deepEqual(slept, [500, 1500]);
+
+    calls = 0;
+    assert.throws(() => retryLocked(() => { calls++; throw Object.assign(new Error('x'), { code: 'EBUSY' }); }, opts), /x/);
+    assert.equal(calls, 3);
+
+    calls = 0;
+    assert.throws(() => retryLocked(() => { calls++; throw new Error('no such file'); }, opts), /no such file/);
+    assert.equal(calls, 1);
+});
+
+test('ensurePythonVenv stops venv holders first on win32 and retries a locked rebuild', () => {
+    const fs = require('fs'), os = require('os'), path = require('path');
+    const { ensurePythonVenv } = require('../installer.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-venv-'));
+    try {
+        fs.mkdirSync(path.join(dir, '.venv', 'Scripts'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.venv', 'Scripts', 'python.exe'), '');
+        fs.writeFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'version = 3.9.6\n');
+        let stops = 0, runs = 0;
+        const r = ensurePythonVenv(dir, {
+            platform: 'win32', hasUv: false, pick: () => ({ cmd: 'python' }), sleep: () => {}, stopHolders: () => { stops++; },
+            run: () => { if (++runs === 1) throw new Error('Zugriff verweigert'); },
+        });
+        assert.equal(r.created, true); assert.equal(runs, 2); assert.equal(stops, 2);
+        runs = 0;
+        assert.throws(() => ensurePythonVenv(dir, { platform: 'win32', hasUv: false, pick: () => ({ cmd: 'python' }), sleep: () => {}, stopHolders: () => {}, run: () => { runs++; throw new Error('Zugriff verweigert'); } }), /locked by a running python\.exe.*aos package install memb/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
