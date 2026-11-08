@@ -554,3 +554,32 @@ test('new catalogs carry empty prompts/resources lists for servers without those
     const cat = JSON.parse(fs.readFileSync(path.join(s.dir, 'catalog', 'github.json'), 'utf8'));
     assert.deepEqual([cat.prompts, cat.resources, cat.resourceTemplates], [[], [], []]);
 });
+
+test('serve: hub reap lines reach gateway.log (the log is open before the hub listens)', async () => {
+    const { startServe } = await import('../bin/aos-gateway.mjs');
+    const s = setup(['github']);
+    fs.writeFileSync(path.join(s.dir, 'token'), TOKEN, { mode: 0o600 });
+    fs.writeFileSync(path.join(s.dir, CHILDREN_FILE), JSON.stringify({ 99999: { name: 'github', command: process.execPath, args: [s.script, 'github'], argv: [process.execPath, s.script, 'github'] } }));
+    const free = () => new Promise((resolve) => { const srv = http.createServer(); srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); }); });
+    const upstreamPort = await free();
+    const one = path.join(s.dir, 'one.js');
+    fs.writeFileSync(one, `require('http').createServer((q,r)=>{r.writeHead(200);r.end('{}');}).listen(${upstreamPort},'127.0.0.1');`);
+    const h = await startServe({ dir: s.dir, port: 0, upstreamPort, hubPort: 0, entry: 'x', spawnFn: (c, a, o) => spawn(process.execPath, [one], o), hubOptions: { platform: 'win32', info: () => null, queryWinSync: () => [] } });
+    await h.stop();
+    assert.match(fs.readFileSync(path.join(s.dir, 'gateway.log'), 'utf8'), /recorded leader 99999 \(github\) is gone; looking for its leftovers/);
+});
+
+test('win: the unsafe cmd shim reason is logged once, not only shown in status', async () => {
+    const s = setup(['shim']);
+    const shim = path.join(s.dir, 'npx.cmd');
+    fs.writeFileSync(shim, '');
+    fs.writeFileSync(path.join(s.dir, SIDECAR_FILE), JSON.stringify({ servers: { shim: { command: shim, args: ['50%PATH%x'], env: {} } } }), { mode: 0o600 });
+    const logs = [];
+    const { hub, rpc, spawns } = await startHub(s.dir, { platform: 'win32', queryWin: async () => [], log: (m) => logs.push(m) });
+    try {
+        for (const id of [1, 2]) assert.match((await rpc('shim', 'tools/call', { name: 'x' }, { id })).body.error.message, /unsafe argument for cmd shim/);
+        assert.equal(logs.filter((m) => /shim: unsafe argument for cmd shim/.test(m)).length, 1);
+        assert.match(hub.statusOf().servers.shim.error, /unsafe argument/);
+        assert.equal(spawns(), 0);
+    } finally { await hub.close(); }
+});

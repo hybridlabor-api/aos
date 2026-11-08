@@ -361,26 +361,28 @@ export function clearStaleOwner(dir, isAlive = (pid) => { try { process.kill(pid
 // Core of `serve`, testable: no process-wide handlers, no process.exit. Rejects when it must refuse to start.
 export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, hubPort = HUB_PORT, spawnFn = spawn, log: logIn, backoffMs = 1000, entry, logMaxBytes, hubOptions = {} } = {}) {
     const token = readToken(dir);
-    let logFile = { write() {}, close() {} }; // opened once the start is not refused
+    let logFile = { write() {}, close() {} };
     const log = logIn || ((m) => { logFile.write(`${new Date().toISOString()} ${m}\n`); if (process.stderr.isTTY) console.error(m); });
     const script = entry || oneMcpEntry(dir);
+    // Opened before the hub listens, so its reap lines (leftovers of a hard-killed serve) reach gateway.log.
+    logFile = openLog(dir, logMaxBytes);
+    const refuse = async (msg) => { if (hub) await hub.close(); logFile.close(); throw new Error(msg); };
     // mcp.json carries the token in its hub entries: the hub port is taken first, so no other process can squat it and
     // read that token from 1mcp. A bind failure refuses the start. No hub entries and no sidecar (AOS_GATEWAY_ONDEMAND=0) = no hub.
     const hubEntries = hubEntryNames(dir, hubPort);
-    const side =hubApi.loadSidecar(dir);
+    const side = hubApi.loadSidecar(dir);
     let hub = null;
     if (hubEntries.length || Object.keys(side.servers).length) {
-        hub = hubApi.createHub({ dir, token, port: hubPort, log, onStderr: (name, line) => logFile.write(`[${name}] ${redactLine(line)}\n`), ...hubOptions });
-        try { await hub.listen(); } catch (e) {
-            throw new Error(e.code === 'EADDRINUSE' ? `port ${hubPort} (on-demand hub) in use by another process; refusing to start while mcp.json points 1mcp at it` : `hub cannot listen: ${e.message}`);
+        const h = hubApi.createHub({ dir, token, port: hubPort, log, onStderr: (name, line) => logFile.write(`[${name}] ${redactLine(line)}\n`), ...hubOptions });
+        try { await h.listen(); } catch (e) {
+            await refuse(e.code === 'EADDRINUSE' ? `port ${hubPort} (on-demand hub) in use by another process; refusing to start while mcp.json points 1mcp at it` : `hub cannot listen: ${e.message}`);
         }
+        hub = h;
     }
-    const refuse = async (msg) => { if (hub) await hub.close(); throw new Error(msg); };
     let probe = await get(upstreamPort, '/health');
     if (probe.error !== 'ECONNREFUSED' && await reapOrphan(dir, script, upstreamPort)) probe = { error: 'ECONNREFUSED' };
     if (probe.error !== 'ECONNREFUSED') await refuse(`port ${upstreamPort} is already in use (not by this gateway's 1mcp); refusing to forward to a foreign process`);
 
-    logFile = openLog(dir, logMaxBytes);
     const missing = hubEntries.filter((n) => !(n in side.servers));
     if (missing.length) log(`aos-gateway: WARNING mcp.json routes ${missing.join(', ')} to the on-demand hub but the sidecar has no entry (${side.error || 'not listed'}); those servers fail until "aos update" regenerates the config`);
     const forwarder = createForwarder({ port, upstreamPort, token });
