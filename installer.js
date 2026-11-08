@@ -538,7 +538,11 @@ function ensurePythonVenv(dir, opts = {}) {
         if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
         log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
     }
-    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], cwd: dir, windowsHide: true, ...o }));
+    const rawRun = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], cwd: dir, windowsHide: true, ...o }));
+    // A running python.exe of this venv (e.g. the memB MCP server a session started) locks it on Windows: stop it and retry.
+    const stopHolders = opts.stopHolders || (() => stopModuleProcesses(path.join(dir, '.venv'), { platform: opts.platform }));
+    const run = (cmd, args, o) => retryLocked(() => rawRun(cmd, args, o), { release: stopHolders, sleep: opts.sleep });
+    if (win && fs.existsSync(venvPy)) { try { stopHolders(); } catch (_) { /* best effort */ } }
     const hasUv = opts.hasUv !== undefined ? opts.hasUv : (() => { try { execFileSync(uvBin(), ['--version'], { stdio: 'ignore', windowsHide: true }); return true; } catch (e) { return false; } })();
     const sys = (opts.pick || pickPython)(MEMB_MIN_PYTHON);
     if (!sys && !hasUv) {
@@ -572,6 +576,7 @@ function ensurePythonVenv(dir, opts = {}) {
         const fix = process.platform === 'win32' ? 'install Python from https://www.python.org/downloads/ (with pip and venv)'
             : process.platform === 'darwin' ? 'brew install python'
                 : 'Debian/Ubuntu: sudo apt install python3-venv (matching your python3.x-venv)';
+        if (LOCKED_RE.test(why)) throw new Error(`memB venv is locked by a running python.exe (${why.slice(0, 120)}); close Claude/other MCP sessions using memB, then run: aos package install memb`);
         throw new Error(`python venv failed (${why}); fix: ${fix}, then run: aos package install memb`);
     }
     return { created: true, viaUv: false };
@@ -3290,7 +3295,7 @@ function recoverStaleSwaps(targetDir) {
 }
 
 const { renameWithRetry } = require('./lib/rename-retry.js');
-const { stopModuleProcesses, isServiceModule } = require('./lib/stop-module-processes.js');
+const { stopModuleProcesses, isServiceModule, retryLocked, LOCKED_RE } = require('./lib/stop-module-processes.js');
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     const status = checkModuleUpdate(pkgName, targetDir);
     if (status.installed && !status.updateAvailable) {

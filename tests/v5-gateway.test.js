@@ -715,6 +715,21 @@ describe('pkg-gateway', () => {
         assert.match(after.detail, /ECONNREFUSED/);
     });
 
+    test('AOS_GATEWAY_WAIT_MS lengthens the restart grace window (bounded)', async () => {
+        const home = tmp();
+        const refused = async () => ({ running: true, port: cfg.GATEWAY_PORT, upstreams: [{ ok: false, error: '1mcp not reachable on 7791 (ECONNREFUSED)' }] });
+        const t0 = 1700000000000;
+        await pkg.update(mkCtx(home, { platform: 'linux', statusFn: refused, now: t0 }).ctx);
+        const prev = process.env.AOS_GATEWAY_WAIT_MS;
+        try {
+            process.env.AOS_GATEWAY_WAIT_MS = '600000';
+            const late = await pkg.verify(mkCtx(home, { statusFn: refused, now: t0 + 400000 }).ctx);
+            assert.equal(late.busy, true);
+            process.env.AOS_GATEWAY_WAIT_MS = 'junk';
+            assert.equal((await pkg.verify(mkCtx(home, { statusFn: refused, now: t0 + 400000 }).ctx)).ok, false);
+        } finally { if (prev === undefined) delete process.env.AOS_GATEWAY_WAIT_MS; else process.env.AOS_GATEWAY_WAIT_MS = prev; }
+    });
+
     test('F15b: no grace without a restart stamp, with a future stamp, or when the service did not start', async () => {
         const refused = async () => ({ running: true, port: cfg.GATEWAY_PORT, upstreams: [{ ok: false, error: '1mcp not reachable on 7791 (ECONNREFUSED)' }] });
         const t0 = 1700000000000;
@@ -1571,4 +1586,27 @@ test('forwarder 502 includes CORS headers for SSE clients', async () => {
     } finally {
         await f.close();
     }
+});
+
+describe('clearStaleOwner', () => {
+    const load = async () => (await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href)).clearStaleOwner;
+    const mk = (pid) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-owner-'));
+        fs.mkdirSync(path.join(dir, 'runtime.owner'));
+        fs.writeFileSync(path.join(dir, 'runtime.owner', 'owner.json'), JSON.stringify({ pid }));
+        fs.writeFileSync(path.join(dir, 'server.pid'), String(pid));
+        return dir;
+    };
+    test('moves a dead owner claim and server.pid aside', async () => {
+        const dir = mk(898696);
+        assert.equal((await load())(dir, () => false), true);
+        assert.equal(fs.existsSync(path.join(dir, 'runtime.owner')), false);
+        assert.equal(fs.existsSync(path.join(dir, 'server.pid')), false);
+        assert.ok(fs.readdirSync(dir).some((n) => n.startsWith('runtime.owner.stale-')));
+    });
+    test('keeps a live owner claim', async () => {
+        const dir = mk(898696);
+        assert.equal((await load())(dir, () => true), false);
+        assert.equal(fs.existsSync(path.join(dir, 'runtime.owner')), true);
+    });
 });
