@@ -1255,6 +1255,7 @@ Harness evolution engine: record failure signatures, inspect kill switch status,
 ```text
 aos-evolve capture <failure.json | --error "..."> [--skill <name>] [options]
 aos-evolve status [--json]
+aos-evolve propose [--signature <id>] [--dry-run]
 aos-evolve disable
 aos-evolve enable
 ```
@@ -1263,11 +1264,13 @@ aos-evolve enable
 |---|---|---|
 | `capture` | `aos-evolve capture <failure.json> [--skill <name>]` | Capture and redact failure into failure.json. |
 | `status` | `aos-evolve status [--json]` | Display evolution engine status and failure count. |
+| `propose` | `aos-evolve propose [--signature <id>] [--dry-run]` | Propose a candidate fix for a failure signature as a draft PR. |
 | `disable` | `aos-evolve disable` | Activate kill switch to disable evolution loop. |
 | `enable` | `aos-evolve enable` | Remove kill switch to re-enable evolution loop. |
 
 | Option | What it does |
 |---|---|
+| `--signature` | Target failure signature to propose a fix for. |
 | `--skill` | Target skill directory name. |
 | `--error` | Raw error message or transcript excerpt to capture. |
 | `--kind` | Failure kind: test \| build \| review \| advisor-repeat \| user. |
