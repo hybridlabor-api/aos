@@ -9,9 +9,9 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { createHub, reapStaleChildren, idleMsOf, maxUpstreamsOf, CHILDREN_FILE, loadSidecar, warm } = require('../lib/gateway/hub.js');
+const { createHub, reapStaleChildren, idleMsOf, maxUpstreamsOf, CHILDREN_FILE, loadSidecar, warm, spawnArgs } = require('../lib/gateway/hub.js');
 const { hubSplit, writeGatewayConfig, gatewayConfigTexts, SIDECAR_FILE } = require('../lib/gateway/config.js');
-const { gatewayStatus, hubText } = await import('../bin/aos-gateway.mjs');
+const { gatewayStatus, hubText, reapOrphan } = await import('../bin/aos-gateway.mjs');
 
 const TOKEN = 'a'.repeat(64);
 const FAKE = `
@@ -452,4 +452,105 @@ test('(8) an oversized stdout line fails the call at once; an oversized catalog 
         assert.equal(fs.readFileSync(path.join(s.dir, 'catalog', 'github.json'), 'utf8'), before);
         assert.ok(logs.some((m) => /catalog over 10 bytes; kept the previous catalog/.test(m)), logs.join('\n'));
     } finally { await h.hub.close(); }
+});
+
+test('win (1): a cmd shim refuses % and ! arguments (cmd expands them); spaces and quotes are quoted', () => {
+    const env = { PATH: 'C:\\npm', ComSpec: 'C:\\Windows\\cmd.exe' };
+    const exists = (f) => f === 'C:\\npm\\npx.cmd';
+    assert.throws(() => spawnArgs({ command: 'npx', args: ['50%PATH%x'] }, env, 'win32', exists), /unsafe argument for cmd shim/);
+    assert.throws(() => spawnArgs({ command: 'npx', args: ['a!b!'] }, env, 'win32', exists), /unsafe argument for cmd shim/);
+    const [cmd, args] = spawnArgs({ command: 'npx', args: ['-y', 'a b', 'say "hi"'] }, env, 'win32', exists);
+    assert.equal(cmd, 'C:\\Windows\\cmd.exe');
+    assert.equal(args[3], '"C:\\npm\\npx.cmd -y "a b" "say ""hi""""');
+});
+
+test('win (2): a leader that exits on its own: matching leftovers are killed before a second copy starts; kids are recorded', async () => {
+    const s = setup(['github']);
+    const killed = [];
+    const queries = [];
+    let leader = 0;
+    const queryWin = async (filter) => {
+        queries.push(filter);
+        leader = Number(/ProcessId=(\d+)/.exec(filter)[1]);
+        if (filter.startsWith('ProcessId=')) return [{ ProcessId: leader, ParentProcessId: 1, CommandLine: 'cmd', CreationDate: '2026-11-09T10:00:00' }, { ProcessId: 4242, ParentProcessId: leader, CommandLine: `node ${s.script} github`, CreationDate: '2026-11-09T10:00:01' }];
+        return [
+            { ProcessId: 4242, ParentProcessId: 9, CommandLine: `node ${s.script} github`, CreationDate: '2026-11-09T10:00:01' }, // recorded kid
+            { ProcessId: 4343, ParentProcessId: leader, CommandLine: `node x.js ${s.script} github`, CreationDate: '2026-11-09T10:00:02' }, // orphan of the leader
+            { ProcessId: 4444, ParentProcessId: leader, CommandLine: 'node unrelated.js', CreationDate: '2026-11-09T10:00:03' }, // other args: never
+            { ProcessId: 4545, ParentProcessId: leader, CommandLine: `node ${s.script} github`, CreationDate: '2026-11-09T09:00:00' }, // older than the leader: never
+        ];
+    };
+    const logs = [];
+    const { hub, rpc } = await startHub(s.dir, { platform: 'win32', queryWin, kidsDelayMs: 10, kill: (pid, sig) => { killed.push(pid); try { process.kill(pid, 'SIGKILL'); } catch { /* fake pid */ } }, log: (m) => logs.push(m) });
+    try {
+        await rpc('github', 'tools/call', { name: 'echo' });
+        [leader] = s.starts();
+        assert.ok(await until(() => (JSON.parse(fs.readFileSync(path.join(s.dir, CHILDREN_FILE), 'utf8'))[leader] || {}).kids), 'kids recorded');
+        const rec = JSON.parse(fs.readFileSync(path.join(s.dir, CHILDREN_FILE), 'utf8'))[leader];
+        assert.deepEqual(rec.kids, [{ pid: 4242, cmd: `node ${s.script} github`, start: '2026-11-09T10:00:01' }]);
+        assert.equal(rec.started, '2026-11-09T10:00:00');
+        await rpc('github', 'tools/call', { name: 'die' });
+        assert.ok(await until(() => killed.includes(4343)));
+        assert.deepEqual(killed.filter((p) => [4242, 4343, 4444, 4545].includes(p)).sort(), [4242, 4343], 'recorded kid + matching orphan only');
+        assert.ok(logs.some((m) => m === 'aos-gateway hub: stopped leftover 4343 of github'));
+        assert.match(queries.at(-1), new RegExp(`^ParentProcessId=${leader} OR ProcessId=4242$`));
+        assert.ok(await until(() => !(String(leader) in JSON.parse(fs.readFileSync(path.join(s.dir, CHILDREN_FILE), 'utf8')))), 'record removed after the sweep');
+    } finally { await hub.close(); }
+});
+
+test('win (3): after a hard kill, reap sweeps the recorded kids and matching orphans of a dead leader, never unrelated pids', () => {
+    const s = setup(['github']);
+    const rec = { name: 'github', command: process.execPath, args: [s.script, 'github'], argv: ['cmd.exe', '/c', 'x'], started: '2026-11-09T10:00:00', kids: [{ pid: 501, cmd: 'node a.js', start: '2026-11-09T10:00:01' }] };
+    fs.writeFileSync(path.join(s.dir, CHILDREN_FILE), JSON.stringify({ 77: rec, 78: { ...rec, args: ['other'] } }));
+    const rows = [
+        { ProcessId: 501, ParentProcessId: 77, CommandLine: 'node a.js', CreationDate: '2026-11-09T10:00:01' },
+        { ProcessId: 502, ParentProcessId: 77, CommandLine: `node ${s.script} github`, CreationDate: '2026-11-09T10:00:05' },
+        { ProcessId: 503, ParentProcessId: 77, CommandLine: 'notepad.exe', CreationDate: '2026-11-09T10:00:05' },
+        { ProcessId: 501, ParentProcessId: 1, CommandLine: 'node a.js', CreationDate: '2026-11-09T11:00:00' }, // pid 501 reused later: no
+    ];
+    const killed = [];
+    const logs = [];
+    const filters = [];
+    const reaped = reapStaleChildren(s.dir, { platform: 'win32', info: () => null, kill: (p) => killed.push(p), log: (m) => logs.push(m), queryWin: (f) => { filters.push(f); return rows; } });
+    assert.deepEqual(reaped.sort(), [501, 502]);
+    assert.deepEqual(killed.sort(), [501, 502]);
+    assert.deepEqual(filters, ['ParentProcessId=77 OR ProcessId=501'], 'the record whose args differ from the sidecar is never swept');
+    assert.ok(logs.includes('aos-gateway hub: recorded leader 77 (github) is gone; looking for its leftovers'));
+    assert.ok(logs.includes('aos-gateway hub: stopped leftover 502 of github'));
+});
+
+test('win (4): reapOrphan reads the command line through CIM and stops 1mcp with taskkill', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-gwhub-orphan-'));
+    fs.writeFileSync(path.join(dir, 'upstream.pid'), '4711');
+    const script = 'C:/agents/gateway/node_modules/@1mcp/agent/build/index.js';
+    const killed = [];
+    const opts = (cmd) => ({ platform: 'win32', info: () => ({ cmd }), kill: (pid) => killed.push(pid) });
+    assert.equal(await reapOrphan(dir, script, 1, async () => {}, opts('"node.exe" C:\\other\\thing.js serve')), false);
+    assert.deepEqual(killed, []);
+    assert.equal(await reapOrphan(dir, script, 1, async () => {}, opts(`"C:\\node.exe" "${script.replace(/\//g, '\\')}" serve --config-dir "${dir}"`)), true);
+    assert.deepEqual(killed, [4711]);
+});
+
+test('win (5): a client start sequence with catalogs present never starts a child; unknown methods are answered locally', async () => {
+    const s = setup(['github']);
+    fs.mkdirSync(path.join(s.dir, 'catalog'));
+    // An older catalog without prompts/resources keys: list calls still come from it.
+    fs.writeFileSync(path.join(s.dir, 'catalog', 'github.json'), JSON.stringify({ initialize: { capabilities: { tools: {}, prompts: {}, resources: {} }, serverInfo: { name: 'gh' } }, tools: [{ name: 'echo' }] }));
+    const { hub, port, rpc, spawns } = await startHub(s.dir);
+    try {
+        for (const [m, p] of [['initialize', { protocolVersion: '2025-06-18' }], ['ping'], ['logging/setLevel', { level: 'warn' }], ['tools/list'], ['prompts/list'], ['resources/list'], ['resources/templates/list']]) assert.ok((await rpc('github', m, p)).body.result, m);
+        const n = await fetch(`http://127.0.0.1:${port}/github/mcp`, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
+        assert.equal(n.status, 202);
+        const odd = await rpc('github', 'some/probe');
+        assert.equal(odd.body.error.code, -32601);
+        assert.equal(spawns(), 0);
+    } finally { await hub.close(); }
+});
+
+test('new catalogs carry empty prompts/resources lists for servers without those capabilities', async () => {
+    const s = setup(['github']);
+    const { hub, rpc } = await startHub(s.dir);
+    try { await rpc('github', 'tools/list'); } finally { await hub.close(); }
+    const cat = JSON.parse(fs.readFileSync(path.join(s.dir, 'catalog', 'github.json'), 'utf8'));
+    assert.deepEqual([cat.prompts, cat.resources, cat.resourceTemplates], [[], [], []]);
 });

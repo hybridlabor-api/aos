@@ -295,14 +295,21 @@ function oneMcpEntry(dir) {
 
 // A SIGKILLed gateway leaves its 1mcp child holding the upstream port. Stop it only if the recorded pid is
 // still a 1mcp of ours (command line carries this entry script and this config dir); anything else is foreign.
-export async function reapOrphan(dir, script, upstreamPort, sleep = (ms) => new Promise((r) => setTimeout(r, ms))) {
+// Windows has no ps: the hub's CIM lookup reads the command line, and taskkill /T /F stops 1mcp with its tree.
+export async function reapOrphan(dir, script, upstreamPort, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), { platform = process.platform, info = hubApi.procInfo, kill = hubApi.killTree } = {}) {
     let pid;
     try { pid = Number(fs.readFileSync(path.join(dir, 'upstream.pid'), 'utf8')); } catch { return false; }
     if (!Number.isInteger(pid) || pid <= 1) return false;
-    const ps = spawnSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', shell: false, windowsHide: true });
-    const cmd = ps.status === 0 ? ps.stdout : '';
-    if (!cmd.includes(script) || !cmd.includes(dir)) return false;
-    try { process.kill(pid, 'SIGTERM'); } catch { return false; }
+    let cmd = '';
+    if (platform === 'win32') cmd = (info(pid, platform) || {}).cmd || '';
+    else {
+        const ps = spawnSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', shell: false, windowsHide: true });
+        cmd = ps.status === 0 ? ps.stdout : '';
+    }
+    const norm = (s) => (platform === 'win32' ? String(s).replace(/"/g, '').replace(/\//g, '\\').toLowerCase() : String(s));
+    if (!norm(cmd).includes(norm(script)) || !norm(cmd).includes(norm(dir))) return false;
+    if (platform === 'win32') kill(pid, 'SIGKILL', false, platform);
+    else try { process.kill(pid, 'SIGTERM'); } catch { return false; }
     for (let i = 0; i < 20; i++) {
         await sleep(250);
         if ((await get(upstreamPort, '/health')).error === 'ECONNREFUSED') return true;
