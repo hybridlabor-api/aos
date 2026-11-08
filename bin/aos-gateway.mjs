@@ -306,6 +306,19 @@ export function openLog(dir, maxBytes = 5 << 20) {
     };
 }
 
+// 1mcp refuses to start while runtime.owner names a pid that no longer exists (crash, hard shutdown): move the claim aside.
+// shortcut: a recycled pid that is alive again keeps the claim, 1mcp then reports it as before.
+export function clearStaleOwner(dir, isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } }) {
+    const owner = path.join(dir, 'runtime.owner');
+    let pid;
+    try { pid = Number(JSON.parse(fs.readFileSync(path.join(owner, 'owner.json'), 'utf8')).pid); } catch { return false; }
+    if (!Number.isInteger(pid) || pid <= 1 || isAlive(pid)) return false;
+    const stamp = Date.now();
+    try { fs.renameSync(owner, `${owner}.stale-${stamp}`); } catch { return false; }
+    try { fs.renameSync(path.join(dir, 'server.pid'), path.join(dir, `server.pid.stale-${stamp}`)); } catch { /* none */ }
+    return true;
+}
+
 // Core of `serve`, testable: no process-wide handlers, no process.exit. Rejects when it must refuse to start.
 export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, spawnFn = spawn, log: logIn, backoffMs = 1000, entry, logMaxBytes } = {}) {
     const token = readToken(dir);
@@ -348,6 +361,7 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     const start = () => {
         if (stopping) return;
         startedAt = Date.now();
+        if (clearStaleOwner(dir)) log('aos-gateway: cleared a stale runtime owner claim');
         try { child = spawnFn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true }); } catch (e) {
             log(`aos-gateway: cannot start 1mcp: ${e.code || e.message}`);
             return schedule();

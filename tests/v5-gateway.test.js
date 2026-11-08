@@ -1587,3 +1587,26 @@ test('forwarder 502 includes CORS headers for SSE clients', async () => {
         await f.close();
     }
 });
+
+describe('clearStaleOwner', () => {
+    const load = async () => (await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href)).clearStaleOwner;
+    const mk = (pid) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-owner-'));
+        fs.mkdirSync(path.join(dir, 'runtime.owner'));
+        fs.writeFileSync(path.join(dir, 'runtime.owner', 'owner.json'), JSON.stringify({ pid }));
+        fs.writeFileSync(path.join(dir, 'server.pid'), String(pid));
+        return dir;
+    };
+    test('moves a dead owner claim and server.pid aside', async () => {
+        const dir = mk(898696);
+        assert.equal((await load())(dir, () => false), true);
+        assert.equal(fs.existsSync(path.join(dir, 'runtime.owner')), false);
+        assert.equal(fs.existsSync(path.join(dir, 'server.pid')), false);
+        assert.ok(fs.readdirSync(dir).some((n) => n.startsWith('runtime.owner.stale-')));
+    });
+    test('keeps a live owner claim', async () => {
+        const dir = mk(898696);
+        assert.equal((await load())(dir, () => true), false);
+        assert.equal(fs.existsSync(path.join(dir, 'runtime.owner')), true);
+    });
+});
