@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.4.7](https://github.com/hybridlabor-api/aos/compare/v5.4.6...v5.4.7) (2026-11-08)
+
+
+### Bug Fixes
+
+* **gateway:** AOS_GATEWAY_WAIT_MS lengthens the post-restart grace window ([b761faa](https://github.com/hybridlabor-api/aos/commit/b761faa8fdbc55a08b7318f9694a9acb9bdbdfc1))
+* **gateway:** move a stale runtime owner claim aside before starting 1mcp ([353f994](https://github.com/hybridlabor-api/aos/commit/353f994370ea094d350db28dc5be1e270529dd89))
+* hub p-limit import, memB venv lock on Windows, gateway wait override ([a41e8bf](https://github.com/hybridlabor-api/aos/commit/a41e8bf21bdd37d65870757c829c8b955f8c0b0e))
+* **hub:** inline concurrency limiter, drop p-limit so the installed hub starts ([3bcda19](https://github.com/hybridlabor-api/aos/commit/3bcda19e70005cf21f440d952bb0de1b9e9a4d35))
+* **memb:** stop venv holders and retry a locked venv rebuild on Windows ([4375bff](https://github.com/hybridlabor-api/aos/commit/4375bff7b561e6dd44d279f0fe56d8ebf5e6ead9))
+
 ## [5.4.6](https://github.com/hybridlabor-api/aos/compare/v5.4.5...v5.4.6) (2026-11-08)
 
 
