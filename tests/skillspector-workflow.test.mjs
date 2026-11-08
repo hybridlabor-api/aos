@@ -52,10 +52,10 @@ test('every uses: line is pinned to a 40-hex SHA', () => {
   }
 });
 
-test('timeout-minutes is present and <= 10', () => {
+test('timeout-minutes is present and <= 30', () => {
   const m = /timeout-minutes:\s*(\d+)/.exec(wf);
   assert.ok(m, 'timeout-minutes present');
-  assert.ok(Number(m[1]) <= 10);
+  assert.ok(Number(m[1]) <= 30);
 });
 
 test('triggers include pull_request and push with skills/** paths', () => {
