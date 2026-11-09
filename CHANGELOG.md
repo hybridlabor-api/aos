@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.4.8](https://github.com/hybridlabor-api/aos/compare/v5.4.7...v5.4.8) (2026-11-09)
+
+
+### Features
+
+* **gateway:** heavy media servers opt-in, status shows process cost ([#255](https://github.com/hybridlabor-api/aos/issues/255)) ([4728e3f](https://github.com/hybridlabor-api/aos/commit/4728e3f4aaafd301e01e0b352261e851e6021c3e))
+* **gateway:** heavy media servers opt-in, status shows process cost ([#255](https://github.com/hybridlabor-api/aos/issues/255)) ([a66c9b7](https://github.com/hybridlabor-api/aos/commit/a66c9b7a0a0a6f3eb9aa446738e45d1d597d40ae))
+* **gateway:** on-demand hub, children start on first tool call ([#259](https://github.com/hybridlabor-api/aos/issues/259)) ([d2d2211](https://github.com/hybridlabor-api/aos/commit/d2d221111c460b48886ce238b6bf7dd1568d52bb))
+
+
+### Bug Fixes
+
+* **agents:** plan teardown when the brief asks for it in event-manager-assistant ([09c267e](https://github.com/hybridlabor-api/aos/commit/09c267e4c01d837d2c97bb1783aadd2c96ed6cfb))
+* **gateway:** aos-gateway stop on Windows ends only this directory's gateway ([#260](https://github.com/hybridlabor-api/aos/issues/260)) ([d705b93](https://github.com/hybridlabor-api/aos/commit/d705b934389d8b3f77b950dee0f33d5cc10605b0))
+* **gateway:** aos-gateway stop on Windows ends only this directory's gateway ([#260](https://github.com/hybridlabor-api/aos/issues/260)) ([5ee0a77](https://github.com/hybridlabor-api/aos/commit/5ee0a7742e962f39f16a29eedcc66b355c6b47fe))
+* **go-gate:** gogate off/grant/hard work in Antigravity ([#215](https://github.com/hybridlabor-api/aos/issues/215)) ([bc91640](https://github.com/hybridlabor-api/aos/commit/bc91640a0516a7edab8cab11c87c9dc74d497c75))
+* **go-gate:** gogate off/grant/hard work in Antigravity ([#215](https://github.com/hybridlabor-api/aos/issues/215)) ([ae077a1](https://github.com/hybridlabor-api/aos/commit/ae077a1b2952f8042d50f33e786112eac6b98ed7))
+* **go-gate:** harden agy transcript gogate parsing and first-seen stamps ([69440ff](https://github.com/hybridlabor-api/aos/commit/69440ffcfa72469a01c10bac305e79bbfb3c61fb))
+* **uninstall:** stop the OpenWiki daemon and remove its skill dir ([fd9a1be](https://github.com/hybridlabor-api/aos/commit/fd9a1be0e73f20ad8b9846a8e45a912c14a06c66))
+* **uninstall:** stop the OpenWiki daemon and remove its skill dir ([926e1ea](https://github.com/hybridlabor-api/aos/commit/926e1ea5efcedde8be1f162baf51ca1f61f2397a))
+
 ## [5.4.7](https://github.com/hybridlabor-api/aos/compare/v5.4.6...v5.4.7) (2026-11-08)
 
 
