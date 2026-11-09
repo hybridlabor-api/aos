@@ -403,6 +403,24 @@ function dirSize(p) {
 
 // ------------------------------------------------------------------ execute
 // Stop by script path first (a running node would restart nothing, but holds the port), then drop the .vbs.
+// installer.js copies the OpenWiki skill into the shared store outside the install manifest, so the file pass leaves it behind;
+// the daemon job runs its scripts from there. Stop the job and any running instance first, then remove the dir.
+function removeOpenWikiSkill({ home = HOME, platform = process.platform, run = (cmd, args) => execFileSync(cmd, args, { stdio: 'ignore', windowsHide: true, timeout: 60000 }), rm = rmSync } = {}) {
+  const dir = path.join(home, '.agents', 'skills', 'openwiki-skill');
+  const res = { dir, removed: false, stoppedDaemon: false };
+  if (platform === 'win32') {
+    for (const args of [['/End', '/TN', 'BDB_OpenWiki_Daemon'], ['/Delete', '/TN', 'BDB_OpenWiki_Daemon', '/F']]) {
+      try { run('schtasks', args); } catch { /* no such task, or not running */ }
+    }
+    try { run('powershell', winStartup.stopAllArgs([path.join(dir, 'scripts', 'openwiki_daemon.py')])); res.stoppedDaemon = true; } catch { /* nothing running or powershell unavailable */ }
+  }
+  let st;
+  try { st = lstatSync(dir); } catch { return res; }
+  if (st.isSymbolicLink() || sweep.behindLink({ home, file: dir })) { res.error = 'it is or sits behind a symlink or junction'; return res; }
+  try { rm(dir, { recursive: true, force: true }); res.removed = true; } catch (e) { res.error = e.message; }
+  return res;
+}
+
 function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000, windowsHide: true })) {
   for (const s of list || []) {
     // Full path under this profile's home only: the bare suffix also matches other Windows users' services.
@@ -564,9 +582,11 @@ async function execute(p) {
     try { rmSync(a.plist); } catch { /* already gone */ }
   });
   if (agents.length) console.log(`  ${agents.length} services stopped and removed`);
-  if (process.platform === 'win32') {
-    try { execFileSync('schtasks', ['/Delete', '/TN', 'BDB_OpenWiki_Daemon', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { /* no such task */ }
-  }
+  attempt('OpenWiki skill', () => {
+    const r = removeOpenWikiSkill();
+    if (r.removed) console.log(`  ${tilde(r.dir)} removed${r.stoppedDaemon ? ' (daemon stopped first)' : ''}`);
+    if (r.error) failures.push(`${tilde(r.dir)} not removed: ${r.error}`);
+  });
 
   // A path behind a link is judged before anything is copied or deleted, so no .bak is written for it either.
   const unsaved = new Set();
@@ -853,7 +873,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan, batStopSpecs, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer, removeSyncedSkillCopies };
+export { plan, batStopSpecs, removeOpenWikiSkill, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer, removeSyncedSkillCopies };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
