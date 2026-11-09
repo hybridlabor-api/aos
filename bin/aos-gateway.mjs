@@ -427,6 +427,36 @@ async function serve() {
     process.on('unhandledRejection', (e) => { console.error(`aos-gateway: unhandled rejection: ${e && e.stack || e}`); shutdown(1); });
 }
 
+const { winBin } = req('../lib/win-bin.js');
+const winCmdLine = (pid) => {
+    const r = spawnSync(winBin('powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command',
+        `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: 'utf8', windowsHide: true, timeout: 20000 });
+    return r.status === 0 ? r.stdout.trim() : '';
+};
+const winKillTree = (pid) => spawnSync(winBin('taskkill.exe'), ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+
+// Windows stop: only the pids this directory recorded, each re-checked by command line (a stale pid may be reused by anything).
+// The serve command line carries no directory (it comes from the home dir), so the gateway is matched on script + ' serve'
+// + its pid file; its 1mcp child also on the directory's own node_modules. Never a broad command-line scan.
+export function stopWinGateway(dir, { cmdLine = winCmdLine, kill = winKillTree } = {}) {
+    const norm = (s) => String(s || '').toLowerCase().replace(/\//g, '\\');
+    const targets = [
+        ['gateway.pid', (c) => /aos-gateway\.mjs"?\s+"?serve"?\s*$/.test(c)],
+        ['upstream.pid', (c) => c.includes(norm(path.join(dir, 'node_modules', '@1mcp')))],
+    ];
+    const stopped = [];
+    for (const [file, ok] of targets) {
+        const f = path.join(dir, file);
+        let pid;
+        try { pid = Number(fs.readFileSync(f, 'utf8')); } catch { continue; }
+        if (Number.isInteger(pid) && pid > 1 && ok(norm(cmdLine(pid)))) {
+            try { kill(pid); stopped.push(pid); } catch { /* already gone */ }
+        }
+        try { fs.unlinkSync(f); } catch { /* already gone */ }
+    }
+    return stopped;
+}
+
 function service(cmd) {
     const out = (r) => {
         if (r.stdout) process.stdout.write(r.stdout);
@@ -454,8 +484,7 @@ function service(cmd) {
         // Inline on purpose: this file also runs from ~/.agents/bin, which has no lib/ next to it.
         const vbs = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.aos.gateway.vbs');
         const start = () => (fs.existsSync(vbs) ? run('wscript.exe', [vbs]) : (console.error(`aos-gateway start: ${vbs} missing; run the AOS installer or "aos-gateway serve"`), 1));
-        const stop = () => run('powershell', ['-NoProfile', '-Command',
-            "Get-CimInstance Win32_Process | Where-Object { $c = $_.CommandLine; $_.ProcessId -ne $PID -and $c -and $c.Contains('aos-gateway.mjs') -and $c.Contains(' serve') -and $(($o = Invoke-CimMethod -InputObject $_ -MethodName GetOwner -ErrorAction SilentlyContinue) -and $o.User -and (($o.Domain + '\\' + $o.User) -eq ($env:USERDOMAIN + '\\' +$env:USERNAME))) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"]);
+        const stop = () => { stopWinGateway(gatewayDir(os.homedir())); return 0; };
         if (cmd === 'start') return start();
         if (cmd === 'stop') return stop();
         stop();
