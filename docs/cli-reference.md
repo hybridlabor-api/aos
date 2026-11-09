@@ -1255,6 +1255,7 @@ Harness evolution engine: record failure signatures, inspect kill switch status,
 ```text
 aos-evolve capture <failure.json | --error "..."> [--skill <name>] [options]
 aos-evolve status [--json]
+aos-evolve propose [--signature <id>] [--dry-run]
 aos-evolve disable
 aos-evolve enable
 aos-evolve probe [--target <probe>] [--set default]
@@ -1264,12 +1265,14 @@ aos-evolve probe [--target <probe>] [--set default]
 |---|---|---|
 | `capture` | `aos-evolve capture <failure.json> [--skill <name>]` | Capture and redact failure into failure.json. |
 | `status` | `aos-evolve status [--json]` | Display evolution engine status and failure count. |
+| `propose` | `aos-evolve propose [--signature <id>] [--dry-run]` | Propose a candidate fix for a failure signature as a draft PR. |
 | `disable` | `aos-evolve disable` | Activate kill switch to disable evolution loop. |
 | `enable` | `aos-evolve enable` | Remove kill switch to re-enable evolution loop. |
 | `probe` | `aos-evolve probe [--target <probe>] [--set default]` | Run the fixed probe set 3 times, records results, and checks for regression/improvement. |
 
 | Option | What it does |
 |---|---|
+| `--signature` | Target failure signature to propose a fix for. |
 | `--skill` | Target skill directory name. |
 | `--target` | Target probe to ensure improvement. |
 | `--set` | Probe set to run (default: default). |

@@ -20,6 +20,7 @@ const HELP_TEXT = `aos-evolve - Offline autonomous harness evolution engine (Har
 Usage:
   aos-evolve capture <failure.json | --error "..."> [--skill <name>] [options]
   aos-evolve status [--json]
+  aos-evolve propose [--signature <id>] [--dry-run]
   aos-evolve disable
   aos-evolve enable
   aos-evolve probe [--target <probe>] [--set default]
@@ -28,11 +29,13 @@ Usage:
 Commands:
   capture    Redact and record a task/test failure into failure.json (deduplicated by signature)
   status     Display evolution engine status, kill switch state, and failure counts
+  propose    Propose a candidate fix for a failure signature as a draft PR
   disable    Activate the kill switch (~/.aos/evolve/DISABLED) to halt all evolution cycles
   enable     Remove the kill switch and re-enable evolution cycles
   probe      Run the fixed probe set 3 times, records results, and checks for regression/improvement
 
 Options:
+  --signature <id>    Target failure signature to propose a fix for (default: most frequent)
   --skill <name>      Target skill directory name (required for --error)
   --error <text>      Raw error message or transcript excerpt to capture
   --kind <kind>       Failure kind: test | build | review | advisor-repeat | user (default: test)
@@ -149,6 +152,41 @@ export async function main(args = process.argv.slice(2), opts = {}) {
   Store:         ${storePath}
   Failures:      ${failures.length} unique signatures (${failures.reduce((sum, f) => sum + (f.count || 1), 0)} total occurrences)
 `);
+    }
+    return 0;
+  }
+
+  if (cmd === 'propose') {
+    if (isEvolveDisabled()) {
+      process.stderr.write('Error: AOS Evolve is disabled (kill switch active or not enabled)\n');
+      return 1;
+    }
+
+    const { proposeCandidate } = await import('../lib/evolve/propose.mjs');
+    const signature = getArgValue(args, '--signature');
+    const dryRun = args.includes('--dry-run');
+    const storagePath = getArgValue(args, '--storage');
+
+    // In a real execution environment, we inject genuine fixer and PR implementations.
+    // Since propose is in draft/prep, we use placeholder implementation hooks by default
+    // unless mocked for tests.
+    const result = await proposeCandidate({
+      signature,
+      dryRun,
+      storagePath,
+      fixer: opts.fixer || (async () => { throw new Error('Not implemented'); }),
+      createPr: opts.createPr || (async () => { throw new Error('Not implemented'); }),
+      probes: opts.probes || [],
+    });
+
+    if (!result.ok) {
+      process.stderr.write(`Error: ${result.error}\n`);
+      return 1;
+    }
+
+    process.stdout.write(`Proposed candidate for failure signature: ${result.candidate.files.join(', ')}\n`);
+    if (result.dryRun) {
+      process.stdout.write(`(dry-run: no changes written)\n`);
     }
     return 0;
   }
