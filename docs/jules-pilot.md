@@ -36,7 +36,7 @@ flowchart TD
     JulesCloud -->|Generates| SkillFile["skills/<name>/SKILL.md"]
     JulesCloud -->|Executes Validation| ValCheck["npm run validate"]
     ValCheck -->|PR Created| JulesPR["Pull Request: feat(skills): add <name> skill"]
-    JulesPR --> TimReview["Tim Review & Merge"]
+    JulesPR --> MaintainerReview["Maintainer review and merge"]
 ```
 
 ---
