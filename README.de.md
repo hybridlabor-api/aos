@@ -4,9 +4,9 @@
 
 **Language / Sprache / Idioma**: [English](README.md) · **Deutsch** · [Português](README.pt.md)
 
-> **Hinweis:** Diese Übersetzung ist veraltet und entspricht noch nicht dem englischen README für AOS² 5.4.2. Maßgeblich ist [README.md](README.md).
+> **Hinweis:** Diese Übersetzung ist veraltet und entspricht noch nicht dem englischen README für AOS² 5.4.6. Maßgeblich ist [README.md](README.md).
 
-# AOS — BDB Agent OS
+# AOS² — 5.4.6 “Ouroboros”
 
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![NPM Downloads](https://img.shields.io/npm/dw/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
@@ -72,6 +72,23 @@ npx -y @hybridlabor-api/aos@latest
 </div>
 
 ---
+
+## Was AOS² bedeutet
+
+AOS gibt jedem Coding-Agent ein Harness: Regeln, Skills, Guardrails, Subagents und Memory. AOS² fügt eine zweite Schleife hinzu. Das Harness lernt aus den eigenen Fehlern und schlägt eigene Fixes vor.
+
+Der Name verweist auf den Ouroboros, eine Schlange, die sich in den eigenen Schwanz beißt. Die Schleife endet nie. Sie erneuert sich selbst.
+
+Die Schleife hat sechs Schritte:
+
+1. **Arbeiten.** Ein Agent führt eine Aufgabe aus. Etwas schlägt fehl oder läuft langsam.
+2. **Erfassen.** AOS zeichnet den Fehler auf und entfernt Secrets.
+3. **Vorschlagen.** Ein starkes Modell schreibt einen Fix in einer separaten Kopie.
+4. **Prüfen.** Ein festes Testset prüft den Fix dreimal. Der Fix muss das Ziel verbessern und sonst nichts brechen.
+5. **Gate.** Das go-gate blockiert jeden Release-Befehl, bis du GO tippst.
+6. **Du mergst.** Du liest den Pull Request und mergst ihn. AOS merged nie eine Änderung an sich selbst ohne dich.
+
+**Heute** existieren Schritt 2 und 4 sowie der Kill-Switch: `aos-evolve capture` (benannte Fehlermodi und Traces), `probe` (ein festes Probe-Set, dreimal ausgeführt), `status`, `enable` und `disable`. Die Schritte 3, 5 und 6 sind das Ziel; noch kein Befehl schlägt einen Fix vor oder mergt ihn. Evolve bleibt aus, bis eine Person `aos-evolve enable` ausführt. Kill-Switch: `aos-evolve disable` oder `AOS_EVOLVE=off`.
 
 ## Warum AOS
 
@@ -221,6 +238,14 @@ Für geführte Workflows über diese Domänen hinweg siehe [Playbooks](#playbook
   - [`quick-recap`](skills/global_config/quick-recap/SKILL.md) - jede Antwort mit einer Rot/Gelb/Grün-Statuszeile abschließen
 
 Die vollständigen Kataloge (jeder Skill, Subagent, Playbook und MCP-Server) stehen in den einklappbaren Listen unter „Was enthalten ist".
+
+---
+
+## Neu in 5.4 “Ouroboros”
+
+| Bereich | Was sich geändert hat |
+|---|---|
+| **Seit 5.4.6** | Das go-gate akzeptiert Prompts, die du im Code-Tab der Claude-Desktop-App tippst, damit `gogate off` und `gogate soft` dort unter macOS und Windows wirken. Deinstallation entfernt unter Windows AOS-Plugin-Zustand, leere Hook-Dateien und Migrations-Backups. `aos-map` findet Endpunkte und Pfade in einem Projekt, `aos project init` schreibt die Projektstruktur aus einem Modul, und `aos-evolve` bekommt `probe`. |
 
 ---
 
@@ -1008,6 +1033,8 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `aos-acp` | Start workers whose guarded commands need a GO token; `--sandbox coop\|wsl2` wraps one launch. |
 | `aos-gateway` | Local MCP gateway: serve, enable, direct, adopt, status. |
 | `aos-gogate` | Read-only gate status and presets. |
+| `aos-evolve` | Record failures (`capture`), run the fixed probe set (`probe`), `status`, kill switch (`enable`, `disable`). |
+| `aos-map` | Query a project's code map: `find`, `show`, `path`, `overview`. |
 | `aos-gate` | Read or change the machine-wide gate profile. |
 | `aos-sessions` | Read-only overview of every live session and ACP worker. |
 | `aos-config` | Machine-level AOS configuration. |
