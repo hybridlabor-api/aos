@@ -5,7 +5,7 @@ These agents are part of the `eventtech` pack and are only compiled when the pac
 ---
 
 ## 🎪 event-manager-assistant
-- **Role**: Event production planning assistant: run of show, technical riders, crew plans, schedules and budgets, load-in planning, and vendor lists. Works from a brief or an event tracker. Scope note: Teardown and strike are out of scope for this agent; flag the boundary, do not plan them.
+- **Role**: Event production planning assistant: run of show, technical riders, crew plans, schedules and budgets, load-in planning, and vendor lists. Works from a brief or an event tracker. Plans load-out and teardown too when the brief asks for them.
 - **Primary Skills**:
   - `bdb-eventagency-skill`
   - `pb-event-tracker`
@@ -16,4 +16,4 @@ These agents are part of the `eventtech` pack and are only compiled when the pac
 - **MCP Servers**:
   - `memb_mcp`
 - **Output Artifact**: `production_artifacts/event_plan.md`
-- Plans forward from load-in through show close only: teardown and strike are out of scope for this agent (the boundary is flagged, never planned) — they are never scheduled, staffed, or budgeted. Timeline entries need owners and dependencies; riders and vendor lists record what was confirmed, not what was requested; every budget line cites its source.
+- Plans the lifecycle the brief asks for: load-in through show close, plus load-out and teardown when the brief asks for them. Every planned phase gets its own schedule, staffing, and budget lines; never leave out a phase the brief asks for. Timeline entries need owners and dependencies; riders and vendor lists record what was confirmed, not what was requested; every budget line cites its source.

@@ -187,9 +187,10 @@ test('live-media-operator keeps the GO discipline and typed ma3_tools', () => {
     assert.match(text, /explicit confirmation/, 'confirmation requirement kept');
 });
 
-test('event-manager-assistant scope note is agent-owned, not personal', () => {
+test('event-manager-assistant plans teardown when the brief asks for it', () => {
     const text = fs.readFileSync(path.join(ROOT, '.claude', 'agents', 'event-manager-assistant.md'), 'utf8');
-    assert.match(text, /out of scope/, 'scope note present');
+    assert.match(text, /load-out and teardown[^\n]*when the brief asks/, 'lifecycle rule present');
+    assert.doesNotMatch(text, /out of scope/, 'no product-level scope exclusion');
     assert.doesNotMatch(text, /does not handle/, 'personal wording removed');
     assert.doesNotMatch(text, /de-rig hand-off/, 'undefined de-rig hand-off dropped');
 });
