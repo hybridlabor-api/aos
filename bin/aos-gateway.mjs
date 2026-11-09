@@ -19,6 +19,15 @@ const { contextProfileOf } = req('../lib/v5/context-profiles.js');
 const profile = req('../lib/v5/profile.js');
 const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
 const adoptApi = req('../lib/gateway/adopt.js');
+const { OPT_IN_SERVERS } = req('../lib/gateway/selection.js');
+
+// 1mcp 0.38.2 spawns every configured upstream at start and keeps it running (#255): say what that costs.
+export function costText(upstreams) {
+    if (!upstreams.length) return null;
+    const heavy = upstreams.filter((u) => u.heavy).map((u) => u.name);
+    return `${upstreams.length} upstream${upstreams.length === 1 ? '' : 's'}, each its own process from gateway start (measured 55-170 MB each)`
+        + `${heavy.length ? `; heavy opt-in: ${heavy.join(', ')}` : ''}; remove unused ones with: aos-gateway remove <name>`;
+}
 
 export const lazyText = (s) => !s.running ? 'not running' : s.lazyLoading === null ? 'unknown (restart the gateway to record it)'
     : `${s.lazyLoading ? 'on (meta-tools tool_list/tool_schema/tool_invoke)' : 'off'}${s.restartPending ? `; restart pending (gateway.json says ${s.lazyLoading ? 'off' : 'on'}; run aos-gateway restart)` : ''}`;
@@ -190,6 +199,7 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         if (inner.status === 503) return { name, ok: false, degraded: true, error: '1mcp health returned 503 without per-server details (some upstreams not connected)' };
         return { name, ok: false, error: inner.error ? `1mcp not reachable on ${upstreamPort} (${inner.error})` : `1mcp health returned ${inner.status}` };
     });
+    for (const u of upstreams) if (OPT_IN_SERVERS.includes(u.name)) u.heavy = true;
     // Upstream values are the state of 1mcp as a whole, not per-server health.
     // Effective = what the running serve recorded when it started 1mcp; configured = gateway.json now.
     let lazyLoading = null;
@@ -472,7 +482,9 @@ async function main() {
             if (s.sizeWarning) {
                 console.log(`  WARN size: ${s.sizeWarning}`);
             }
-            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
+            const cost = costText(s.upstreams);
+            if (cost) console.log(`  processes: ${cost}`);
+            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.heavy ? ' (heavy)' : ''}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
         // No process.exit here: on Windows it aborted on a still-closing HTTP socket (libuv async.c assertion, exit 127).

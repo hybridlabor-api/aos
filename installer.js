@@ -8914,8 +8914,9 @@ async function main() {
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
         selectedMcps = await promptMcpSelection(tier);
         const selection = require('./lib/gateway/selection');
+        // null = no choice made: a stored selection stays as it is, a fresh install gets no media server (#255).
         selectedMediaServers = tier === '1'
-            ? (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : selection.detectMediaServers({ home: homeDir }))
+            ? (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : null)
             : [];
     } else {
         const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, selectedMediaServers: null, updates: null, contextProfile: null, router: null };
@@ -8940,7 +8941,8 @@ async function main() {
             const detected = selection.detectMediaServers({ home: homeDir });
             const initial = ctx.selectedMediaServers !== null
                 ? ctx.selectedMediaServers
-                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : detected);
+                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS)
+                    : (selection.validStoredServers((v5Profile.readSettings(homeDir, () => {}).gateway || {}).servers) || []).filter((n) => selection.SERVER_GROUPS.media.includes(n)));
             const MEDIA_SERVER_LABELS = {
                 bdb_grandma3_mcp: 'grandMA3 (bdb_grandma3_mcp)',
                 bdb_resolume_mcp: 'Resolume Arena/Avenue (bdb_resolume_mcp)',
@@ -8948,7 +8950,7 @@ async function main() {
                 bdb_unreal_mcp: 'Unreal Engine (bdb_unreal_mcp)',
             };
             const sel = await multiselectWithBack({
-                message: 'Media MCP servers (detected apps preselected, any can be ticked even without the app):',
+                message: 'Media MCP servers (opt-in: each one runs as its own process while the gateway runs; tick only what you use):',
                 options: selection.SERVER_GROUPS.media.map((name) => ({
                     value: name,
                     label: MEDIA_SERVER_LABELS[name] || name,
@@ -9389,7 +9391,7 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const mediaServers = tierValue === '1'
             ? (Array.isArray(mediaChoice)
                 ? mediaChoice
-                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : selection.detectMediaServers({ home })))
+                : (FORCED_MEDIA_SERVERS ? selection.parseMediaServers(FORCED_MEDIA_SERVERS) : []))
             : false;
         let baseStored = st.gateway && st.gateway.servers;
         if (Array.isArray(baseStored) && (Array.isArray(mediaChoice) || FORCED_MEDIA_SERVERS)) {
@@ -9399,7 +9401,6 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const r = selection.resolveGatewayServers({
             settingServers: baseStored,
             media: mediaServers,
-            creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
             keep: [...current, ...seen],
         });
         if (r.retired && r.retired.length) log.step(`Gateway: retired server name(s) ignored: ${r.retired.join(', ')}${r.servers.length ? '' : ' (selection is now empty; add servers with aos-gateway add <name>)'}`);
