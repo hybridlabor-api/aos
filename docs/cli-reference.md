@@ -614,7 +614,7 @@ aos-gate status
 
 ## aos-gateway
 
-Local MCP gateway (127.0.0.1:7790 in front of 7791): service control, server selection, harness config.
+Local MCP gateway (127.0.0.1:7790 in front of 7791, on-demand upstream hub on 7792): service control, server selection, harness config.
 
 - **When to use:** Check or control the MCP gateway, add or remove a gateway server, or adopt MCP servers from harness configs.
 - **Agent safety:** has side effects, call only when the task needs it. start/stop/restart control the service; enable/direct/add/remove/adopt rewrite harness MCP configs (with backups). status and inspect are read-only; run calls the chosen tool, which may have side effects.
@@ -625,6 +625,7 @@ aos-gateway serve | start | stop | restart
 aos-gateway status [--json]
 aos-gateway enable | direct
 aos-gateway add|remove <server> [--dry-run]
+aos-gateway warm <server>
 aos-gateway adopt [--dry-run] [--json]
 aos-gateway inspect [server|server/tool] [--format json]
 aos-gateway run <server>/<tool> --args '<json>'
@@ -641,6 +642,7 @@ aos-gateway run <server>/<tool> --args '<json>'
 | `direct` | `aos-gateway direct` | Restore direct MCP entries in the harness configs. |
 | `add` | `aos-gateway add <server> [--dry-run]` | Add a shipped server to the gateway selection. |
 | `remove` | `aos-gateway remove <server> [--dry-run]` | Remove a server from the selection. |
+| `warm` | `aos-gateway warm <server>` | Start one on-demand upstream once, record its tool catalog, stop it again. |
 | `adopt` | `aos-gateway adopt [--dry-run] [--json]` | Move MCP servers found in harness configs behind the gateway. |
 | `inspect` | `aos-gateway inspect [server\|server/tool] [--format json]` | CLI mode: list servers, a server's tools or one tool schema from the running gateway, without loading MCP schemas into context. |
 | `run` | `aos-gateway run <server>/<tool> --args '<json>'` | CLI mode: call one gateway tool (inspect it first). Output goes to stdout. |
@@ -653,6 +655,9 @@ aos-gateway run <server>/<tool> --args '<json>'
 | Environment | What it does |
 |---|---|
 | `AOS_TEST_SANDBOX` | 1 skips the service restart after add/remove (tests). |
+| `AOS_GATEWAY_ONDEMAND` | 0 keeps the eager behaviour (1mcp spawns every stdio upstream) on the next mcp.json regeneration. |
+| `AOS_GATEWAY_IDLE_MS` | Idle stop of an on-demand upstream, 30000 to 86400000 ms (default 600000). |
+| `AOS_GATEWAY_MAX_UPSTREAMS` | Cap on running on-demand upstreams, 1 to 32 (default 4). |
 
 | Exit code | Meaning |
 |---|---|

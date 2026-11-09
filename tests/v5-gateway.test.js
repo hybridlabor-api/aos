@@ -469,8 +469,9 @@ describe('pkg-gateway', () => {
         seedSelection(home);
         const env = { HTTPS_PROXY: 'http://proxy:3128', LANG: 'de_DE.UTF-8', GITHUB_TOKEN: 'ghp_SHOULDNOTLEAK', SystemRoot: 'C:\\Windows' };
         await pkg.install(mkCtx(home, { env, uvPath: '/opt/uv/uv' }).ctx);
-        const text = fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8');
-        const s = JSON.parse(text).mcpServers;
+        // On-demand hub (#255): the stdio definition (env, command) lives in the sidecar, mcp.json points at the hub.
+        const text = fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8') + fs.readFileSync(path.join(cfg.gatewayDir(home), cfg.SIDECAR_FILE), 'utf8');
+        const s = JSON.parse(fs.readFileSync(path.join(cfg.gatewayDir(home), cfg.SIDECAR_FILE), 'utf8')).servers;
         assert.equal(s.github.env.HTTPS_PROXY, 'http://proxy:3128');
         assert.equal(s.github.env.LANG, 'de_DE.UTF-8');
         assert.equal(s.github.env.SystemRoot, undefined, 'win32-only key on darwin');
