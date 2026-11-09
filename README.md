@@ -84,9 +84,9 @@ The loop has six steps:
 3. **Propose.** A strong model writes a fix in a separate copy.
 4. **Probe.** A fixed test set checks the fix three times. The fix must improve the target and break nothing else.
 5. **Gate.** The go-gate blocks every release command until you type GO.
-6. **You merge.** You read the pull request and merge it. AOS never merges a change to itself without you.
+6. **You approve.** AOS never applies a change to itself without you. In a git project the proposal arrives as a draft pull request, and merging it is your approval. In a project without git it arrives as a patch and a report under `.aos/evolve/proposals/<id>/`. You apply it with `aos-evolve apply <id>`. A backup is made first, and `--revert` restores it. A proposal that touches protected paths or contains secrets is never offered. Only a person can approve: GO and approval are typed by hand, never by an agent.
 
-**Today** steps 2 and 4 and the kill switch exist: `aos-evolve capture` (named failure modes and traces), `probe` (a fixed probe set, run three times), `status`, `enable` and `disable`. Steps 3, 5 and 6 are the target; no command proposes or merges a fix yet. Evolve stays off until a person runs `aos-evolve enable`. Kill switch: `aos-evolve disable` or `AOS_EVOLVE=off`.
+**Today** steps 2 and 4 and the kill switch exist: `aos-evolve capture` (named failure modes and traces), `probe` (a fixed probe set, run three times), `status`, `enable` and `disable`. Steps 3, 5 and 6 are the target. `propose` and `apply` are not shipped yet, so no command proposes or applies a fix yet. Evolve stays off until a person runs `aos-evolve enable`. Kill switch: `aos-evolve disable` or `AOS_EVOLVE=off`.
 
 ## The five layers
 
