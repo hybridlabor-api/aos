@@ -1,0 +1,4 @@
+src-tauri/target/
+src-tauri/gen/
+# Generated in CI by `cargo tauri icon app-icon.png`
+src-tauri/icons/
