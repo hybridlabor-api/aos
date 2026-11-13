@@ -71,15 +71,17 @@ enum Cmd {
     Quit,
 }
 
-/// Owns the thread that holds the OS assertion. Dropping it releases the hold.
+/// Owns the thread that holds the OS assertion. `stop` (also run on drop) releases the hold
+/// and waits for the thread, so nothing is left behind when the app quits.
 pub struct Holder {
     tx: Sender<Cmd>,
+    thread: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl Holder {
     pub fn start() -> Holder {
         let (tx, rx) = mpsc::channel::<Cmd>();
-        std::thread::spawn(move || {
+        let thread = std::thread::spawn(move || {
             let mut mode = Mode::Off;
             let mut held = false;
             let mut os = os::Hold::new();
@@ -91,24 +93,37 @@ impl Holder {
                 }
                 mode = normalize(mode, now_unix());
                 let want = holds(mode, now_unix());
-                if want != held {
-                    os.set(want);
-                    held = want;
+                // Retry every tick while the OS call failed or the helper process died.
+                if want != held || (want && !os.alive()) {
+                    held = want && os.set(true);
+                    if !want {
+                        os.set(false);
+                    }
                 }
             }
             os.set(false);
         });
-        Holder { tx }
+        Holder { tx, thread: std::sync::Mutex::new(Some(thread)) }
     }
 
     pub fn set(&self, mode: Mode) {
         let _ = self.tx.send(Cmd::Set(mode));
     }
+
+    /// Releases the hold and joins the thread. Safe to call more than once.
+    pub fn stop(&self) {
+        let _ = self.tx.send(Cmd::Quit);
+        if let Ok(mut t) = self.thread.lock() {
+            if let Some(h) = t.take() {
+                let _ = h.join();
+            }
+        }
+    }
 }
 
 impl Drop for Holder {
     fn drop(&mut self) {
-        let _ = self.tx.send(Cmd::Quit);
+        self.stop();
     }
 }
 
@@ -122,11 +137,14 @@ mod os {
             Hold
         }
         /// Must be called from the same thread every time (the flag belongs to the thread).
-        pub fn set(&mut self, on: bool) {
+        /// Returns whether the call succeeded (it returns 0 on failure).
+        pub fn set(&mut self, on: bool) -> bool {
             // SAFETY: plain Win32 call with documented flag values and no pointers.
-            unsafe {
-                SetThreadExecutionState(if on { ES_CONTINUOUS | ES_SYSTEM_REQUIRED } else { ES_CONTINUOUS });
-            }
+            unsafe { SetThreadExecutionState(if on { ES_CONTINUOUS | ES_SYSTEM_REQUIRED } else { ES_CONTINUOUS }) != 0 }
+        }
+        /// The execution state belongs to the thread and dies with it, so it is always alive.
+        pub fn alive(&mut self) -> bool {
+            true
         }
     }
 }
@@ -140,15 +158,32 @@ mod os {
         pub fn new() -> Hold {
             Hold(None)
         }
-        pub fn set(&mut self, on: bool) {
+        pub fn set(&mut self, on: bool) -> bool {
             if on {
                 if self.0.is_none() {
-                    // `-i` keeps the system from idle sleep; the child dies with `set(false)`.
-                    self.0 = Command::new("/usr/bin/caffeinate").arg("-i").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok();
+                    // `-i` keeps the system from idle sleep. `-w <pid>` makes caffeinate exit when
+                    // this app exits, even after a crash; `set(false)` also kills it.
+                    let pid = std::process::id().to_string();
+                    self.0 = Command::new("/usr/bin/caffeinate").args(["-i", "-w", &pid]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok();
                 }
-            } else if let Some(mut c) = self.0.take() {
-                let _ = c.kill();
-                let _ = c.wait();
+                self.0.is_some()
+            } else {
+                if let Some(mut c) = self.0.take() {
+                    let _ = c.kill();
+                    let _ = c.wait();
+                }
+                true
+            }
+        }
+        /// True while the helper process still runs; a dead one is dropped so it can be respawned.
+        pub fn alive(&mut self) -> bool {
+            match self.0.as_mut().map(|c| c.try_wait()) {
+                Some(Ok(None)) => true,
+                Some(_) => {
+                    self.0 = None;
+                    false
+                }
+                None => false,
             }
         }
     }
@@ -161,7 +196,12 @@ mod os {
         pub fn new() -> Hold {
             Hold
         }
-        pub fn set(&mut self, _on: bool) {}
+        pub fn set(&mut self, _on: bool) -> bool {
+            false
+        }
+        pub fn alive(&mut self) -> bool {
+            true
+        }
     }
 }
 

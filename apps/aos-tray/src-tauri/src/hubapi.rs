@@ -39,7 +39,16 @@ pub fn parse_response(raw: &[u8]) -> Result<(u16, Vec<u8>), String> {
         let l = l.to_ascii_lowercase();
         l.starts_with("transfer-encoding:") && l.contains("chunked")
     });
+    let declared: Option<usize> = head.split("\r\n").skip(1).find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        k.trim().eq_ignore_ascii_case("content-length").then(|| v.trim().parse().ok()).flatten()
+    });
     let body = if chunked { dechunk(body)? } else { body.to_vec() };
+    if let (false, Some(n)) = (chunked, declared) {
+        if body.len() < n {
+            return Err("the hub response was cut off".into());
+        }
+    }
     Ok((status, body))
 }
 
@@ -55,11 +64,12 @@ pub fn dechunk(mut data: &[u8]) -> Result<Vec<u8>, String> {
         if size == 0 {
             return Ok(out);
         }
-        if data.len() < size + 2 {
+        let need = size.checked_add(2).ok_or_else(|| "bad chunk size".to_string())?;
+        if data.len() < need {
             return Err("truncated chunk".into());
         }
         out.extend_from_slice(&data[..size]);
-        data = &data[size + 2..];
+        data = &data[need..];
     }
 }
 
@@ -97,15 +107,22 @@ fn send(port: u16, method: &str, path: &str, token: Option<&str>, body: Option<&
             return Err("request body too large".into());
         }
     }
+    // Overall deadline: reads are short, installs (POST) may legitimately take minutes.
+    let budget = if method == "GET" { Duration::from_secs(30) } else { Duration::from_secs(20 * 60) };
+    let deadline = std::time::Instant::now() + budget;
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();
     let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(3)).map_err(|e| format!("hub not reachable: {e}"))?;
-    stream.set_read_timeout(Some(Duration::from_secs(120))).ok();
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
     stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
     stream.write_all(&request_bytes(port, method, path, token, body)).map_err(|e| format!("hub write failed: {e}"))?;
     let mut raw = Vec::new();
     let mut buf = [0u8; 16 * 1024];
     loop {
+        if std::time::Instant::now() > deadline {
+            return Err("the hub did not finish in time; it may still be working, refresh to check".into());
+        }
         match stream.read(&mut buf) {
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => continue,
             Ok(0) => break,
             Ok(n) => {
                 raw.extend_from_slice(&buf[..n]);
@@ -218,7 +235,7 @@ pub fn parse_catalog(v: &Value) -> StoreCatalog {
         .map(|a| {
             a.iter()
                 .filter_map(|x| serde_json::from_value::<RawItem>(x.clone()).ok())
-                .filter(|r| valid_name(&r.name))
+                .filter(|r| valid_name(&r.name) && valid_kind(&r.kind))
                 .map(|r| StoreItem {
                     description: r.description.chars().take(400).collect(),
                     name: r.name,
@@ -293,6 +310,9 @@ mod tests {
         assert!(parse_response(b"garbage\r\n\r\nbody").is_err());
         assert!(dechunk(b"zz\r\nabc\r\n0\r\n\r\n").is_err());
         assert!(dechunk(b"5\r\nab").is_err());
+        assert!(dechunk(b"ffffffffffffffff\r\nab\r\n").is_err(), "a huge chunk size must not overflow");
+        let cut = b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n{}";
+        assert!(parse_response(cut).unwrap_err().contains("cut off"));
     }
 
     #[test]
@@ -329,6 +349,7 @@ mod tests {
                 { "name": "zeta", "kind": "skill", "description": "d", "installed": true, "core": true },
                 { "name": "Alpha", "kind": "agent", "thirdParty": true, "requiresAuth": true, "problem": "x" },
                 { "name": "bad name", "kind": "skill" },
+                { "name": "an-mcp", "kind": "mcp" },
                 { "kind": "skill" }
             ],
             "packages": [ { "id": "memb", "name": "memB", "installed": true, "version": "2.4.1" }, { "name": "no id" } ]

@@ -287,7 +287,8 @@ async fn gogate_mode() -> Result<Option<String>, String> {
 static HUB_TOKEN: Mutex<Option<String>> = Mutex::new(None);
 
 fn hub_post(port: u16, path: &str, body: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let mut token = HUB_TOKEN.lock().map_err(|_| "token lock failed".to_string())?;
+    // A poisoned lock only means another request panicked; the cached token is still just a string.
+    let mut token = HUB_TOKEN.lock().unwrap_or_else(|e| e.into_inner());
     crate::hubapi::post_json(port, &mut token, path, body)
 }
 
@@ -299,14 +300,20 @@ fn hub_reply_text(v: &serde_json::Value) -> Result<String, String> {
     if ok { Ok(if out.trim().is_empty() { "Done.".into() } else { out }) } else { Err(if out.trim().is_empty() { "The hub reported a failure.".into() } else { out }) }
 }
 
+/// Read from the hub. The port comes from hub.json; the hub is only started when nothing answers
+/// there, so merely opening a screen does not spawn a process while the hub already runs.
+fn hub_get(path: &str) -> Result<serde_json::Value, String> {
+    let port = read(state::hub_json(&home()?)).and_then(|t| state::parse_hub_port(&t)).unwrap_or(hub::DEFAULT_PORT);
+    match crate::hubapi::get_json(port, path) {
+        Err(e) if e.starts_with("hub not reachable") => crate::hubapi::get_json(hub_port_started()?, path),
+        other => other,
+    }
+}
+
 /// Library screen: the hub's catalog (skills and agents) plus package states.
 #[tauri::command]
 async fn store_catalog() -> Result<crate::hubapi::StoreCatalog, String> {
-    blocking(|| {
-        let port = hub_port_started()?;
-        Ok(crate::hubapi::parse_catalog(&crate::hubapi::get_json(port, "/api/store?scope=global")?))
-    })
-    .await
+    blocking(|| Ok(crate::hubapi::parse_catalog(&hub_get("/api/store?scope=global")?))).await
 }
 
 /// Library screen: the rendered SKILL.md / agent text of one installed item.
@@ -315,11 +322,7 @@ async fn store_doc(kind: String, name: String) -> Result<serde_json::Value, Stri
     if !crate::hubapi::valid_kind(&kind) || !crate::hubapi::valid_name(&name) {
         return Err("invalid store item".into());
     }
-    blocking(move || {
-        let port = hub_port_started()?;
-        crate::hubapi::get_json(port, &format!("/api/store/skill?name={name}&kind={kind}"))
-    })
-    .await
+    blocking(move || hub_get(&format!("/api/store/skill?name={name}&kind={kind}"))).await
 }
 
 #[tauri::command]
@@ -352,8 +355,10 @@ async fn codenotch_info() -> Result<codenotch::Info, String> {
 }
 
 #[tauri::command]
-async fn codenotch_start() -> Result<(), String> {
-    blocking(|| codenotch::start(&home()?)).await
+async fn codenotch_start(app: AppHandle) -> Result<(), String> {
+    // Launches a program from a user-writable folder: same guard as every other launch
+    // (refused when elevated, native confirmation).
+    blocking(move || guarded(&app, "Start Codenotch, the usage notch app installed for this user?", || codenotch::start(&home()?))).await
 }
 
 /// Install or update through the AOS installer (checksum verified there), after a native confirm.
@@ -582,6 +587,14 @@ struct TrayItems {
 }
 
 fn refresh_tray(app: &AppHandle) {
+    // An expired always-on timer: bring the tray label and the saved file back to "off".
+    if let Some(st) = app.try_state::<AwakeState>() {
+        let cur = st.mode.lock().map(|m| *m).unwrap_or_default();
+        let now = awake::normalize(cur, awake::now_unix());
+        if now != cur {
+            let _ = apply_awake(app, now);
+        }
+    }
     // Read-only: skip while a change runs, but never hold the lock (a user action must not
     // be refused because a refresh happens to be in flight).
     if BUSY.try_lock().is_err() {
@@ -734,7 +747,8 @@ pub fn run() {
                 match id.as_str() {
                     "open" => show_main(app),
                     "awake" => {
-                        let on = !matches!(app.state::<AwakeState>().mode.lock().map(|m| *m).unwrap_or_default(), awake::Mode::Off);
+                        let cur = awake::normalize(app.state::<AwakeState>().mode.lock().map(|m| *m).unwrap_or_default(), awake::now_unix());
+                        let on = !matches!(cur, awake::Mode::Off);
                         let _ = apply_awake(app, if on { awake::Mode::Off } else { awake::Mode::On });
                     }
                     "quit" => app.exit(0),
@@ -764,7 +778,13 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building the AOS tray")
-        .run(|_app, event| {
+        .run(|app, event| {
+            // Release the keep-awake hold (and the macOS helper) before the process ends.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(st) = app.try_state::<AwakeState>() {
+                    st.holder.stop();
+                }
+            }
             // Closing the last window must not quit the app: the tray stays.
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 if code.is_none() {

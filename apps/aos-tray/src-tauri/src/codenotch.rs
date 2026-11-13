@@ -38,7 +38,10 @@ fn is_running() -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        return Command::new("tasklist")
+        // Resolved under %SystemRoot%\System32, never through PATH or the app directory.
+        let tasklist = std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tasklist.exe")).filter(|p| p.is_file());
+        let Some(tasklist) = tasklist else { return false };
+        return Command::new(tasklist)
             .args(["/FI", "IMAGENAME eq codenotch.exe", "/NH"])
             .stdin(Stdio::null())
             .stderr(Stdio::null())
