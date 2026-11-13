@@ -179,6 +179,31 @@ async fn router_show() -> Result<String, String> {
     blocking(|| text_of(Action::RouterShow)).await
 }
 
+/// Router screen: the table as typed data, raw text when the JSON does not parse.
+#[tauri::command]
+async fn router_view() -> Result<state::Parsed<crate::router::RouterView>, String> {
+    blocking(|| {
+        let o = cli::run(&Action::RouterShow, &home()?)?;
+        Ok(state::parsed_or_raw(&o.stdout, &o.stderr, crate::router::parse_show))
+    })
+    .await
+}
+
+/// Router screen: set the preference list of one role (user layer only).
+#[tauri::command]
+async fn router_set(app: AppHandle, role: String, targets: Vec<String>) -> Result<String, String> {
+    if !crate::router::valid_role(&role) {
+        return Err("unknown router role".into());
+    }
+    crate::router::validate_targets(&targets)?;
+    blocking(move || {
+        let o = run_action(&app, Action::RouterSet(role, targets))?;
+        let text = tail(&format!("{}{}", o.stdout, o.stderr), 2000);
+        if o.ok() { Ok(text) } else { Err(text) }
+    })
+    .await
+}
+
 #[tauri::command]
 async fn memory_list() -> Result<String, String> {
     blocking(|| text_of(Action::MemoryList)).await
@@ -489,6 +514,8 @@ pub fn run() {
             list_skills,
             store_packs,
             router_show,
+            router_view,
+            router_set,
             memory_list,
             gateway_status,
             gateway_change,

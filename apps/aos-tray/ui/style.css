@@ -129,3 +129,9 @@ pre:empty { display: none; }
   main { padding: var(--aos-space-5) var(--aos-space-4); }
 }
 .card-body .rows { margin-top: var(--aos-space-4); }
+
+/* Router editor */
+.row.col { flex-direction: column; align-items: stretch; }
+.editor { display: grid; gap: var(--space-2, 8px); padding-top: var(--space-2, 8px); }
+.edit-line { display: flex; align-items: center; gap: var(--space-2, 8px); }
+.edit-line .grow { flex: 1; }

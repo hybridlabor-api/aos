@@ -68,6 +68,8 @@ pub enum Action {
     GatewayRemove(String),
     /// `aos-router show --json`
     RouterShow,
+    /// `aos-router set <role> <t1,t2> --user` (role and targets are allowlisted in router.rs)
+    RouterSet(String, Vec<String>),
     /// `aos-hub open --tab <tab>`
     HubOpen(HubTab),
     /// `aos-hub start --no-open` (the app shows the hub in its own window, not a browser)
@@ -93,7 +95,7 @@ pub fn valid_server(name: &str) -> bool {
 
 impl Action {
     pub fn changes_state(&self) -> bool {
-        matches!(self, Action::Install | Action::Update | Action::Repair | Action::GatewayAdd(_) | Action::GatewayRemove(_) | Action::ServiceRestart(_))
+        matches!(self, Action::Install | Action::Update | Action::Repair | Action::GatewayAdd(_) | Action::GatewayRemove(_) | Action::ServiceRestart(_) | Action::RouterSet(..))
     }
 
     /// Text of the native confirmation dialog, built here and never from webview input.
@@ -105,6 +107,7 @@ impl Action {
             Action::GatewayAdd(s) => format!("Add `{s}` to the MCP gateway selection? The gateway service restarts."),
             Action::GatewayRemove(s) => format!("Remove `{s}` from the MCP gateway selection? The gateway service restarts; it disappears from harnesses on the next update."),
             Action::ServiceRestart(id) => format!("Restart the AOS service `{id}`? Agents using it lose their connection for a moment."),
+            Action::RouterSet(role, targets) => format!("Route the role `{role}` to `{}` for this user? New sessions pick it up.", targets.join(", ")),
             _ => return None,
         })
     }
@@ -124,7 +127,7 @@ impl Action {
             Action::Install | Action::Update => Program::Npx,
             Action::Repair | Action::Version | Action::ServicesStatus | Action::Doctor | Action::StorePacks | Action::MemoryList | Action::ServiceRestart(_) => Program::Script("installer.js"),
             Action::GatewayStatus | Action::GatewayAdd(_) | Action::GatewayRemove(_) => Program::Script("bin/aos-gateway.mjs"),
-            Action::RouterShow => Program::Script("bin/aos-router.mjs"),
+            Action::RouterShow | Action::RouterSet(..) => Program::Script("bin/aos-router.mjs"),
             Action::HubOpen(_) | Action::HubStart => Program::Script("bin/aos-hub.mjs"),
         }
     }
@@ -150,6 +153,12 @@ impl Action {
                 vec![cmd.to_string(), s.clone()]
             }
             Action::RouterShow => v(&["show", "--json"]),
+            Action::RouterSet(role, targets) => {
+                if !crate::router::valid_role(role) {
+                    return Err("unknown router role".into());
+                }
+                vec!["set".into(), role.clone(), crate::router::targets_arg(targets)?, "--user".into()]
+            }
             Action::HubOpen(HubTab::Services) => v(&["open", "--tab", "services"]),
             Action::HubOpen(HubTab::Store) => v(&["open", "--tab", "store"]),
             Action::HubStart => v(&["start", "--no-open"]),

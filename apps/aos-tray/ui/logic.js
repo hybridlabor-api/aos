@@ -68,7 +68,32 @@ export function secretRows(list = []) {
   return list.map((s) => ({ name: String(s.name), set: Boolean(s.has_value) }));
 }
 
-export const SCREENS = ['home', 'store', 'services', 'projects', 'secrets', 'settings'];
+export const SCREENS = ['home', 'store', 'services', 'router', 'projects', 'secrets', 'settings'];
+
+/** Router editor: add a target at the end of the list, or remove it when already present. */
+export function toggleTarget(list, name) {
+  return list.includes(name) ? list.filter((x) => x !== name) : [...list, name];
+}
+
+/** Router editor: move one target up (delta -1) or down (+1); out-of-range moves are no-ops. */
+export function moveTarget(list, name, delta) {
+  const i = list.indexOf(name);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= list.length) return list.slice();
+  const out = list.slice();
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+/** Router editor: rows for the role table, with the layer each preference comes from. */
+export function routerRows(view) {
+  if (!view || !Array.isArray(view.roles)) return [];
+  return view.roles.map((role) => ({
+    role,
+    targets: (view.preferences && view.preferences[role]) || [],
+    source: (view.sources && view.sources[role]) || 'shipped',
+  }));
+}
 
 /** Screen from a location hash like '#services'; unknown -> 'home'. */
 export function screenFromHash(hash) {

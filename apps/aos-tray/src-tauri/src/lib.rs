@@ -6,6 +6,7 @@ pub mod cli;
 pub mod elevation;
 pub mod hub;
 pub mod projects;
+pub mod router;
 pub mod secrets;
 pub mod state;
 

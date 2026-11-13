@@ -14,6 +14,7 @@
       <a href="#home" data-screen="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg><span data-i18n="nav.home">Home</span></a>
       <a href="#store" data-screen="store"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/></svg><span data-i18n="nav.store">Store</span></a>
       <a href="#services" data-screen="services"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"/></svg><span data-i18n="nav.services">Services</span></a>
+      <a href="#router" data-screen="router"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6M6 3 3 6m3-3 3 3M18 21l-3-3m3 3 3-3"/></svg><span data-i18n="nav.router">Router</span></a>
       <a href="#projects" data-screen="projects"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg><span data-i18n="nav.projects">Projects</span></a>
       <a href="#secrets" data-screen="secrets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 9.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0zM13 13l8 8M17 17l2-2M19 19l2-2"/></svg><span data-i18n="nav.secrets">Secrets</span></a>
       <a href="#settings" data-screen="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-i18n="nav.settings">Settings</span></a>
@@ -51,6 +52,13 @@
       <h2 class="sub" data-i18n="services.gateway">Gateway upstreams</h2>
       <p class="note" id="gw-summary"></p>
       <ul class="rows" id="gw-rows"></ul>
+    </section>
+
+    <section data-view="router" hidden>
+      <header class="head"><div><h1 data-i18n="router.title">Router</h1><p class="lede" data-i18n="router.lede"></p></div>
+        <button class="btn" id="router-refresh" data-i18n="common.refresh">Refresh</button></header>
+      <p class="note" id="router-msg" role="status"></p>
+      <ul class="rows" id="router-rows"></ul>
     </section>
 
     <section data-view="projects" hidden>

@@ -54,3 +54,22 @@ test('screen from hash', () => {
   assert.equal(L.screenFromHash('#nope'), 'home');
   assert.equal(L.screenFromHash(''), 'home');
 });
+
+import { toggleTarget, moveTarget, routerRows } from '../ui/logic.js';
+
+test('router editor: toggle adds at the end and removes', () => {
+  assert.deepEqual(toggleTarget(['a'], 'b'), ['a', 'b']);
+  assert.deepEqual(toggleTarget(['a', 'b'], 'a'), ['b']);
+});
+
+test('router editor: move swaps neighbours and ignores out-of-range', () => {
+  assert.deepEqual(moveTarget(['a', 'b', 'c'], 'b', -1), ['b', 'a', 'c']);
+  assert.deepEqual(moveTarget(['a', 'b', 'c'], 'c', 1), ['a', 'b', 'c']);
+  assert.deepEqual(moveTarget(['a', 'b'], 'x', 1), ['a', 'b']);
+});
+
+test('router editor: rows carry targets and source with defaults', () => {
+  const rows = routerRows({ roles: ['builder', 'scout'], preferences: { builder: ['claude'] }, sources: { builder: 'user' } });
+  assert.deepEqual(rows, [{ role: 'builder', targets: ['claude'], source: 'user' }, { role: 'scout', targets: [], source: 'shipped' }]);
+  assert.deepEqual(routerRows(null), []);
+});

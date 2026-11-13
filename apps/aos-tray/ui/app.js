@@ -1,7 +1,7 @@
 // AOS App main window. All data is rendered with textContent (never innerHTML). Every
 // state-changing call goes to a Rust command that shows its own native confirmation.
 import { t as translate, detectLang } from './i18n.js';
-import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows } from './logic.js';
+import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows, routerRows, toggleTarget, moveTarget } from './logic.js';
 
 const invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args);
 const $ = (id) => document.getElementById(id);
@@ -197,6 +197,76 @@ async function loadGateway() {
     li.append(status(t(`services.${r.state}`), tone), main, actions);
     ul.append(li);
   }
+}
+
+// ---------------------------------------------------------------- router
+loaders.router = async () => {
+  const ul = $('router-rows'); ul.textContent = '';
+  const msg = $('router-msg'); msg.textContent = ''; skeleton(msg, 2);
+  try {
+    const p = await invoke('router_view');
+    msg.textContent = '';
+    if (!p.data) { rawBlock(msg, p); return; }
+    msg.textContent = t(p.data.enforce ? 'router.enforce' : 'router.notEnforced');
+    for (const r of routerRows(p.data)) ul.append(routerRow(r, p.data.known_targets));
+  } catch (e) { msg.textContent = ''; errorRow(msg, e, loaders.router); }
+};
+$('router-refresh').onclick = () => loaders.router();
+
+function routerRow(r, known) {
+  const li = el('li', null, 'row col');
+  const head = el('div', null, 'row');
+  const main = el('div', null, 'row-main');
+  main.append(el('div', r.role, 'row-title'));
+  const tags = el('div', null, 'tags');
+  const show = (list) => { tags.textContent = ''; if (!list.length) tags.append(el('span', t('router.none'), 'tag')); for (const x of list) tags.append(el('span', x, 'tag')); };
+  show(r.targets);
+  main.append(tags);
+  const actions = el('div', null, 'row-actions');
+  const edit = el('button', t('router.edit'), 'btn small');
+  actions.append(edit);
+  head.append(status(t(`router.source.${r.source}`), r.source === 'shipped' ? 'muted' : 'ok'), main, actions);
+  li.append(head);
+  edit.onclick = () => {
+    edit.hidden = true;
+    let list = r.targets.slice();
+    const box = el('div', null, 'editor');
+    const draw = () => {
+      box.textContent = '';
+      box.append(el('p', t('router.targets'), 'note'));
+      for (const name of list) {
+        const line = el('div', null, 'edit-line');
+        const up = el('button', '↑', 'btn small'); up.setAttribute('aria-label', t('router.up'));
+        const down = el('button', '↓', 'btn small'); down.setAttribute('aria-label', t('router.down'));
+        const rm = el('button', '×', 'btn small'); rm.setAttribute('aria-label', t('common.cancel'));
+        up.onclick = () => { list = moveTarget(list, name, -1); draw(); };
+        down.onclick = () => { list = moveTarget(list, name, 1); draw(); };
+        rm.onclick = () => { list = toggleTarget(list, name); draw(); };
+        line.append(el('span', name, 'mono grow'), up, down, rm);
+        box.append(line);
+      }
+      const rest = known.filter((k) => !list.includes(k));
+      if (rest.length) {
+        const sel = el('select', null, 'select'); sel.setAttribute('aria-label', t('router.pick'));
+        sel.append(new Option(t('router.pick'), ''));
+        for (const k of rest) sel.append(new Option(k, k));
+        sel.onchange = () => { if (sel.value) { list = toggleTarget(list, sel.value); draw(); } };
+        box.append(sel);
+      }
+      const save = el('button', t('router.save'), 'btn primary small'); save.disabled = !list.length;
+      const cancel = el('button', t('common.cancel'), 'btn small');
+      cancel.onclick = () => { box.remove(); edit.hidden = false; edit.focus(); };
+      save.onclick = () => busy(save, async () => {
+        try { await invoke('router_set', { role: r.role, targets: list }); $('router-msg').textContent = t('router.saved'); loaders.router(); }
+        catch (e) { $('router-msg').textContent = quiet(e) ? t('common.cancelled') : t('common.failed', { e: errText(e) }); }
+      });
+      const bar = el('div', null, 'actions'); bar.append(save, cancel);
+      box.append(bar);
+    };
+    draw();
+    li.append(box);
+  };
+  return li;
 }
 
 // ---------------------------------------------------------------- projects

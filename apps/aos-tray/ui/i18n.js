@@ -2,7 +2,12 @@
 export const STRINGS = {
   en: {
     'nav.home': 'Home', 'nav.store': 'Store', 'nav.services': 'Services', 'nav.projects': 'Projects', 'nav.secrets': 'Secrets', 'nav.settings': 'Settings',
-    'nav.label': 'Main navigation',
+    'nav.label': 'Main navigation', 'nav.router': 'Router',
+    'router.title': 'Router', 'router.lede': 'Which harness runs which role. Your choices are saved for your user and apply to new sessions.',
+    'router.enforce': 'Enforcement is on: roles are routed strictly.', 'router.notEnforced': 'Enforcement is off: the table is a recommendation.',
+    'router.source.shipped': 'default', 'router.source.user': 'yours', 'router.source.project': 'project',
+    'router.edit': 'Edit', 'router.save': 'Save', 'router.saved': 'Saved. New sessions use this route.', 'router.none': 'No target selected',
+    'router.up': 'Move up', 'router.down': 'Move down', 'router.targets': 'Targets in order of preference', 'router.pick': 'Add target',
     'common.refresh': 'Refresh', 'common.loading': 'Loading…', 'common.cancelled': 'Cancelled.', 'common.cancel': 'Cancel', 'common.failed': 'Failed: {e}', 'common.retry': 'Try again',
     'common.raw': 'The command did not return JSON. Raw output:', 'common.none': '–',
     'home.title': 'Home', 'home.lede': 'Status of AOS on this computer.',
@@ -37,7 +42,12 @@ export const STRINGS = {
   },
   de: {
     'nav.home': 'Start', 'nav.store': 'Store', 'nav.services': 'Dienste', 'nav.projects': 'Projekte', 'nav.secrets': 'Secrets', 'nav.settings': 'Einstellungen',
-    'nav.label': 'Hauptnavigation',
+    'nav.label': 'Hauptnavigation', 'nav.router': 'Router',
+    'router.title': 'Router', 'router.lede': 'Welches Harness welche Rolle übernimmt. Deine Auswahl gilt für deinen Benutzer und für neue Sitzungen.',
+    'router.enforce': 'Erzwingen ist an: Rollen werden strikt geroutet.', 'router.notEnforced': 'Erzwingen ist aus: Die Tabelle ist eine Empfehlung.',
+    'router.source.shipped': 'Standard', 'router.source.user': 'eigene', 'router.source.project': 'Projekt',
+    'router.edit': 'Bearbeiten', 'router.save': 'Speichern', 'router.saved': 'Gespeichert. Neue Sitzungen nutzen diese Route.', 'router.none': 'Kein Ziel gewählt',
+    'router.up': 'Nach oben', 'router.down': 'Nach unten', 'router.targets': 'Ziele in Reihenfolge der Präferenz', 'router.pick': 'Ziel hinzufügen',
     'common.refresh': 'Aktualisieren', 'common.loading': 'Lädt…', 'common.cancelled': 'Abgebrochen.', 'common.cancel': 'Abbrechen', 'common.failed': 'Fehlgeschlagen: {e}', 'common.retry': 'Erneut versuchen',
     'common.raw': 'Der Befehl hat kein JSON geliefert. Rohausgabe:', 'common.none': '–',
     'home.title': 'Start', 'home.lede': 'Status von AOS auf diesem Rechner.',
