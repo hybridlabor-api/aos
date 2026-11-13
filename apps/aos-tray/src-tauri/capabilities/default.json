@@ -1,7 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Settings window: core events only. App commands are Rust functions that confirm natively before changing anything.",
-  "windows": ["settings"],
-  "permissions": ["core:default"]
+  "description": "Main app window only: core events. The hub window (label \"hub\") is deliberately not listed, so it has no IPC. App commands are Rust functions that confirm natively before changing anything.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ]
 }

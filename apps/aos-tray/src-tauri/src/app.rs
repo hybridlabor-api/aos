@@ -1,7 +1,8 @@
 //! AOS tray: Tauri glue (feature `app`). Pure logic lives in cli, state, secrets, agents_md;
-//! this file wires it to the tray menu, the settings window and native dialogs.
+//! this file wires it to the tray menu, the main app window ("main"), the hub window ("hub",
+//! no IPC) and native dialogs.
 
-use crate::{agents_md, cli, elevation, secrets, state};
+use crate::{agents_md, cli, elevation, hub, projects, secrets, state};
 use crate::cli::{Action, HubTab};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -265,6 +266,113 @@ async fn secrets_remove(app: AppHandle, name: String) -> Result<(), String> {
     .await
 }
 
+// ------------------------------------------------------------------ commands (app screens)
+
+/// Home and Services: `aos services status --json`, raw text when the JSON does not parse.
+#[tauri::command]
+async fn services_view() -> Result<state::Parsed<Vec<state::Service>>, String> {
+    blocking(|| {
+        let o = cli::run(&Action::ServicesStatus, &home()?)?;
+        Ok(state::parsed_or_raw(&o.stdout, &o.stderr, state::parse_services))
+    })
+    .await
+}
+
+/// Home: `aos doctor --json` (non-zero exit when a check fails; the JSON is still the answer).
+#[tauri::command]
+async fn doctor_view() -> Result<state::Parsed<state::Doctor>, String> {
+    blocking(|| {
+        let o = cli::run(&Action::Doctor, &home()?)?;
+        Ok(state::parsed_or_raw(&o.stdout, &o.stderr, state::parse_doctor))
+    })
+    .await
+}
+
+/// Services: restart one service. The UI asks the user to type the id; Rust checks it again,
+/// then shows the native confirmation, and the CLI checks `--confirm <id>` a third time.
+#[tauri::command]
+async fn service_restart(app: AppHandle, id: String, typed: String) -> Result<String, String> {
+    if !cli::valid_service(&id) {
+        return Err("unknown service".into());
+    }
+    if typed.trim() != id {
+        return Err("typed name does not match the service id".into());
+    }
+    blocking(move || {
+        let o = run_action(&app, Action::ServiceRestart(id))?;
+        let text = tail(&format!("{}{}", o.stdout, o.stderr), 4000);
+        if o.ok() { Ok(text) } else { Err(text) }
+    })
+    .await
+}
+
+#[derive(Serialize)]
+struct ProjectsView {
+    root: Option<String>,
+    projects: Vec<projects::Project>,
+    error: Option<String>,
+}
+
+/// Projects (read-only): child repos of workspaceRoot with meta, wiki and git state.
+#[tauri::command]
+async fn projects_list() -> Result<ProjectsView, String> {
+    blocking(|| {
+        let home = home()?;
+        let Some(root) = read(projects::aos_config(&home)).and_then(|t| projects::parse_workspace_root(&t, &home)) else {
+            return Ok(ProjectsView { root: None, projects: vec![], error: Some("no workspaceRoot in ~/.agents/aos-config.json (aos-config set workspaceRoot <dir>)".into()) });
+        };
+        let mut list = match projects::scan(&root) {
+            Ok(l) => l,
+            Err(e) => return Ok(ProjectsView { root: Some(root.to_string_lossy().into_owned()), projects: vec![], error: Some(e) }),
+        };
+        // One git process per repo, in parallel; each thread writes only its own entry.
+        std::thread::scope(|s| {
+            for p in list.iter_mut().filter(|p| p.is_git) {
+                let dir = root.join(&p.dir);
+                s.spawn(move || p.changes = projects::git_changes(&dir));
+            }
+        });
+        Ok(ProjectsView { root: Some(root.to_string_lossy().into_owned()), projects: list, error: None })
+    })
+    .await
+}
+
+/// Store: start the hub without a browser and show it in the "hub" window.
+#[tauri::command]
+async fn open_store(app: AppHandle) -> Result<(), String> {
+    let port = blocking(hub_port_started).await?;
+    show_hub(&app, port)
+}
+
+fn hub_port_started() -> Result<u16, String> {
+    let home = home()?;
+    let o = cli::run(&Action::HubStart, &home)?;
+    if !o.ok() {
+        return Err(tail(&format!("{}{}", o.stdout, o.stderr), 1500));
+    }
+    Ok(read(state::hub_json(&home)).and_then(|t| state::parse_hub_port(&t)).unwrap_or(hub::DEFAULT_PORT))
+}
+
+/// The hub window loads the hub page itself. It is not listed in any capability, so it has no
+/// IPC access; navigation is pinned to the hub origin.
+fn show_hub(app: &AppHandle, port: u16) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(hub::WINDOW_LABEL) {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let url: tauri::Url = hub::hub_url(port).parse().map_err(|_| "invalid hub url".to_string())?;
+    tauri::WebviewWindowBuilder::new(app, hub::WINDOW_LABEL, tauri::WebviewUrl::External(url))
+        .title("AOS Store")
+        .inner_size(1200.0, 820.0)
+        .min_inner_size(720.0, 480.0)
+        .on_navigation(move |u| hub::navigation_allowed(u.as_str(), port))
+        .build()
+        .map_err(|e| format!("cannot open the store window: {e}"))?;
+    Ok(())
+}
+
 fn tail(s: &str, max: usize) -> String {
     if s.len() <= max {
         return s.to_string();
@@ -310,6 +418,15 @@ fn refresh_tray(app: &AppHandle) {
                 None => state::services_summary(&s.services),
             });
             let _ = items.install.set_text(if s.installed { "Repair AOS..." } else { "Install AOS..." });
+            // Status light: the tooltip carries the one-line state.
+            let light = match (&s.services_error, s.installed) {
+                (_, false) => "AOS: not installed".to_string(),
+                (Some(_), true) => "AOS: services status unavailable".to_string(),
+                (None, true) => format!("AOS - {}", state::services_summary(&s.services)),
+            };
+            if let Some(tray) = app.tray_by_id("aos") {
+                let _ = tray.set_tooltip(Some(light));
+            }
         }
         Err(_) => {
             let _ = items.version.set_text("AOS status unavailable");
@@ -317,8 +434,8 @@ fn refresh_tray(app: &AppHandle) {
     }
 }
 
-fn show_settings(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("settings") {
+fn show_main(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
@@ -344,7 +461,11 @@ fn tray_action(app: AppHandle, id: String) {
                 let bad: Vec<String> = d.results.iter().filter(|r| !r.ok && !r.warning_only).take(10).map(|r| format!("- {} / {}", r.area, r.name)).collect();
                 Ok(Some(if d.ok { format!("Doctor: all {} checks ok.", d.results.len()) } else { format!("Doctor found problems:\n{}\n\nSee Settings > Doctor for details and fixes.", bad.join("\n")) }))
             }
-            "hub" => cli::run(&Action::HubOpen(HubTab::Services), &home()?).map(|_| None),
+            "store" => {
+                let port = hub_port_started()?;
+                show_hub(&app, port)?;
+                Ok(None)
+            }
             _ => Ok(None),
         })();
         match result {
@@ -375,27 +496,33 @@ pub fn run() {
             agents_md_save,
             secrets_list,
             secrets_set,
-            secrets_remove
+            secrets_remove,
+            services_view,
+            doctor_view,
+            service_restart,
+            projects_list,
+            open_store
         ])
         .on_window_event(|window, event| {
+            // Closing the main window hides it (the tray stays); the hub window really closes.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
             }
         })
         .setup(|app| {
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-
+            // A full app window now: keep the default (Regular) activation policy on macOS.
             let version = MenuItem::with_id(app, "version", "AOS: checking...", false, None::<&str>)?;
             let update_status = MenuItem::with_id(app, "update_status", "Update status unknown", false, None::<&str>)?;
             let services = MenuItem::with_id(app, "services", "Services: checking...", false, None::<&str>)?;
             let install = MenuItem::with_id(app, "install", "Install / Repair AOS...", true, None::<&str>)?;
             let update = MenuItem::with_id(app, "update", "Update AOS...", true, None::<&str>)?;
             let doctor = MenuItem::with_id(app, "doctor", "Run doctor", true, None::<&str>)?;
-            let hub = MenuItem::with_id(app, "hub", "Open Hub", true, None::<&str>)?;
-            let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit AOS Tray", true, None::<&str>)?;
+            let hub = MenuItem::with_id(app, "store", "Open Store", true, None::<&str>)?;
+            let settings = MenuItem::with_id(app, "open", "Open AOS...", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit AOS App (services keep running)", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
             let sep3 = PredefinedMenuItem::separator(app)?;
@@ -404,7 +531,7 @@ pub fn run() {
             let mut tray = TrayIconBuilder::with_id("aos").tooltip("AOS").menu(&menu).on_menu_event(|app, event| {
                 let id = event.id().as_ref().to_string();
                 match id.as_str() {
-                    "settings" => show_settings(app),
+                    "open" => show_main(app),
                     "quit" => app.exit(0),
                     _ => tray_action(app.clone(), id),
                 }
@@ -426,7 +553,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building the AOS tray")
         .run(|_app, event| {
-            // Closing the settings window must not quit the tray app.
+            // Closing the last window must not quit the app: the tray stays.
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 if code.is_none() {
                     api.prevent_exit();

@@ -27,6 +27,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hub_window_has_no_capability() {
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let windows: Vec<&str> = caps["windows"].as_array().unwrap().iter().filter_map(|w| w.as_str()).collect();
+        assert_eq!(windows, ["main"]);
+        assert!(caps.get("remote").is_none(), "no remote URL may get IPC");
+    }
+
+    #[test]
     fn url_and_navigation() {
         assert_eq!(hub_url(7900), "http://127.0.0.1:7900/");
         assert!(navigation_allowed("http://127.0.0.1:7900/", 7900));

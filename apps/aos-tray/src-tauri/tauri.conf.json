@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AOS Tray",
+  "productName": "AOS",
   "version": "0.1.0",
   "identifier": "com.hybridlabor.aos-tray",
   "build": {
@@ -10,14 +10,14 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "label": "settings",
-        "title": "AOS Settings",
+        "label": "main",
+        "title": "AOS",
         "url": "index.html",
-        "width": 960,
-        "height": 680,
-        "minWidth": 640,
-        "minHeight": 480,
-        "visible": false
+        "width": 1120,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 520,
+        "visible": true
       }
     ],
     "security": {
