@@ -7,6 +7,7 @@ pub mod cli;
 pub mod codenotch;
 pub mod elevation;
 pub mod hub;
+pub mod hubapi;
 pub mod projects;
 pub mod router;
 pub mod secrets;

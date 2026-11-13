@@ -3,6 +3,10 @@ export const STRINGS = {
   en: {
     'nav.home': 'Home', 'nav.store': 'Store', 'nav.services': 'Services', 'nav.projects': 'Projects', 'nav.secrets': 'Secrets', 'nav.settings': 'Settings',
     'nav.label': 'Main navigation', 'nav.router': 'Router', 'nav.awake': 'Always on',
+    'library.search': 'Search', 'library.kind': 'Type', 'library.show': 'Show', 'library.all': 'All', 'library.skills': 'Skills', 'library.agents': 'Agents', 'library.installedOnly': 'Installed',
+    'library.skill': 'skill', 'library.agent': 'agent', 'library.count': '{n} items', 'library.countCapped': 'Showing {shown} of {total}. Narrow the search to see more.',
+    'library.installed': 'installed', 'library.available': 'available', 'library.core': 'core', 'library.thirdParty': 'third party', 'library.needsAuth': 'needs sign-in',
+    'library.details': 'Details', 'library.install': 'Install', 'library.uninstall': 'Remove', 'library.installing': 'Installing {name}…', 'library.removing': 'Removing {name}…', 'library.done': '{name}: done.',
     'awake.title': 'Always on', 'awake.lede': 'Keeps this computer awake while the AOS App runs, for example during long agent runs or live shows.',
     'awake.off': 'Off', 'awake.on': 'On, until you turn it off', 'awake.timer': 'On, {n} min left', 'awake.unsupported': 'Not available on this system.',
     'awake.turnOn': 'Turn on', 'awake.turnOff': 'Turn off', 'awake.timerFor': 'Keep awake for', 'awake.minutes': 'minutes', 'awake.start': 'Start timer',
@@ -51,6 +55,10 @@ export const STRINGS = {
   de: {
     'nav.home': 'Start', 'nav.store': 'Store', 'nav.services': 'Dienste', 'nav.projects': 'Projekte', 'nav.secrets': 'Secrets', 'nav.settings': 'Einstellungen',
     'nav.label': 'Hauptnavigation', 'nav.router': 'Router', 'nav.awake': 'Immer an',
+    'library.search': 'Suche', 'library.kind': 'Typ', 'library.show': 'Anzeigen', 'library.all': 'Alle', 'library.skills': 'Skills', 'library.agents': 'Agenten', 'library.installedOnly': 'Installiert',
+    'library.skill': 'Skill', 'library.agent': 'Agent', 'library.count': '{n} Einträge', 'library.countCapped': '{shown} von {total} angezeigt. Suche eingrenzen, um mehr zu sehen.',
+    'library.installed': 'installiert', 'library.available': 'verfügbar', 'library.core': 'Kern', 'library.thirdParty': 'Drittanbieter', 'library.needsAuth': 'braucht Anmeldung',
+    'library.details': 'Details', 'library.install': 'Installieren', 'library.uninstall': 'Entfernen', 'library.installing': '{name} wird installiert…', 'library.removing': '{name} wird entfernt…', 'library.done': '{name}: erledigt.',
     'awake.title': 'Immer an', 'awake.lede': 'Hält diesen Computer wach, solange die AOS App läuft, etwa bei langen Agentenläufen oder Live-Shows.',
     'awake.off': 'Aus', 'awake.on': 'An, bis du es ausschaltest', 'awake.timer': 'An, noch {n} Min.', 'awake.unsupported': 'Auf diesem System nicht verfügbar.',
     'awake.turnOn': 'Einschalten', 'awake.turnOff': 'Ausschalten', 'awake.timerFor': 'Wach halten für', 'awake.minutes': 'Minuten', 'awake.start': 'Timer starten',

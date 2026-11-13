@@ -271,6 +271,69 @@ async fn awake_set(app: AppHandle, kind: String, minutes: Option<u32>) -> Result
     apply_awake(&app, mode)
 }
 
+// ------------------------------------------------------------------ store (hub API from Rust)
+
+/// Hub token, kept in Rust only. A new hub start makes a new token; `post_json` refetches on 401.
+static HUB_TOKEN: Mutex<Option<String>> = Mutex::new(None);
+
+fn hub_post(port: u16, path: &str, body: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let mut token = HUB_TOKEN.lock().map_err(|_| "token lock failed".to_string())?;
+    crate::hubapi::post_json(port, &mut token, path, body)
+}
+
+/// One-line outcome of an install/rollback reply: ok, or the error text.
+fn hub_reply_text(v: &serde_json::Value) -> Result<String, String> {
+    let ok = v.get("ok").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let text = |k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or("").to_string();
+    let out = tail(&format!("{}{}", text("stdout"), text("stderr")), 2000);
+    if ok { Ok(if out.trim().is_empty() { "Done.".into() } else { out }) } else { Err(if out.trim().is_empty() { "The hub reported a failure.".into() } else { out }) }
+}
+
+/// Library screen: the hub's catalog (skills and agents) plus package states.
+#[tauri::command]
+async fn store_catalog() -> Result<crate::hubapi::StoreCatalog, String> {
+    blocking(|| {
+        let port = hub_port_started()?;
+        Ok(crate::hubapi::parse_catalog(&crate::hubapi::get_json(port, "/api/store?scope=global")?))
+    })
+    .await
+}
+
+/// Library screen: the rendered SKILL.md / agent text of one installed item.
+#[tauri::command]
+async fn store_doc(kind: String, name: String) -> Result<serde_json::Value, String> {
+    if !crate::hubapi::valid_kind(&kind) || !crate::hubapi::valid_name(&name) {
+        return Err("invalid store item".into());
+    }
+    blocking(move || {
+        let port = hub_port_started()?;
+        crate::hubapi::get_json(port, &format!("/api/store/skill?name={name}&kind={kind}"))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn store_install(app: AppHandle, kind: String, name: String) -> Result<String, String> {
+    let body = crate::hubapi::install_body(&kind, &name)?;
+    let text = format!("Install the {kind} `{name}` from the AOS store? Files are written into your home directory; the installer checks the source and keeps a rollback.");
+    blocking(move || guarded(&app, &text, || {
+        let port = hub_port_started()?;
+        hub_reply_text(&hub_post(port, "/api/store/install", &body)?)
+    }))
+    .await
+}
+
+#[tauri::command]
+async fn store_uninstall(app: AppHandle, name: String) -> Result<String, String> {
+    let body = crate::hubapi::rollback_body(&name)?;
+    let text = format!("Roll back the store item `{name}`? Its installed files are removed again.");
+    blocking(move || guarded(&app, &text, || {
+        let port = hub_port_started()?;
+        hub_reply_text(&hub_post(port, "/api/store/rollback", &body)?)
+    }))
+    .await
+}
+
 // ------------------------------------------------------------------ codenotch
 
 #[tauri::command]
@@ -619,6 +682,10 @@ pub fn run() {
             service_restart,
             projects_list,
             open_store,
+            store_catalog,
+            store_doc,
+            store_install,
+            store_uninstall,
             awake_get,
             awake_set,
             codenotch_info,

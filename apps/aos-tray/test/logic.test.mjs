@@ -91,3 +91,30 @@ test('codenotch: state decides the actions', () => {
   assert.equal(codenotchState({ supported: true, installed: true, running: false }).canStart, true);
   assert.equal(codenotchState({ supported: true, installed: true, running: true }).canStart, false);
 });
+
+import { filterItems, itemActions } from '../ui/logic.js';
+
+const LIB = [
+  { name: 'alpha', kind: 'skill', description: 'Tauri helper', category: 'dev', installed: true },
+  { name: 'beta', kind: 'agent', description: 'Reviews code', category: 'review', installed: false },
+  { name: 'gamma', kind: 'skill', description: '', category: 'core', installed: true, core: true },
+];
+
+test('library: filters by text, kind and scope and caps the list', () => {
+  assert.equal(filterItems(LIB).total, 3);
+  assert.deepEqual(filterItems(LIB, { q: 'TAURI' }).rows.map((r) => r.name), ['alpha']);
+  assert.deepEqual(filterItems(LIB, { kind: 'agent' }).rows.map((r) => r.name), ['beta']);
+  assert.deepEqual(filterItems(LIB, { scope: 'installed' }).rows.map((r) => r.name), ['alpha', 'gamma']);
+  assert.deepEqual(filterItems(LIB, { q: 'review' }).rows.map((r) => r.name), ['beta']);
+  const capped = filterItems(LIB, { limit: 2 });
+  assert.equal(capped.rows.length, 2);
+  assert.equal(capped.total, 3);
+  assert.deepEqual(filterItems(null), { rows: [], total: 0 });
+});
+
+test('library: core and problem items offer no install or removal', () => {
+  assert.deepEqual(itemActions(LIB[0]), { install: false, uninstall: true });
+  assert.deepEqual(itemActions(LIB[1]), { install: true, uninstall: false });
+  assert.deepEqual(itemActions(LIB[2]), { install: false, uninstall: false });
+  assert.deepEqual(itemActions({ name: 'x', problem: 'broken', installed: false }), { install: false, uninstall: false });
+});

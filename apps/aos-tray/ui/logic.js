@@ -70,6 +70,23 @@ export function secretRows(list = []) {
 
 export const SCREENS = ['home', 'store', 'services', 'router', 'awake', 'projects', 'secrets', 'settings'];
 
+/** Library: filter and cap the catalog. `kind` is 'all' | 'skill' | 'agent'; `scope` 'all' | 'installed'. */
+export function filterItems(items, { q = '', kind = 'all', scope = 'all', limit = 60 } = {}) {
+  const needle = String(q).trim().toLowerCase();
+  const hit = (it) => (kind === 'all' || it.kind === kind)
+    && (scope === 'all' || it.installed)
+    && (!needle || it.name.toLowerCase().includes(needle) || (it.description || '').toLowerCase().includes(needle) || (it.category || '').toLowerCase().includes(needle));
+  const all = (items || []).filter(hit);
+  return { rows: all.slice(0, limit), total: all.length };
+}
+
+/** Library: what a row can do. Core items ship with AOS and are never removed from here. */
+export function itemActions(it) {
+  if (it.problem) return { install: false, uninstall: false };
+  if (it.core) return { install: false, uninstall: false };
+  return { install: !it.installed, uninstall: it.installed };
+}
+
 /** Always on: label key, tone and remaining whole minutes (timer only) for the current mode. */
 export function awakeStatus(view) {
   if (!view || !view.supported) return { key: 'awake.unsupported', tone: 'muted', minutes: 0 };

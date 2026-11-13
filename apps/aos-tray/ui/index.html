@@ -39,8 +39,16 @@
       <header class="head"><div><h1 data-i18n="store.title">Store</h1><p class="lede" data-i18n="store.lede"></p></div>
         <button class="btn primary" id="store-open" data-i18n="store.open">Open store</button></header>
       <p class="note" id="store-msg" role="status"></p>
+      <form id="lib-filter" class="form inline" role="search">
+        <label><span data-i18n="library.search">Search</span><input id="lib-q" type="search" spellcheck="false" autocomplete="off"></label>
+        <label><span data-i18n="library.kind">Type</span>
+          <select id="lib-kind" class="select"><option value="all" data-i18n="library.all">All</option><option value="skill" data-i18n="library.skills">Skills</option><option value="agent" data-i18n="library.agents">Agents</option></select></label>
+        <label><span data-i18n="library.show">Show</span>
+          <select id="lib-scope" class="select"><option value="all" data-i18n="library.all">All</option><option value="installed" data-i18n="library.installedOnly">Installed</option></select></label>
+      </form>
+      <p class="note" id="lib-count" role="status"></p>
+      <ul class="rows" id="lib-rows"></ul>
       <div class="grid">
-        <article class="card"><h2 data-i18n="store.installed">Installed skills</h2><ul id="store-skills" class="chips"></ul></article>
         <article class="card"><h2 data-i18n="store.packs">Packs</h2><pre id="store-packs" class="mono"></pre></article>
       </div>
     </section>

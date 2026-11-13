@@ -1,7 +1,7 @@
 // AOS App main window. All data is rendered with textContent (never innerHTML). Every
 // state-changing call goes to a Rust command that shows its own native confirmation.
 import { t as translate, detectLang } from './i18n.js';
-import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows, routerRows, toggleTarget, moveTarget, awakeStatus, codenotchState } from './logic.js';
+import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows, routerRows, toggleTarget, moveTarget, awakeStatus, codenotchState, filterItems, itemActions } from './logic.js';
 
 const invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args);
 const $ = (id) => document.getElementById(id);
@@ -103,16 +103,65 @@ function renderDoctor(p) {
 }
 
 // ---------------------------------------------------------------- store
+let library = null;
 loaders.store = async () => {
-  const ul = $('store-skills'); ul.textContent = '';
-  try {
-    const skills = await invoke('list_skills');
-    if (!skills.length) ul.append(el('li', t('store.noSkills')));
-    for (const s of skills) ul.append(el('li', s));
-  } catch (e) { ul.append(el('li', errText(e), 'bad')); }
+  skeleton($('lib-count'), 1); $('lib-rows').textContent = '';
+  try { library = await invoke('store_catalog'); renderLibrary(); }
+  catch (e) { $('lib-count').textContent = ''; errorRow($('lib-count'), e, loaders.store); }
   $('store-packs').textContent = t('common.loading');
   try { $('store-packs').textContent = await invoke('store_packs'); } catch (e) { $('store-packs').textContent = errText(e); }
 };
+function renderLibrary() {
+  if (!library) return;
+  const { rows, total } = filterItems(library.items, { q: $('lib-q').value, kind: $('lib-kind').value, scope: $('lib-scope').value });
+  const ul = $('lib-rows'); ul.textContent = '';
+  $('lib-count').textContent = total > rows.length ? t('library.countCapped', { shown: rows.length, total }) : t('library.count', { n: total });
+  for (const it of rows) ul.append(libraryRow(it));
+}
+function libraryRow(it) {
+  const li = el('li', null, 'row col');
+  const head = el('div', null, 'row');
+  const main = el('div', null, 'row-main');
+  main.append(el('div', it.name, 'row-title'));
+  if (it.description) main.append(el('div', it.description, 'row-sub clamp'));
+  const tags = el('div', null, 'tags');
+  tags.append(el('span', t(`library.${it.kind}`), 'tag'));
+  if (it.category) tags.append(el('span', it.category, 'tag'));
+  if (it.source) tags.append(el('span', it.source, 'tag'));
+  if (it.thirdParty || it.third_party) tags.append(el('span', t('library.thirdParty'), 'tag'));
+  if (it.requires_auth) tags.append(el('span', t('library.needsAuth'), 'tag'));
+  main.append(tags);
+  if (it.problem) main.append(el('div', it.problem, 'row-sub bad'));
+  const a = itemActions(it);
+  const actions = el('div', null, 'row-actions');
+  const doc = el('button', t('library.details'), 'btn small');
+  doc.onclick = () => toggleDoc(li, doc, it);
+  actions.append(doc);
+  if (a.install) actions.append(libraryAction(it, 'store_install', 'library.install', 'library.installing'));
+  if (a.uninstall) actions.append(libraryAction(it, 'store_uninstall', 'library.uninstall', 'library.removing'));
+  head.append(status(t(it.core ? 'library.core' : it.installed ? 'library.installed' : 'library.available'), it.installed ? 'ok' : 'muted'), main, actions);
+  li.append(head);
+  return li;
+}
+function libraryAction(it, cmd, label, working) {
+  const b = el('button', t(label), cmd === 'store_install' ? 'btn small primary' : 'btn small danger');
+  b.onclick = () => busy(b, async () => {
+    $('lib-count').textContent = t(working, { name: it.name });
+    try { await invoke(cmd, cmd === 'store_install' ? { kind: it.kind, name: it.name } : { name: it.name }); $('store-msg').textContent = t('library.done', { name: it.name }); }
+    catch (e) { $('store-msg').textContent = quiet(e) ? t('common.cancelled') : t('common.failed', { e: errText(e) }); }
+    loaders.store();
+  });
+  return b;
+}
+async function toggleDoc(li, btn, it) {
+  const open = li.querySelector('.doc');
+  if (open) { open.remove(); return; }
+  const box = el('pre', t('common.loading'), 'doc mono'); li.append(box);
+  try { const d = await invoke('store_doc', { kind: it.kind, name: it.name }); box.textContent = typeof d === 'string' ? d : (d.content || d.text || d.body || JSON.stringify(d, null, 2)).slice(0, 6000); }
+  catch (e) { box.textContent = errText(e); }
+}
+for (const id of ['lib-q', 'lib-kind', 'lib-scope']) $(id).addEventListener('input', renderLibrary);
+$('lib-filter').addEventListener('submit', (ev) => ev.preventDefault());
 $('store-open').onclick = () => busy($('store-open'), async () => {
   $('store-msg').textContent = t('store.opening');
   try { await invoke('open_store'); $('store-msg').textContent = t('store.opened'); }
