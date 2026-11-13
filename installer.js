@@ -460,7 +460,8 @@ function findUv(home = homeDir, platform = process.platform) {
     const dirs = win
         ? [path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'),
            path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'Programs', 'uv'),
-           path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'uv', 'bin')]
+           path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'uv', 'bin'),
+           ...require('./lib/cli-spawn.js').wingetUvDirs({ LOCALAPPDATA: process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local') })]
         : [path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), '/opt/homebrew/bin', '/usr/local/bin'];
     if (!win) {
         try {
@@ -478,13 +479,16 @@ let _uvBin;
 const uvBin = () => (_uvBin === undefined ? (_uvBin = findUv()) : _uvBin) || 'uv';
 
 const MEMB_MIN_PYTHON = [3, 10];
+// onnxruntime (memB) ships no wheels past cp314; a newer default Python must not be picked.
+const MEMB_MAX_PYTHON = [3, 14];
 // ~/CLAUDE.md as the installer writes it: the whole file when it was empty, else this line in front of the user's text.
 const CLAUDE_POINTER_LINE = '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**';
 const CLAUDE_POINTER = `# AOS Rules\n\n${CLAUDE_POINTER_LINE}\n`;
 const CLAUDE_PREFIX = '**Read [AGENTS.md](AGENTS.md) first.**\n\n';
-const MEMB_PYTHON_FIX = 'memB needs Python >= 3.10; install uv (https://docs.astral.sh/uv/) or python 3.12, then run: aos package install memb';
+const MEMB_PYTHON_FIX = 'memB needs Python 3.10-3.14 (3.12 or 3.13 recommended); install uv (https://docs.astral.sh/uv/) or python 3.12, then run: aos package install memb';
 const parsePyVersion = (s) => { const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(String(s || '')); return m ? [Number(m[1]), Number(m[2])] : null; };
 const pyAtLeast = (v, min) => Boolean(v) && (v[0] > min[0] || (v[0] === min[0] && v[1] >= min[1]));
+const pyAtMost = (v, max) => Boolean(v) && (v[0] < max[0] || (v[0] === max[0] && v[1] <= max[1]));
 
 // First interpreter that is >= min: versioned names (newest first) before plain python3, PATH before the usual install dirs.
 // opts.run(cmd, args) -> stdout (throws if the command is missing) is a test seam.
@@ -500,11 +504,21 @@ function pickPython(min = MEMB_MIN_PYTHON, opts = {}) {
             for (const v of fs.readdirSync(base)) dirs.push(path.join(base, v, 'bin'));
         } catch (e) { /* no user Python dir */ }
     }
+    if (win) {
+        // py launcher: best-supported minor first, so a 3.15 default never wins over 3.13.
+        for (const minor of [13, 12, 11, 14, 10]) {
+            try {
+                const exe = String(run('py', [`-3.${minor}`, '-c', 'import sys;print(sys.executable)'])).trim().split(/\r?\n/)[0];
+                const v = [3, minor];
+                if (exe && pyAtLeast(v, min) && pyAtMost(v, MEMB_MAX_PYTHON)) return { cmd: exe, version: v };
+            } catch (e) { /* launcher or version missing */ }
+        }
+    }
     for (const name of names) {
         for (const cmd of [name, ...dirs.map((d) => path.join(d, name))]) {
             try {
                 const v = parsePyVersion(run(cmd, ['--version']));
-                if (pyAtLeast(v, min)) return { cmd, version: v };
+                if (pyAtLeast(v, min) && pyAtMost(v, MEMB_MAX_PYTHON)) return { cmd, version: v };
             } catch (e) { /* not there */ }
         }
     }

@@ -35,3 +35,15 @@ test('the launcher exits 127 with ENOENT when nothing resolves, and copies cli-s
     assert.match(src, /'win-bin\.js'/);
     assert.strictEqual(cliSpawn.resolveCommand('nope', { platform: 'win32', env: { PATH: 'C:\\node' }, fs: fsImpl }), null);
 });
+
+test('uv is found in the winget Packages folder when PATH and ~/.local/bin miss it', () => {
+    const uv = 'C:\\Users\\t\\AppData\\Local\\Microsoft\\WinGet\\Packages\\astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe\\uv.exe';
+    const f = new Set([uv.toLowerCase()]);
+    const fsW = {
+        statSync: (p) => { if (!f.has(p.toLowerCase())) throw new Error('ENOENT'); return { isFile: () => true }; },
+        accessSync: () => {},
+        readdirSync: () => ['Other.Pkg_x', 'astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe'],
+    };
+    const env = { PATH: 'C:\\nothing', USERPROFILE: 'C:\\Users\\t', LOCALAPPDATA: 'C:\\Users\\t\\AppData\\Local' };
+    assert.strictEqual(cliSpawn.resolveCommand('uv', { platform: 'win32', env, fs: fsW }), uv);
+});

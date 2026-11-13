@@ -30,7 +30,7 @@ describe('pickPython', () => {
 describe('ensurePythonVenv', () => {
     test('no suitable python and no uv: throws with the fix and leaves no .venv', () => {
         const dir = tmp();
-        assert.throws(() => ensurePythonVenv(dir, { pick: () => null, hasUv: false, run: () => assert.fail('must not run') }), /Python >= 3\.10.*aos package install memb/);
+        assert.throws(() => ensurePythonVenv(dir, { pick: () => null, hasUv: false, run: () => assert.fail('must not run') }), /Python 3.10-3.14.*aos package install memb/);
         assert.equal(fs.existsSync(path.join(dir, '.venv')), false);
     });
     test('no suitable python but uv: installs 3.12 and builds the venv on it', () => {
@@ -103,5 +103,26 @@ describe('installMemB venv interpreter guard', () => {
         assert.equal(ok, false);
         assert.deepEqual(pipCalls, []);
         assert.ok(out.join('\n').includes(venvPy), 'warning names the missing interpreter path');
+    });
+});
+
+describe('pickPython: Python range and Windows launcher', () => {
+    test('rejects a default python3 newer than 3.14 (no onnxruntime wheels)', () => {
+        assert.equal(pickPython([3, 10], { home: tmp(), run: stub({ python3: 'Python 3.15.0' }), platform: 'linux' }), null);
+    });
+    test('win32 prefers py -3.13 over a 3.15 default python', () => {
+        const exe = 'C:\\Python313\\python.exe';
+        const run = (cmd, args) => {
+            if (cmd === 'py' && args[0] === '-3.13') return exe;
+            if (cmd === 'python') return 'Python 3.15.0';
+            throw new Error('ENOENT');
+        };
+        const r = pickPython([3, 10], { home: tmp(), run, platform: 'win32' });
+        assert.equal(r.cmd, exe);
+        assert.deepEqual(r.version, [3, 13]);
+    });
+    test('win32 with only python 3.15 -> null so uv can install 3.12', () => {
+        const run = (cmd) => { if (cmd === 'python') return 'Python 3.15.0'; throw new Error('ENOENT'); };
+        assert.equal(pickPython([3, 10], { home: tmp(), run, platform: 'win32' }), null);
     });
 });
