@@ -275,6 +275,38 @@ pub fn json_slice(s: &str) -> &str {
     }
 }
 
+/// A CLI answer for a screen: the parsed JSON, or the raw text when it does not parse
+/// (the UI then shows the text instead of an empty card).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Parsed<T> {
+    pub data: Option<T>,
+    pub raw: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Longest raw text handed to the UI (the end of the output is kept).
+pub const RAW_MAX_CHARS: usize = 20000;
+
+fn last_chars(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        s.to_string()
+    } else {
+        s.chars().skip(n - max).collect()
+    }
+}
+
+pub fn parsed_or_raw<T>(stdout: &str, stderr: &str, parse: impl Fn(&str) -> Result<T, String>) -> Parsed<T> {
+    match parse(stdout) {
+        Ok(d) => Parsed { data: Some(d), raw: None, error: None },
+        Err(e) => {
+            let text = format!("{stdout}{stderr}");
+            let raw = if text.trim().is_empty() { None } else { Some(last_chars(&text, RAW_MAX_CHARS)) };
+            Parsed { data: None, raw, error: Some(e) }
+        }
+    }
+}
+
 /// Status summary shown in the tray.
 pub fn services_summary(services: &[Service]) -> String {
     let up = services.iter().filter(|s| s.up == Some(true)).count();
@@ -349,5 +381,18 @@ mod tests {
         assert!(!d.ok);
         assert_eq!(d.results[0].name, "node");
         assert!(parse_services("garbage").is_err());
+    }
+
+    #[test]
+    fn parsed_or_raw_falls_back_to_text() {
+        let ok = parsed_or_raw(r#"{"ok":true,"results":[]}"#, "", parse_doctor);
+        assert!(ok.data.unwrap().ok);
+        assert!(ok.raw.is_none() && ok.error.is_none());
+        let bad = parsed_or_raw("up  memb\n", "warn\n", parse_services);
+        assert!(bad.data.is_none() && bad.error.is_some());
+        assert_eq!(bad.raw.as_deref(), Some("up  memb\nwarn\n"));
+        assert!(parsed_or_raw("", " ", parse_services).raw.is_none());
+        let long = "ä".repeat(RAW_MAX_CHARS + 5);
+        assert_eq!(parsed_or_raw(&long, "", parse_services).raw.unwrap().chars().count(), RAW_MAX_CHARS);
     }
 }

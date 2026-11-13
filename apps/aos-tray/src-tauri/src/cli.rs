@@ -27,6 +27,13 @@ pub const GATEWAY_SERVERS: &[&str] = &[
     "bdb_remoteos_mcp",
 ];
 
+/// Service ids of `aos services` (lib/hub/services.mjs SERVICES).
+pub const SERVICE_IDS: &[&str] = &["memb", "synapse", "openwiki", "ao", "gateway", "plan-canvas", "a2a", "agenttrail", "hub"];
+
+pub fn valid_service(id: &str) -> bool {
+    SERVICE_IDS.contains(&id)
+}
+
 /// Hub tabs accepted by `aos-hub open --tab` (lib/hub/ui/app.js TABS).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HubTab {
@@ -63,6 +70,10 @@ pub enum Action {
     RouterShow,
     /// `aos-hub open --tab <tab>`
     HubOpen(HubTab),
+    /// `aos-hub start --no-open` (the app shows the hub in its own window, not a browser)
+    HubStart,
+    /// `aos services restart <id> --confirm <id>` (typed confirm, checked again by the CLI)
+    ServiceRestart(String),
 }
 
 /// Which program runs the argv.
@@ -82,7 +93,7 @@ pub fn valid_server(name: &str) -> bool {
 
 impl Action {
     pub fn changes_state(&self) -> bool {
-        matches!(self, Action::Install | Action::Update | Action::Repair | Action::GatewayAdd(_) | Action::GatewayRemove(_))
+        matches!(self, Action::Install | Action::Update | Action::Repair | Action::GatewayAdd(_) | Action::GatewayRemove(_) | Action::ServiceRestart(_))
     }
 
     /// Text of the native confirmation dialog, built here and never from webview input.
@@ -93,6 +104,7 @@ impl Action {
             Action::Repair => "Repair the installed AOS (`aos repair --yes`)? Installed files that drifted are rewritten.".into(),
             Action::GatewayAdd(s) => format!("Add `{s}` to the MCP gateway selection? The gateway service restarts."),
             Action::GatewayRemove(s) => format!("Remove `{s}` from the MCP gateway selection? The gateway service restarts; it disappears from harnesses on the next update."),
+            Action::ServiceRestart(id) => format!("Restart the AOS service `{id}`? Agents using it lose their connection for a moment."),
             _ => return None,
         })
     }
@@ -101,7 +113,7 @@ impl Action {
     pub fn timeout(&self) -> Duration {
         match self {
             Action::Install | Action::Update | Action::Repair => Duration::from_secs(30 * 60),
-            Action::GatewayAdd(_) | Action::GatewayRemove(_) => Duration::from_secs(5 * 60),
+            Action::GatewayAdd(_) | Action::GatewayRemove(_) | Action::ServiceRestart(_) => Duration::from_secs(5 * 60),
             Action::Doctor => Duration::from_secs(3 * 60),
             _ => Duration::from_secs(60),
         }
@@ -110,10 +122,10 @@ impl Action {
     pub fn program(&self) -> Program {
         match self {
             Action::Install | Action::Update => Program::Npx,
-            Action::Repair | Action::Version | Action::ServicesStatus | Action::Doctor | Action::StorePacks | Action::MemoryList => Program::Script("installer.js"),
+            Action::Repair | Action::Version | Action::ServicesStatus | Action::Doctor | Action::StorePacks | Action::MemoryList | Action::ServiceRestart(_) => Program::Script("installer.js"),
             Action::GatewayStatus | Action::GatewayAdd(_) | Action::GatewayRemove(_) => Program::Script("bin/aos-gateway.mjs"),
             Action::RouterShow => Program::Script("bin/aos-router.mjs"),
-            Action::HubOpen(_) => Program::Script("bin/aos-hub.mjs"),
+            Action::HubOpen(_) | Action::HubStart => Program::Script("bin/aos-hub.mjs"),
         }
     }
 
@@ -140,6 +152,13 @@ impl Action {
             Action::RouterShow => v(&["show", "--json"]),
             Action::HubOpen(HubTab::Services) => v(&["open", "--tab", "services"]),
             Action::HubOpen(HubTab::Store) => v(&["open", "--tab", "store"]),
+            Action::HubStart => v(&["start", "--no-open"]),
+            Action::ServiceRestart(id) => {
+                if !valid_service(id) {
+                    return Err("unknown service".into());
+                }
+                vec!["services".into(), "restart".into(), id.clone(), "--confirm".into(), id.clone()]
+            }
         })
     }
 }
@@ -335,6 +354,19 @@ mod tests {
         for bad in ["", "-x", "--dry-run", "github; rm", "GITHUB", "a b", "../x", "github\n"] {
             assert!(Action::GatewayAdd(bad.into()).argv().is_err(), "{bad:?}");
             assert!(Action::GatewayRemove(bad.into()).argv().is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn hub_start_and_service_restart() {
+        assert_eq!(Action::HubStart.argv().unwrap(), ["start", "--no-open"]);
+        assert_eq!(Action::HubStart.program(), Program::Script("bin/aos-hub.mjs"));
+        assert!(!Action::HubStart.changes_state());
+        let r = Action::ServiceRestart("memb".into());
+        assert_eq!(r.argv().unwrap(), ["services", "restart", "memb", "--confirm", "memb"]);
+        assert!(r.changes_state() && r.confirm_text().is_some());
+        for bad in ["", "MEMB", "memb --x", "-c", "../hub"] {
+            assert!(Action::ServiceRestart(bad.into()).argv().is_err(), "{bad:?}");
         }
     }
 

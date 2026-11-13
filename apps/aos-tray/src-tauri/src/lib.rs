@@ -4,6 +4,8 @@
 pub mod agents_md;
 pub mod cli;
 pub mod elevation;
+pub mod hub;
+pub mod projects;
 pub mod secrets;
 pub mod state;
 
