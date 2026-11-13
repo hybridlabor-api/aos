@@ -711,13 +711,17 @@ function createPlanCanvasServer({
     // Annotate routes are called from a dev app on another loopback origin, so
     // they do their own Origin/token checks instead of the same-origin gate.
     if (annotate.handles(pathname)) return annotate.handle(req, res, url);
-    if (!isAllowedOrigin(req.headers.origin, allowedHostnames, boundPort)) {
-      return sendJson(res, 403, { error: 'forbidden origin' });
-    }
     // The artifact iframe is sandboxed without allow-same-origin, so its script
     // and asset loads arrive as Sec-Fetch-Site: cross-site. Only those read-only
     // static paths may skip the fetch-site check; everything else keeps it.
     const isStaticRead = req.method === 'GET' && STATIC_READ_PATH.test(pathname);
+    // Firefox also sends `Origin: null` on those loads (opaque origin); Chromium sends no Origin
+    // header. Refusing it kept /sdk.js out of the artifact, so the annotation toolbar never showed
+    // in Firefox. The Host check above still applies and no CORS header is sent.
+    const isSandboxedStaticRead = isStaticRead && req.headers.origin === 'null';
+    if (!isSandboxedStaticRead && !isAllowedOrigin(req.headers.origin, allowedHostnames, boundPort)) {
+      return sendJson(res, 403, { error: 'forbidden origin' });
+    }
     // A top-level link from another loopback port (the Launchpad) arrives as same-site/cross-site.
     // Rendering the home page or a canvas page is read-only and the linking page cannot read it,
     // so a document navigation may skip the fetch-site check; fetch()/XHR and writes never do.
