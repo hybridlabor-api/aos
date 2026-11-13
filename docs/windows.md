@@ -52,7 +52,7 @@ PowerShell and `cmd.exe` do not do this, so prefer them for `schtasks`.
 | OpenWiki daemon | `BDB_OpenWiki_Daemon` | the OpenWiki module |
 | Nightly memB ingest | `BDB_Memb_Ingest` | `aos memory set-time HH:MM` (remove with `aos memory set-time off`) |
 
-If `aos memory set-time` prints `job not written: ...`, the message is the error `schtasks` returned (typically "Access is denied" on a locked-down account). Create the task by hand or run the command from an account that may create tasks for itself.
+The task runs `wscript.exe` on a small hidden `.vbs` in `~\.memb`, so no console window opens at the scheduled time. If `schtasks` fails, `aos memory set-time` exits with code 1, prints the error text `schtasks` returned (typically "Access is denied" on a locked-down account), says that no task was written, and does not keep the new time. Create the task by hand or run the command from an account that may create tasks for itself.
 
 ## Where things live
 
@@ -63,7 +63,7 @@ Paths are relative to `%USERPROFILE%` (shown as `~`).
 | `~\.local\bin\aos` and `aos.cmd` | the `aos` launcher (runs `npx -y @hybridlabor-api/aos@latest`); add this folder to PATH |
 | `~\.agents` | AOS rules, hooks, workflows, gateway and the memB install |
 | `~\.aos` | AOS state: hub, bus, A2A inbox, secrets file |
-| `~\.claude`, `~\.codex`, `~\.gemini`, `~\.config\opencode` | each harness's own config, skills and hooks |
+| `~\.claude`, `~\.codex`, `~\.gemini` | each harness's own config, skills and hooks (OpenCode keeps its own config folder) |
 | `~\.memb`, `~\.MemBDB` | memB config and its SQLite store |
 | `~\.openwiki` | OpenWiki provider settings (`.env`) and project list |
 | `<project>\openwiki` | the wiki of a project (older versions used `.openwiki`) |
@@ -85,6 +85,6 @@ For a single project, run `/aos-project-init` inside it (or `aos project init --
 |---|---|
 | `memB needs Python 3.10-3.14` | No usable interpreter and no uv. `winget install astral-sh.uv`, open a new terminal, run `aos package install memb`. |
 | `cannot start uv: ENOENT` from an MCP server | uv is not installed, or installed outside the folders listed above. Install it with winget or put its folder on PATH. |
-| memB WebUI (port 8088) does not answer | Check `%USERPROFILE%\.memb\webui.stderr.log`, then re-run `aos package install memb`. |
+| memB WebUI (port 8088) does not answer | Re-run `aos package install memb` and read the warnings it prints; `aos services status` shows whether memB is up. |
 | `Codex plugin: plugin list FAILED (... failed to load configuration)` | Codex cannot read its own `config.toml`. Run `codex plugin list` yourself, fix the entry it names, then `aos update`. |
 | Status line shows `?` instead of glyphs | The console code page is not UTF-8. Run `chcp 65001` and use Windows Terminal. |

@@ -490,13 +490,24 @@ const parsePyVersion = (s) => { const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(String(s
 const pyAtLeast = (v, min) => Boolean(v) && (v[0] > min[0] || (v[0] === min[0] && v[1] >= min[1]));
 const pyAtMost = (v, max) => Boolean(v) && (v[0] < max[0] || (v[0] === max[0] && v[1] <= max[1]));
 
+// `py -0p` lines look like ` -V:3.13 *   C:\Python313\python.exe` (or ` -3.12-64   C:\...\python.exe`): version and executable path of each runtime.
+function parsePyLauncherList(out) {
+    const res = [];
+    for (const line of String(out || '').split(/\r?\n/)) {
+        const v = /-(?:V:)?(?:[A-Za-z]+\/)?(\d+)\.(\d+)/.exec(line);
+        const p = /([A-Za-z]:\\.*?\.exe)\s*$/i.exec(line);
+        if (v && p) res.push({ version: [Number(v[1]), Number(v[2])], exe: p[1] });
+    }
+    return res;
+}
+
 // First interpreter that is >= min: versioned names (newest first) before plain python3, PATH before the usual install dirs.
 // opts.run(cmd, args) -> stdout (throws if the command is missing) is a test seam.
 function pickPython(min = MEMB_MIN_PYTHON, opts = {}) {
     const home = opts.home || homeDir;
     const win = (opts.platform || process.platform) === 'win32';
     const run = opts.run || ((cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000, windowsHide: true }));
-    const names = win ? ['python'] : ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3'];
+    const names = win ? ['python'] : ['python3.13', 'python3.12', 'python3.11', 'python3.14', 'python3.10', 'python3'];
     const dirs = win ? [] : ['/opt/homebrew/bin', '/usr/local/bin', path.join(home, '.local', 'bin')];
     if (!win) {
         try {
@@ -505,14 +516,14 @@ function pickPython(min = MEMB_MIN_PYTHON, opts = {}) {
         } catch (e) { /* no user Python dir */ }
     }
     if (win) {
-        // py launcher: best-supported minor first, so a 3.15 default never wins over 3.13.
-        for (const minor of [13, 12, 11, 14, 10]) {
-            try {
-                const exe = String(run('py', [`-3.${minor}`, '-c', 'import sys;print(sys.executable)'])).trim().split(/\r?\n/)[0];
-                const v = [3, minor];
-                if (exe && pyAtLeast(v, min) && pyAtMost(v, MEMB_MAX_PYTHON)) return { cmd: exe, version: v };
-            } catch (e) { /* launcher or version missing */ }
-        }
+        // py launcher: one `py -0p` call lists every registered runtime; best-supported minor first, so a 3.15 default never wins over 3.13.
+        try {
+            const found = parsePyLauncherList(run('py', ['-0p']));
+            for (const minor of [13, 12, 11, 14, 10]) {
+                const hit = found.find((f) => f.version[1] === minor);
+                if (hit && pyAtLeast(hit.version, min) && pyAtMost(hit.version, MEMB_MAX_PYTHON)) return { cmd: hit.exe, version: hit.version };
+            }
+        } catch (e) { /* no py launcher */ }
     }
     for (const name of names) {
         for (const cmd of [name, ...dirs.map((d) => path.join(d, name))]) {
@@ -549,8 +560,8 @@ function ensurePythonVenv(dir, opts = {}) {
         log.step(`[memb] existing venv base Python is missing; rebuilding ${path.join(dir, '.venv')}.`);
     } else if (fs.existsSync(venvPy)) {
         const v = venvPyVersion(dir);
-        if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
-        log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
+        if (!v || (pyAtLeast(v, MEMB_MIN_PYTHON) && pyAtMost(v, MEMB_MAX_PYTHON))) return { created: false };
+        log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python ${MEMB_MIN_PYTHON.join('.')}-${MEMB_MAX_PYTHON.join('.')}.`);
     }
     const rawRun = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], cwd: dir, windowsHide: true, ...o }));
     // A running python.exe of this venv (e.g. the memB MCP server a session started) locks it on Windows: stop it and retry.

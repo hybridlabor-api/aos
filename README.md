@@ -352,7 +352,7 @@ flowchart TB
 
 ## Install
 
-**Requirements.** Node.js >= 20. macOS, Linux and Windows (PowerShell).
+**Requirements.** Node.js >= 20. macOS, Linux and Windows (PowerShell). On Windows read [Installing and setting up AOS on Windows](docs/windows.md) first (Node 22, Git for Windows, uv, Python 3.12 or 3.13, UTF-8 terminal).
 
 ```bash
 npx -y @hybridlabor-api/aos@latest

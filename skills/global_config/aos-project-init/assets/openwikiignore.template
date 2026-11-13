@@ -10,6 +10,7 @@
 
 # Its own output — otherwise the wiki documents itself, recursively.
 .openwiki/
+openwiki/
 
 # Dependencies. Someone else's code is not this project's documentation.
 node_modules/
