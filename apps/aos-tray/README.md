@@ -1,4 +1,4 @@
-# AOS Tray (v0.1, unreleased)
+# AOS App (v0.1, unreleased)
 
 A desktop companion for AOS. It sits in the Windows taskbar tray and the macOS menu bar, so
 you can install, update, repair, check and configure AOS without a terminal. It is a Tauri v2
@@ -9,26 +9,24 @@ they use.
 
 ## What it does
 
-**Tray / menu bar menu**
+**App window.** One window with a dark sidebar. All strings exist in English and German
+(Settings > Language; the default follows the system language). Closing the window hides it;
+the tray icon stays. Quitting stops only the app, never the AOS services.
 
-- Status lines: installed version, whether an update is available, and services up/down.
-- Install or Repair AOS, Update AOS. Each one asks for confirmation first.
-- Run doctor: shows a summary; the Settings window shows details and fixes.
-- Open Hub: `aos-hub open --tab services` starts the hub if needed and opens 127.0.0.1:7900.
-- Settings, Quit.
-
-The status refreshes every 60 seconds, and after each action.
-
-**Settings window**
-
-| Tab | What it shows or does | Backed by |
+| Screen | What it shows or does | Backed by |
 |---|---|---|
-| Status | Version, cached latest version, profile, services, the lifecycle buttons, doctor results | files below, `aos services status --json`, `aos doctor --json` |
-| Store / Library | Opens the Hub store; lists installed skills and packs | `aos-hub open --tab store`, `~/.agents/skills/*/SKILL.md`, `aos store packs` |
-| MCP servers | Gateway upstream health; add or remove a shipped server | `aos-gateway status --json`, `aos-gateway add/remove <server>` |
-| Global AGENTS.md | Edits `~/AGENTS.md`, the user-level rules file the installer creates and keeps its managed blocks in | file, with a backup on every save |
-| Secrets | Lists, sets and removes `KEY=value` entries in `~/.aos/secrets.env` | file, same format as `lib/mcp-secrets.js` |
-| Advanced | Read-only router and memory views | `aos-router show --json`, `aos memory list` |
+| Home | Installed version and update state, services up/down, doctor results on demand | files below, `aos services status --json`, `aos doctor --json` |
+| Store | Opens the hub in a separate in-app window; lists installed skills and packs | `aos-hub start --no-open`, port from `~/.aos/hub/hub.json`, `~/.agents/skills/*/SKILL.md`, `aos store packs` |
+| Services | One row per service with Restart (typed confirm); gateway upstream health with add/remove of a shipped server | `aos services status --json`, `aos services restart <id> --confirm <id>`, `aos-gateway status --json`, `aos-gateway add/remove <server>` |
+| Projects | Every repo under the workspace root: name, slug and domain from `.aos/project.json`, wiki present, git changes. Read-only | `workspaceRoot` in `~/.agents/aos-config.json`, `git status --porcelain` |
+| Secrets | Names and set/empty state of `~/.aos/secrets.env`; set or remove a value | file, same format as `lib/mcp-secrets.js` |
+| Settings | Language, install/update/repair, the `~/AGENTS.md` editor, read-only router and memory views | `npx`/`aos repair`, file, `aos-router show --json`, `aos memory list` |
+
+When a CLI answer does not parse as JSON, the screen shows the raw text instead of an empty card.
+
+**Tray / menu bar menu.** Status lines (version, update, services), Install or Repair, Update,
+Run doctor, Open Store, Open AOS, Quit. The tray tooltip is the status light: it carries the
+one-line service state. The status refreshes every 60 seconds and after each action.
 
 ### CLI calls
 
@@ -43,6 +41,8 @@ argv, and the flags come from `docs/cli-reference.md`.
 | Status | `aos services status --json`, `aos-gateway status --json` |
 | Doctor | `aos doctor --json` |
 | Gateway | `aos-gateway add <server>`, `aos-gateway remove <server>` |
+| Services | `aos services restart <id> --confirm <id>` (id from a fixed list) |
+| Store | `aos-hub start --no-open` |
 | Read-only | `aos store packs`, `aos memory list`, `aos-router show --json`, `aos-hub open --tab services\|store` |
 
 The tray runs "aos" as `node <packageRoot>/installer.js`, and the other CLIs as
@@ -98,6 +98,9 @@ The hub token in `~/.aos/hub/hub.json` is never read.
   because an AOS update rewrote its managed blocks. Before each save the old file is copied to
   `~/.aos/backups/aos-tray/`, and the last 10 copies are kept. A symlinked `~/AGENTS.md` is
   written through to its target, so the link stays.
+- **Hub window without IPC.** The store window (label `hub`) loads `http://127.0.0.1:<port>/`. It is not listed in `capabilities/default.json` and no capability has `remote` URLs, so the hub page cannot call any app command (a unit test checks this). Navigation is pinned to the hub origin. The hub keeps its own per-start token and Origin checks; the app never reads the token.
+- **Service restart.** The UI enables Restart only after the service id is typed; Rust checks the typed id again and against a fixed id list, shows the native dialog, and the CLI checks `--confirm <id>` itself.
+- **Projects are read-only.** The scan reads folder names, `.aos/project.json`, and runs `git status --porcelain` per repo (no shell, 15 s timeout).
 - **No telemetry, no network** of its own. The web UI uses a strict CSP and only `core:default`
   Tauri permissions; all data is rendered with `textContent`.
 
@@ -129,7 +132,10 @@ The unit tests cover the pure logic:
 - version comparison, ported from `lib/update-check.js`;
 - parsing of the settings and CLI JSON;
 - reading and writing the secrets file, with round-trips and permissions;
-- the AGENTS.md backup and conflict check.
+- the AGENTS.md backup and conflict check;
+- the workspace scan, `.aos/project.json` parsing and the hub navigation rule.
+
+UI logic and the English/German string tables are tested with `node --test test/` (from `apps/aos-tray/`), also in CI.
 
 ## Limits (v0.1)
 
