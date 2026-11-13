@@ -8865,6 +8865,9 @@ async function main() {
         return;
     }
 
+    // Read-only; warnings with the fixing command, never a stop. No-op off Windows.
+    require('./lib/win-preflight').reportWinPreflight({}, log);
+
     // A -y reinstall re-merges every hook: never silently re-enable a gate the user removed by hand.
     await gateReenableStep({ ask: gateReenableAsk() });
 
