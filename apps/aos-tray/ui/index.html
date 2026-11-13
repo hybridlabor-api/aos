@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AOS Settings</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav id="tabs" role="tablist">
+    <button data-tab="status" class="active">Status</button>
+    <button data-tab="store">Store / Library</button>
+    <button data-tab="mcp">MCP servers</button>
+    <button data-tab="agents">Global AGENTS.md</button>
+    <button data-tab="secrets">Secrets</button>
+    <button data-tab="advanced">Advanced</button>
+  </nav>
+  <main>
+    <section id="status" class="tab active">
+      <h2>Status</h2>
+      <div id="status-body">Loading...</div>
+      <div class="row">
+        <button id="btn-refresh">Refresh</button>
+        <button id="btn-install">Install</button>
+        <button id="btn-update">Update</button>
+        <button id="btn-repair">Repair</button>
+        <button id="btn-doctor">Run doctor</button>
+        <button id="btn-hub">Open Hub</button>
+      </div>
+      <pre id="action-out" hidden></pre>
+      <div id="doctor-body"></div>
+    </section>
+
+    <section id="store" class="tab">
+      <h2>Store / Library</h2>
+      <div class="row"><button id="btn-store">Open store in the Hub</button></div>
+      <h3>Installed skills <small>(~/.agents/skills)</small></h3>
+      <ul id="skills" class="cols"></ul>
+      <h3>Packs <small>(aos store packs)</small></h3>
+      <pre id="packs"></pre>
+    </section>
+
+    <section id="mcp" class="tab">
+      <h2>MCP servers <small>(aos-gateway)</small></h2>
+      <div id="gw-summary"></div>
+      <table><thead><tr><th>Server</th><th>State</th><th></th></tr></thead><tbody id="gw-rows"></tbody></table>
+      <p class="hint">Adding or removing a server restarts the gateway service. Only servers shipped with AOS can be added.</p>
+      <pre id="gw-out" hidden></pre>
+    </section>
+
+    <section id="agents" class="tab">
+      <h2>Global AGENTS.md <small>(~/AGENTS.md)</small></h2>
+      <p class="hint">Rules for every agent harness. AOS updates rewrite the blocks between its <code>aos:</code> markers; edit outside them. A backup is written to ~/.aos/backups/aos-tray/ before every save.</p>
+      <textarea id="agents-text" spellcheck="false"></textarea>
+      <div class="row"><button id="btn-agents-reload">Reload</button><button id="btn-agents-save">Save</button><span id="agents-msg"></span></div>
+    </section>
+
+    <section id="secrets" class="tab">
+      <h2>Secrets <small>(~/.aos/secrets.env)</small></h2>
+      <p class="hint">API keys for all agents and MCP servers. Values are write-only here: they are never shown, logged or sent anywhere. The file is written with mode 600 on macOS.</p>
+      <table><thead><tr><th>Name</th><th>Value</th><th></th></tr></thead><tbody id="secret-rows"></tbody></table>
+      <h3>Set a value</h3>
+      <form id="secret-form" class="row" autocomplete="off">
+        <input id="secret-name" placeholder="NAME_API_KEY" pattern="[A-Za-z_][A-Za-z0-9_]*" required>
+        <input id="secret-value" type="password" placeholder="value" required>
+        <button type="submit">Save</button>
+      </form>
+      <span id="secret-msg"></span>
+    </section>
+
+    <section id="advanced" class="tab">
+      <h2>Advanced <small>(read-only)</small></h2>
+      <div class="row"><button id="btn-router">aos-router show</button><button id="btn-memory">aos memory list</button></div>
+      <pre id="adv-out"></pre>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

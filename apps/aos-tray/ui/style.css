@@ -1,0 +1,21 @@
+:root { --bg: #ffffff; --fg: #1b1f24; --muted: #5d6670; --line: #d8dde3; --accent: #1f6feb; --ok: #1a7f37; --bad: #cf222e; --code: #f4f6f8; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16191d; --fg: #e6e9ec; --muted: #9aa4ae; --line: #30363d; --accent: #4c8dff; --ok: #3fb950; --bad: #f85149; --code: #1f2328; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); display: flex; height: 100vh; }
+nav { display: flex; flex-direction: column; width: 180px; border-right: 1px solid var(--line); padding: 12px 8px; gap: 2px; }
+nav button { text-align: left; background: none; border: 0; color: var(--fg); padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+nav button.active { background: var(--accent); color: #fff; }
+main { flex: 1; overflow: auto; padding: 16px 20px; }
+.tab { display: none; } .tab.active { display: block; }
+h2 { margin: 0 0 12px; } h3 { margin: 18px 0 6px; } small { color: var(--muted); font-weight: normal; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+button { padding: 6px 12px; border: 1px solid var(--line); background: var(--code); color: var(--fg); border-radius: 6px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+input { padding: 6px 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; min-width: 200px; }
+textarea { width: 100%; height: 55vh; font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--code); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+pre { background: var(--code); padding: 10px; border-radius: 6px; white-space: pre-wrap; max-height: 40vh; overflow: auto; }
+table { border-collapse: collapse; width: 100%; } th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.ok { color: var(--ok); } .bad { color: var(--bad); } .hint { color: var(--muted); }
+.cols { columns: 3 180px; padding-left: 18px; }
