@@ -62,6 +62,9 @@ jobs:
       - name: Generate icons from app-icon.png
         run: npx --yes ${{ env.TAURI_CLI }} icon src-tauri/app-icon.png
 
+      - name: UI logic and i18n tests
+        run: node --test test/
+
       - name: Unit tests
         # Pure modules only: a Windows test binary that links tauri can fail to load without
         # the app manifest tauri-build embeds into the real executable.

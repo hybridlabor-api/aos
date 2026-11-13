@@ -3,77 +3,99 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AOS Settings</title>
+  <title>AOS</title>
+  <link rel="stylesheet" href="aos-tokens.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <nav id="tabs" role="tablist">
-    <button data-tab="status" class="active">Status</button>
-    <button data-tab="store">Store / Library</button>
-    <button data-tab="mcp">MCP servers</button>
-    <button data-tab="agents">Global AGENTS.md</button>
-    <button data-tab="secrets">Secrets</button>
-    <button data-tab="advanced">Advanced</button>
-  </nav>
-  <main>
-    <section id="status" class="tab active">
-      <h2>Status</h2>
-      <div id="status-body">Loading...</div>
-      <div class="row">
-        <button id="btn-refresh">Refresh</button>
-        <button id="btn-install">Install</button>
-        <button id="btn-update">Update</button>
-        <button id="btn-repair">Repair</button>
-        <button id="btn-doctor">Run doctor</button>
-        <button id="btn-hub">Open Hub</button>
+  <aside class="sidebar">
+    <div class="brand" aria-hidden="true"><span class="brand-mark"></span><span class="brand-name">AOS</span></div>
+    <nav id="nav" data-i18n-aria="nav.label" aria-label="Main navigation">
+      <a href="#home" data-screen="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg><span data-i18n="nav.home">Home</span></a>
+      <a href="#store" data-screen="store"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/></svg><span data-i18n="nav.store">Store</span></a>
+      <a href="#services" data-screen="services"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"/></svg><span data-i18n="nav.services">Services</span></a>
+      <a href="#projects" data-screen="projects"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg><span data-i18n="nav.projects">Projects</span></a>
+      <a href="#secrets" data-screen="secrets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 9.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0zM13 13l8 8M17 17l2-2M19 19l2-2"/></svg><span data-i18n="nav.secrets">Secrets</span></a>
+      <a href="#settings" data-screen="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-i18n="nav.settings">Settings</span></a>
+    </nav>
+    <p class="side-foot" id="side-version"></p>
+  </aside>
+
+  <main id="main" tabindex="-1">
+    <section data-view="home" hidden>
+      <header class="head"><div><h1 data-i18n="home.title">Home</h1><p class="lede" data-i18n="home.lede"></p></div>
+        <button class="btn" id="home-refresh" data-i18n="common.refresh">Refresh</button></header>
+      <p class="banner bad" id="home-elevated" hidden data-i18n="home.elevated"></p>
+      <div class="grid">
+        <article class="card" aria-live="polite"><h2 data-i18n="home.version">Installed</h2><div id="home-version" class="card-body"></div></article>
+        <article class="card" aria-live="polite"><h2 data-i18n="home.services">Services</h2><div id="home-services" class="card-body"></div></article>
+        <article class="card wide" aria-live="polite"><div class="card-head"><h2 data-i18n="home.doctor">Doctor</h2><button class="btn" id="home-doctor" data-i18n="home.doctorRun">Run doctor</button></div><div id="home-doctor-body" class="card-body"></div></article>
       </div>
-      <pre id="action-out" hidden></pre>
-      <div id="doctor-body"></div>
     </section>
 
-    <section id="store" class="tab">
-      <h2>Store / Library</h2>
-      <div class="row"><button id="btn-store">Open store in the Hub</button></div>
-      <h3>Installed skills <small>(~/.agents/skills)</small></h3>
-      <ul id="skills" class="cols"></ul>
-      <h3>Packs <small>(aos store packs)</small></h3>
-      <pre id="packs"></pre>
+    <section data-view="store" hidden>
+      <header class="head"><div><h1 data-i18n="store.title">Store</h1><p class="lede" data-i18n="store.lede"></p></div>
+        <button class="btn primary" id="store-open" data-i18n="store.open">Open store</button></header>
+      <p class="note" id="store-msg" role="status"></p>
+      <div class="grid">
+        <article class="card"><h2 data-i18n="store.installed">Installed skills</h2><ul id="store-skills" class="chips"></ul></article>
+        <article class="card"><h2 data-i18n="store.packs">Packs</h2><pre id="store-packs" class="mono"></pre></article>
+      </div>
     </section>
 
-    <section id="mcp" class="tab">
-      <h2>MCP servers <small>(aos-gateway)</small></h2>
-      <div id="gw-summary"></div>
-      <table><thead><tr><th>Server</th><th>State</th><th></th></tr></thead><tbody id="gw-rows"></tbody></table>
-      <p class="hint">Adding or removing a server restarts the gateway service. Only servers shipped with AOS can be added.</p>
-      <pre id="gw-out" hidden></pre>
+    <section data-view="services" hidden>
+      <header class="head"><div><h1 data-i18n="services.title">Services</h1><p class="lede" data-i18n="services.lede"></p></div>
+        <button class="btn" id="services-refresh" data-i18n="common.refresh">Refresh</button></header>
+      <p class="note" id="services-msg" role="status"></p>
+      <ul class="rows" id="services-rows"></ul>
+      <h2 class="sub" data-i18n="services.gateway">Gateway upstreams</h2>
+      <p class="note" id="gw-summary"></p>
+      <ul class="rows" id="gw-rows"></ul>
     </section>
 
-    <section id="agents" class="tab">
-      <h2>Global AGENTS.md <small>(~/AGENTS.md)</small></h2>
-      <p class="hint">Rules for every agent harness. AOS updates rewrite the blocks between its <code>aos:</code> markers; edit outside them. A backup is written to ~/.aos/backups/aos-tray/ before every save.</p>
-      <textarea id="agents-text" spellcheck="false"></textarea>
-      <div class="row"><button id="btn-agents-reload">Reload</button><button id="btn-agents-save">Save</button><span id="agents-msg"></span></div>
+    <section data-view="projects" hidden>
+      <header class="head"><div><h1 data-i18n="projects.title">Projects</h1><p class="lede" data-i18n="projects.lede"></p></div>
+        <button class="btn" id="projects-refresh" data-i18n="common.refresh">Refresh</button></header>
+      <p class="note" id="projects-msg" role="status"></p>
+      <ul class="rows" id="projects-rows"></ul>
     </section>
 
-    <section id="secrets" class="tab">
-      <h2>Secrets <small>(~/.aos/secrets.env)</small></h2>
-      <p class="hint">API keys for all agents and MCP servers. Values are write-only here: they are never shown, logged or sent anywhere. The file is written with mode 600 on macOS.</p>
-      <table><thead><tr><th>Name</th><th>Value</th><th></th></tr></thead><tbody id="secret-rows"></tbody></table>
-      <h3>Set a value</h3>
-      <form id="secret-form" class="row" autocomplete="off">
-        <input id="secret-name" placeholder="NAME_API_KEY" pattern="[A-Za-z_][A-Za-z0-9_]*" required>
-        <input id="secret-value" type="password" placeholder="value" required>
-        <button type="submit">Save</button>
+    <section data-view="secrets" hidden>
+      <header class="head"><div><h1 data-i18n="secrets.title">Secrets</h1><p class="lede" data-i18n="secrets.lede"></p></div></header>
+      <ul class="rows" id="secret-rows"></ul>
+      <h2 class="sub" data-i18n="secrets.setTitle">Set a value</h2>
+      <form id="secret-form" class="form" autocomplete="off">
+        <label><span data-i18n="secrets.name">Name</span><input id="secret-name" placeholder="NAME_API_KEY" pattern="[A-Za-z_][A-Za-z0-9_]*" required spellcheck="false"></label>
+        <label><span data-i18n="secrets.value">Value</span><input id="secret-value" type="password" required></label>
+        <button class="btn primary" type="submit" data-i18n="secrets.save">Save</button>
       </form>
-      <span id="secret-msg"></span>
+      <p class="note" id="secret-msg" role="status"></p>
     </section>
 
-    <section id="advanced" class="tab">
-      <h2>Advanced <small>(read-only)</small></h2>
-      <div class="row"><button id="btn-router">aos-router show</button><button id="btn-memory">aos memory list</button></div>
-      <pre id="adv-out"></pre>
+    <section data-view="settings" hidden>
+      <header class="head"><div><h1 data-i18n="settings.title">Settings</h1><p class="lede" data-i18n="settings.lede"></p></div></header>
+      <article class="card">
+        <h2><label for="lang" data-i18n="settings.language">Language</label></h2>
+        <select id="lang" class="select"><option value="en">English</option><option value="de">Deutsch</option></select>
+      </article>
+      <article class="card">
+        <h2 data-i18n="settings.lifecycle">Install and update</h2>
+        <div class="actions"><button class="btn" id="btn-install" data-i18n="settings.install">Install</button><button class="btn" id="btn-update" data-i18n="settings.update">Update</button><button class="btn" id="btn-repair" data-i18n="settings.repair">Repair</button></div>
+        <pre id="action-out" class="mono" hidden></pre>
+      </article>
+      <article class="card">
+        <h2 id="agents-label" data-i18n="settings.agents">Global AGENTS.md</h2>
+        <p class="note" data-i18n="settings.agentsHint"></p>
+        <textarea id="agents-text" spellcheck="false" aria-labelledby="agents-label"></textarea>
+        <div class="actions"><button class="btn" id="btn-agents-reload" data-i18n="settings.reload">Reload</button><button class="btn primary" id="btn-agents-save" data-i18n="settings.save">Save</button><span class="note" id="agents-msg" role="status"></span></div>
+      </article>
+      <article class="card">
+        <h2 data-i18n="settings.advanced">Advanced</h2>
+        <div class="actions"><button class="btn" id="btn-router" data-i18n="settings.router">Router</button><button class="btn" id="btn-memory" data-i18n="settings.memory">Memory</button></div>
+        <pre id="adv-out" class="mono" hidden></pre>
+      </article>
     </section>
   </main>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
