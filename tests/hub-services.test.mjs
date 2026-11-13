@@ -339,6 +339,18 @@ test('hub row is probed, not assumed up (CLI status runs without the hub)', asyn
   assert.equal(foreign.foreign, true);
 });
 
+test('hub row follows the port recorded in hub.json when no override is set', async (t) => {
+  const fixture = createServer_fwd((req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true,"service":"aos-hub"}'); });
+  await new Promise((ok) => fixture.listen(0, '127.0.0.1', ok));
+  t.after(() => closeServer(fixture));
+  const home5 = join(tmp, 'home-hubjson');
+  mkdirSync(join(home5, '.aos', 'hub'), { recursive: true });
+  writeFileSync(join(home5, '.aos', 'hub', 'hub.json'), JSON.stringify({ port: fixture.address().port, pid: 1 }));
+  const row = (await statusService(recordingCtx({ home: home5, wikiRoot: join(tmp, 'no-dev7') }))).find((r) => r.id === 'hub');
+  assert.equal(row.up, true);
+  assert.equal(row.port, fixture.address().port);
+});
+
 test('serviceMeta: npm uncheckable -> state uncheckable; force flag supported', async () => {
   resetMetaCacheForTests();
   const ctx = recordingCtx({ wikiRoot: join(tmp, 'no-dev3') });
