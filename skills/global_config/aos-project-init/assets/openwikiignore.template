@@ -10,6 +10,9 @@
 
 # Its own output — otherwise the wiki documents itself, recursively.
 .openwiki/
+# Do NOT list openwiki/ here: OpenWiki 0.9 writes its pages there and reads them
+# back through the same ignore filter, so ignoring it makes every
+# openwiki_submit_page fail with "Write <page> before submitting its page job".
 
 # Dependencies. Someone else's code is not this project's documentation.
 node_modules/

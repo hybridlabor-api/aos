@@ -28,7 +28,8 @@ test('aos project init --files creates project rule files correctly', () => {
     assert.ok(fs.existsSync(pClaude), 'CLAUDE.md created');
     assert.ok(fs.existsSync(pGemini), 'GEMINI.md created');
     assert.ok(fs.existsSync(path.join(cwd, '.aos', 'project.json')), '.aos/project.json created');
-    assert.ok(!fs.existsSync(path.join(cwd, '.openwikiignore')), '.openwikiignore not created yet (no config)');
+    assert.ok(fs.existsSync(path.join(cwd, '.openwikiignore')), '.openwikiignore written for a fresh project');
+    for (const n of ['RULES.md', 'CODEX.md']) assert.ok(fs.readFileSync(path.join(cwd, n), 'utf8').includes('AGENTS.md'), n + ' points to AGENTS.md');
     assert.ok(fs.existsSync(path.join(cwd, '.aos', 'evals')), '.aos/evals created');
 
     const agentsContent = fs.readFileSync(pAgents, 'utf8');
@@ -36,6 +37,9 @@ test('aos project init --files creates project rule files correctly', () => {
     assert.ok(agentsContent.includes('## Build and test commands'), 'AGENTS.md should have Build and test commands section');
     assert.ok(agentsContent.includes('## Code style'), 'AGENTS.md should have Code style section');
     assert.ok(agentsContent.includes('## CI'), 'AGENTS.md should have CI section');
+    assert.ok(agentsContent.includes('## Non-negotiable'), 'AGENTS.md carries the Non-negotiable rules');
+    assert.ok(agentsContent.includes('<!-- aos:destructive-actions:start -->'), 'AGENTS.md carries the Destructive Actions block');
+    assert.ok(agentsContent.includes('## Local map'), 'AGENTS.md has a Local map section');
     assert.ok(agentsContent.includes('## Commits'), 'AGENTS.md should have Commits section');
     assert.ok(agentsContent.includes('## PRs'), 'AGENTS.md should have PRs section');
     assert.ok(agentsContent.includes('## Security'), 'AGENTS.md should have Security section');

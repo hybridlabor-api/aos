@@ -169,3 +169,39 @@ test('aos-memb-ingest: says how to add paths when empty, lists projects with --d
   write(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['memb'], memoryIngest: { paths: [ws] } }));
   assert.match(run().stdout, /off/);
 });
+
+test('nightly job on win32: hidden wscript task at the chosen time, removed with /Delete; failures and quoted paths report an error', async (t) => {
+  const home = tmp(t);
+  const calls = [];
+  const run = async (cmd, args) => { calls.push([cmd, ...args]); };
+  const job = await nightly.install({ home, platform: 'win32', node: 'C:/node/node.exe', run, hour: 4, minute: 5 });
+  assert.equal(job.file, nightly.WIN_TASK);
+  assert.deepEqual(calls[0].slice(0, 7), ['schtasks', '/Create', '/F', '/SC', 'DAILY', '/TN', nightly.WIN_TASK]);
+  assert.equal(calls[0][calls[0].indexOf('/ST') + 1], '04:05');
+  const tr = calls[0][calls[0].indexOf('/TR') + 1];
+  assert.ok(tr.startsWith('wscript.exe //B //Nologo "') && tr.endsWith('aos-memb-ingest.vbs"'), tr);
+  const vbs = fs.readFileSync(path.join(home, '.memb', 'aos-memb-ingest.vbs'), 'utf8');
+  assert.match(vbs, /WshShell\.Run .*node\.exe.*aos-memb-ingest\.mjs.*, 0, False/);
+  assert.equal((await nightly.remove({ home, platform: 'win32', run })).removed, true);
+  assert.deepEqual(calls[1], ['schtasks', '/Delete', '/TN', nightly.WIN_TASK, '/F']);
+  assert.equal(fs.existsSync(path.join(home, '.memb', 'aos-memb-ingest.vbs')), false);
+  const bad = await nightly.install({ home, platform: 'win32', run: async () => { throw new Error('Access is denied'); } });
+  assert.equal(bad.file, null);
+  assert.match(bad.error, /denied/);
+  const quoted = await nightly.install({ home, platform: 'win32', node: 'C:/a"b/node.exe', run });
+  assert.equal(quoted.file, null);
+  assert.match(quoted.error, /quote/);
+  assert.equal(calls.length, 2, 'no schtasks call for the quoted path');
+});
+
+test('aos memory set-time: a failing job exits 1, says no task was written and keeps the previous time', async (t) => {
+  const home = tmp(t);
+  const mi = require('../lib/memory-import.js');
+  mi.setTime(home, '02:00');
+  let out = '';
+  const code = await mi.command(['set-time', '05:30'], { home, write: (s) => { out += s; }, apply: async () => ({ scheduled: false, error: 'Access is denied' }) });
+  assert.equal(code, 1);
+  assert.match(out, /Access is denied/);
+  assert.match(out, /No task was written/);
+  assert.equal(mi.read(home).time, '02:00');
+});

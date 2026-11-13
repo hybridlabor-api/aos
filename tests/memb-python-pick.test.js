@@ -5,6 +5,7 @@ const path = require('path');
 const os = require('os');
 const { pickPython, ensurePythonVenv, installMemB } = require('../installer.js');
 
+const NLX = String.fromCharCode(10);
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-pypick-'));
 const stub = (table) => (cmd) => { if (cmd in table) return table[cmd]; throw new Error('ENOENT'); };
 const mkInterp = (dir, platform = process.platform) => {
@@ -30,7 +31,7 @@ describe('pickPython', () => {
 describe('ensurePythonVenv', () => {
     test('no suitable python and no uv: throws with the fix and leaves no .venv', () => {
         const dir = tmp();
-        assert.throws(() => ensurePythonVenv(dir, { pick: () => null, hasUv: false, run: () => assert.fail('must not run') }), /Python >= 3\.10.*aos package install memb/);
+        assert.throws(() => ensurePythonVenv(dir, { pick: () => null, hasUv: false, run: () => assert.fail('must not run') }), /Python 3.10-3.14.*aos package install memb/);
         assert.equal(fs.existsSync(path.join(dir, '.venv')), false);
     });
     test('no suitable python but uv: installs 3.12 and builds the venv on it', () => {
@@ -62,6 +63,17 @@ describe('ensurePythonVenv', () => {
         const r = ensurePythonVenv(dir, { pick: () => ({ cmd: 'python3.12' }), hasUv: false, run: (c, a) => { calls.push([c, ...a].join(' ')); mkInterp(dir); } });
         assert.equal(r.created, true);
         assert.deepEqual(calls, [`python3.12 -m venv --clear ${path.join(dir, '.venv')}`]);
+    });
+    test('a venv built on Python 3.15 is rebuilt with --clear', () => {
+        const dir = tmp();
+        const bin = path.join(dir, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin');
+        fs.mkdirSync(bin, { recursive: true });
+        fs.writeFileSync(path.join(bin, process.platform === 'win32' ? 'python.exe' : 'python'), '');
+        fs.writeFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'home = ' + dir + NLX + 'version = 3.15.0' + NLX);
+        const calls = [];
+        const r = ensurePythonVenv(dir, { pick: () => ({ cmd: 'python3.13' }), hasUv: false, run: (c, a) => { calls.push([c, ...a].join(' ')); mkInterp(dir); } });
+        assert.equal(r.created, true);
+        assert.deepEqual(calls, [`python3.13 -m venv --clear ${path.join(dir, '.venv')}`]);
     });
     test('venv failure surfaces stderr, sets the half-built .venv aside and names the OS fix', () => {
         const dir = tmp();
@@ -103,5 +115,30 @@ describe('installMemB venv interpreter guard', () => {
         assert.equal(ok, false);
         assert.deepEqual(pipCalls, []);
         assert.ok(out.join('\n').includes(venvPy), 'warning names the missing interpreter path');
+    });
+});
+
+describe('pickPython: Python range and Windows launcher', () => {
+    test('rejects a default python3 newer than 3.14 (no onnxruntime wheels)', () => {
+        assert.equal(pickPython([3, 10], { home: tmp(), run: stub({ python3: 'Python 3.15.0' }), platform: 'linux' }), null);
+    });
+    test('win32 prefers 3.13 from a single `py -0p` listing over a 3.15 default', () => {
+        const calls = [];
+        const run = (cmd, args) => {
+            calls.push([cmd, ...args].join(' '));
+            if (cmd === 'py' && args[0] === '-0p') return ' -V:3.15 *        C:\\Python315\\python.exe\r\n -V:3.13          C:\\Python313\\python.exe\r\n -V:3.12          C:\\Python312\\python.exe\r\n';
+            throw new Error('ENOENT');
+        };
+        const r = pickPython([3, 10], { home: tmp(), run, platform: 'win32' });
+        assert.equal(r.cmd, 'C:\\Python313\\python.exe');
+        assert.deepEqual(r.version, [3, 13]);
+        assert.deepEqual(calls, ['py -0p'], 'one launcher call');
+    });
+    test('python3.14 is a POSIX candidate', () => {
+        assert.equal(pickPython([3, 10], { home: tmp(), run: stub({ 'python3.14': 'Python 3.14.0' }), platform: 'linux' }).cmd, 'python3.14');
+    });
+    test('win32 with only python 3.15 -> null so uv can install 3.12', () => {
+        const run = (cmd) => { if (cmd === 'python') return 'Python 3.15.0'; throw new Error('ENOENT'); };
+        assert.equal(pickPython([3, 10], { home: tmp(), run, platform: 'win32' }), null);
     });
 });

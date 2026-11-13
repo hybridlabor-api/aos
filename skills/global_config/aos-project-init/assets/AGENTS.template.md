@@ -36,15 +36,26 @@ boundaries an agent must not cross, not every file.
 - `src/…` —
 - `…` —
 
-## Project rules
+## Non-negotiable
 
-1. **Git snapshot first.** Commit or snapshot before refactoring or deleting.
-2. **English only** in code, docs and commit messages.
-3. **No secrets in the repo.** Live `.env` files stay outside it; the repo
-   carries placeholders only.
-4. **Private repository** unless explicitly decided otherwise.
-5. **Ask before destructive actions** — mass deletion, history rewriting,
-   discarding uncommitted work.
+1. **Git snapshot first.** Before modifying, refactoring, or deleting files, commit or snapshot the current state so the change can be reverted.
+2. **English only.** All generated content (code, docs, commit messages) ships in English.
+3. **Never leak local paths containing usernames.** Use `~` or `$HOME`, never `/Users/<name>/` or `/home/<name>/`.
+4. **Never commit `.env` files, API keys, or credentials.** Live `.env` files stay outside the repo; the repo carries placeholders only.
+5. **GitHub repositories are Private by default.** Verify rather than assume.
+6. **Ask before destructive actions.** Mass deletion, history rewriting, and anything that discards uncommitted work needs explicit confirmation.
+7. **Zero guesswork.** Do not invent APIs, libraries, endpoints, or CLI commands. Verify against project source and tests, then official docs for the exact installed version, and name the source you used.
+
+## Local map
+
+Where things live on this machine, so an agent does not have to guess. Use `~`
+for the home directory, never a username. Keep secret *values* out of this file:
+name the place, not the content.
+
+- Secrets / env files: `~/…` (e.g. `~/.aos/secrets.env`)
+- Hosts / servers:
+- Related projects / repos:
+- Docs / wiki: `openwiki/`
 
 ## Code style
 

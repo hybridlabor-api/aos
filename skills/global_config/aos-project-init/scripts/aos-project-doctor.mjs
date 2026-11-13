@@ -123,9 +123,11 @@ function checkHarness() {
 
 // ---------------------------------------------------------------- openwiki
 function checkWiki() {
-  const dir = p('.openwiki');
+  // OpenWiki 0.9 writes openwiki/; older runs and hand-made wikis use .openwiki/.
+  const dir = ['openwiki', '.openwiki'].map((d) => p(d)).find((d) => existsSync(d)) || p('openwiki');
+  const dirName = path.basename(dir);
   const pages = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
-  add('openwiki', 'OpenWiki initialized', pages.length > 0, pages.length ? `.openwiki/ present (${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''})` : 'no ..openwiki/ present',
+  add('openwiki', 'OpenWiki initialized', pages.length > 0, pages.length ? `${dirName}/ present (${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''})` : 'no openwiki/ or .openwiki/ present',
     'openwiki --init   (run inside the project; needs provider credentials in ~/.openwiki/.env first)');
 
   // Without this file OpenWiki loads zero rules and indexes .venv, node_modules
