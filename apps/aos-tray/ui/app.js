@@ -1,7 +1,7 @@
 // AOS App main window. All data is rendered with textContent (never innerHTML). Every
 // state-changing call goes to a Rust command that shows its own native confirmation.
 import { t as translate, detectLang } from './i18n.js';
-import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows, routerRows, toggleTarget, moveTarget, awakeStatus, codenotchState, filterItems, itemActions } from './logic.js';
+import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows, routerRows, toggleTarget, moveTarget, awakeStatus, codenotchState, filterItems, itemActions, gatewayCounts, gogateTone } from './logic.js';
 
 const invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args);
 const $ = (id) => document.getElementById(id);
@@ -76,7 +76,31 @@ loaders.home = async () => {
     }
   } catch (e) { $('home-version').textContent = ''; errorRow($('home-version'), e, loaders.home); $('home-services').textContent = ''; }
   if (lastDoctor) renderDoctor(lastDoctor);
+  loadHomeExtras();
 };
+/** Each tile loads on its own, so one slow command never blocks the others. */
+function loadHomeExtras() {
+  const tile = (id, fn) => { skeleton($(id), 1); Promise.resolve().then(fn).catch((e) => { $(id).textContent = ''; $(id).append(el('p', errText(e), 'bad')); }); };
+  tile('home-gateway', async () => {
+    const v = await invoke('gateway_status'); const c = gatewayCounts(v.status); const box = $('home-gateway'); box.textContent = '';
+    if (!v.status) { box.append(el('div', t('services.gatewayDown'), 'metric bad')); return; }
+    box.append(el('div', c.running ? t('home.gatewayUp', { ok: c.ok, total: c.total }) : t('services.gatewayDown'), `metric ${c.running && !c.failed ? 'ok' : 'bad'}`));
+    if (c.failed) box.append(el('p', t('home.gatewayFailed', { n: c.failed }), 'bad'));
+  });
+  tile('home-gogate', async () => {
+    const mode = await invoke('gogate_mode'); const box = $('home-gogate'); box.textContent = '';
+    box.append(el('div', mode ? t(`home.gogate.${mode}`) : t('common.none'), `metric ${gogateTone(mode)}`));
+    if (mode === 'off') box.append(el('p', t('home.gogateOff'), 'warn'));
+  });
+  tile('home-awake', async () => {
+    const v = await invoke('awake_get'); const s = awakeStatus(v); const box = $('home-awake'); box.textContent = '';
+    box.append(el('div', t(s.key, { n: s.minutes }), `metric ${s.tone}`));
+  });
+  tile('home-codenotch', async () => {
+    const s = codenotchState(await invoke('codenotch_info')); const box = $('home-codenotch'); box.textContent = '';
+    box.append(el('div', t(s.key), `metric ${s.tone}`));
+  });
+}
 $('home-refresh').onclick = () => loaders.home();
 $('home-doctor').onclick = () => busy($('home-doctor'), async () => {
   const box = $('home-doctor-body');

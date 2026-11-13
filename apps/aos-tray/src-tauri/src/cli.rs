@@ -69,6 +69,8 @@ pub enum Action {
     GatewayAdd(String),
     /// `aos-gateway remove <server>`
     GatewayRemove(String),
+    /// `aos-gogate status` (read-only; the app never changes the gate)
+    GogateStatus,
     /// `aos-router show --json`
     RouterShow,
     /// `aos-router set <role> <t1,t2> --user` (role and targets are allowlisted in router.rs)
@@ -132,6 +134,7 @@ impl Action {
             Action::Repair | Action::Version | Action::ServicesStatus | Action::Doctor | Action::StorePacks | Action::MemoryList | Action::ServiceRestart(_) => Program::Script("installer.js"),
             Action::GatewayStatus | Action::GatewayAdd(_) | Action::GatewayRemove(_) => Program::Script("bin/aos-gateway.mjs"),
             Action::RouterShow | Action::RouterSet(..) => Program::Script("bin/aos-router.mjs"),
+            Action::GogateStatus => Program::Script("bin/aos-gogate.mjs"),
             Action::HubOpen(_) | Action::HubStart => Program::Script("bin/aos-hub.mjs"),
         }
     }
@@ -158,6 +161,7 @@ impl Action {
                 vec![cmd.to_string(), s.clone()]
             }
             Action::RouterShow => v(&["show", "--json"]),
+            Action::GogateStatus => v(&["status"]),
             Action::RouterSet(role, targets) => {
                 if !crate::router::valid_role(role) {
                     return Err("unknown router role".into());

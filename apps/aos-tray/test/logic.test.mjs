@@ -118,3 +118,13 @@ test('library: core and problem items offer no install or removal', () => {
   assert.deepEqual(itemActions(LIB[2]), { install: false, uninstall: false });
   assert.deepEqual(itemActions({ name: 'x', problem: 'broken', installed: false }), { install: false, uninstall: false });
 });
+
+import { gatewayCounts, gogateTone } from '../ui/logic.js';
+
+test('home: gateway counts and go-gate tone', () => {
+  assert.deepEqual(gatewayCounts(null), { running: false, total: 0, ok: 0, failed: 0 });
+  assert.deepEqual(gatewayCounts({ running: true, upstreams: [{ ok: true }, { ok: false, error: 'x' }, { ok: false }] }), { running: true, total: 3, ok: 1, failed: 1 });
+  assert.equal(gogateTone('off'), 'warn');
+  assert.equal(gogateTone('hard'), 'ok');
+  assert.equal(gogateTone(null), 'muted');
+});

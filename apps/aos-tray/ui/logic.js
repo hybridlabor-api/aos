@@ -70,6 +70,20 @@ export function secretRows(list = []) {
 
 export const SCREENS = ['home', 'store', 'services', 'router', 'awake', 'projects', 'secrets', 'settings'];
 
+/** Home: gateway upstream counts. An upstream is failed when it has an error and is not ok. */
+export function gatewayCounts(st) {
+  const ups = (st && Array.isArray(st.upstreams)) ? st.upstreams : [];
+  const failed = ups.filter((u) => !u.ok && u.error).length;
+  const ok = ups.filter((u) => u.ok).length;
+  return { running: Boolean(st && st.running), total: ups.length, ok, failed };
+}
+
+/** Home: tone for the go-gate mode word. `off` is shown as a warning because nothing is guarded. */
+export function gogateTone(mode) {
+  if (!mode) return 'muted';
+  return mode === 'off' ? 'warn' : 'ok';
+}
+
 /** Library: filter and cap the catalog. `kind` is 'all' | 'skill' | 'agent'; `scope` 'all' | 'installed'. */
 export function filterItems(items, { q = '', kind = 'all', scope = 'all', limit = 60 } = {}) {
   const needle = String(q).trim().toLowerCase();

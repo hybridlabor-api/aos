@@ -3,6 +3,8 @@ export const STRINGS = {
   en: {
     'nav.home': 'Home', 'nav.store': 'Store', 'nav.services': 'Services', 'nav.projects': 'Projects', 'nav.secrets': 'Secrets', 'nav.settings': 'Settings',
     'nav.label': 'Main navigation', 'nav.router': 'Router', 'nav.awake': 'Always on',
+    'home.gateway': 'Gateway', 'home.gatewayUp': '{ok} of {total} MCP servers ok', 'home.gatewayFailed': '{n} failed to start. See Services.',
+    'home.gogate': 'Go-gate', 'home.gogate.off': 'Off', 'home.gogate.soft': 'Soft', 'home.gogate.hard': 'Hard', 'home.gogateOff': 'Nothing is blocked until you confirm.',
     'library.search': 'Search', 'library.kind': 'Type', 'library.show': 'Show', 'library.all': 'All', 'library.skills': 'Skills', 'library.agents': 'Agents', 'library.installedOnly': 'Installed',
     'library.skill': 'skill', 'library.agent': 'agent', 'library.count': '{n} items', 'library.countCapped': 'Showing {shown} of {total}. Narrow the search to see more.',
     'library.installed': 'installed', 'library.available': 'available', 'library.core': 'core', 'library.thirdParty': 'third party', 'library.needsAuth': 'needs sign-in',
@@ -55,6 +57,8 @@ export const STRINGS = {
   de: {
     'nav.home': 'Start', 'nav.store': 'Store', 'nav.services': 'Dienste', 'nav.projects': 'Projekte', 'nav.secrets': 'Secrets', 'nav.settings': 'Einstellungen',
     'nav.label': 'Hauptnavigation', 'nav.router': 'Router', 'nav.awake': 'Immer an',
+    'home.gateway': 'Gateway', 'home.gatewayUp': '{ok} von {total} MCP-Servern ok', 'home.gatewayFailed': '{n} konnten nicht starten. Siehe Dienste.',
+    'home.gogate': 'Go-Gate', 'home.gogate.off': 'Aus', 'home.gogate.soft': 'Weich', 'home.gogate.hard': 'Hart', 'home.gogateOff': 'Es wird nichts blockiert, bis du bestätigst.',
     'library.search': 'Suche', 'library.kind': 'Typ', 'library.show': 'Anzeigen', 'library.all': 'Alle', 'library.skills': 'Skills', 'library.agents': 'Agenten', 'library.installedOnly': 'Installiert',
     'library.skill': 'Skill', 'library.agent': 'Agent', 'library.count': '{n} Einträge', 'library.countCapped': '{shown} von {total} angezeigt. Suche eingrenzen, um mehr zu sehen.',
     'library.installed': 'installiert', 'library.available': 'verfügbar', 'library.core': 'Kern', 'library.thirdParty': 'Drittanbieter', 'library.needsAuth': 'braucht Anmeldung',

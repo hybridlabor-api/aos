@@ -271,6 +271,16 @@ async fn awake_set(app: AppHandle, kind: String, minutes: Option<u32>) -> Result
     apply_awake(&app, mode)
 }
 
+/// Home card: the go-gate mode word (read-only), or null when it cannot be read.
+#[tauri::command]
+async fn gogate_mode() -> Result<Option<String>, String> {
+    blocking(|| {
+        let o = cli::run(&Action::GogateStatus, &home()?)?;
+        Ok(crate::overview::parse_gogate_mode(&format!("{}\n{}", o.stdout, o.stderr)))
+    })
+    .await
+}
+
 // ------------------------------------------------------------------ store (hub API from Rust)
 
 /// Hub token, kept in Rust only. A new hub start makes a new token; `post_json` refetches on 401.
@@ -682,6 +692,7 @@ pub fn run() {
             service_restart,
             projects_list,
             open_store,
+            gogate_mode,
             store_catalog,
             store_doc,
             store_install,
