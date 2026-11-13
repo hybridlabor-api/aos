@@ -1,0 +1,84 @@
+name: aos-tray
+
+# Builds the AOS desktop companion (apps/aos-tray) on Windows and macOS, runs its unit tests
+# and uploads the installers. Nothing is signed or published.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/aos-tray/**'
+      - '.github/workflows/aos-tray.yml'
+  pull_request:
+    paths:
+      - 'apps/aos-tray/**'
+      - '.github/workflows/aos-tray.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aos-tray-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TAURI_CLI: '@tauri-apps/cli@2.12.4'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: aos-tray-windows
+            paths: |
+              apps/aos-tray/src-tauri/target/release/bundle/nsis/*.exe
+              apps/aos-tray/src-tauri/target/release/bundle/msi/*.msi
+          - os: macos-latest
+            artifact: aos-tray-macos
+            paths: |
+              apps/aos-tray/src-tauri/target/release/bundle/dmg/*.dmg
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/aos-tray
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+        with:
+          workspaces: apps/aos-tray/src-tauri
+
+      - name: Generate icons from app-icon.png
+        run: npx --yes ${{ env.TAURI_CLI }} icon src-tauri/app-icon.png
+
+      - name: Unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build installers
+        run: npx --yes ${{ env.TAURI_CLI }} build
+
+      - name: Upload installers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+
+      # No Cargo.lock is committed yet (no local toolchain); keep the resolved one so it can be.
+      - name: Upload resolved Cargo.lock
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cargo-lock-${{ matrix.os }}
+          path: apps/aos-tray/src-tauri/Cargo.lock
+          if-no-files-found: warn
