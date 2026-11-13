@@ -89,3 +89,26 @@ test('aos-project-doctor: OpenWiki initialized, watched, memB advice, WORKSPACE 
     rmSync(tmpWorkspace, { recursive: true, force: true });
   }
 });
+
+test('aos-project-doctor: finds the openwiki/ folder written by OpenWiki 0.9', () => {
+  const { tmpHome, tmpWorkspace, root } = setupTempEnv();
+  try {
+    mkdirSync(path.join(root, 'openwiki'));
+    writeFileSync(path.join(root, 'openwiki', 'quickstart.md'), 'test');
+    let stdout = '';
+    try {
+      stdout = execFileSync(process.execPath, [doctorScript, root, '--json'], {
+        env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome },
+        encoding: 'utf8'
+      });
+    } catch (err) {
+      stdout = err.stdout;
+    }
+    const row = JSON.parse(stdout).results.find(r => r.area === 'openwiki' && r.name === 'OpenWiki initialized');
+    assert.equal(row.ok, true);
+    assert.match(row.detail, /^openwiki\/ present/);
+  } finally {
+    rmSync(tmpHome, { recursive: true, force: true });
+    rmSync(tmpWorkspace, { recursive: true, force: true });
+  }
+});
