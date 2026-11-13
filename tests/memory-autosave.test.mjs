@@ -155,6 +155,23 @@ test('findProjects: .openwiki or AGENTS.md, two levels deep, worktrees and dot d
   assert.deepEqual(mi.findProjects([ws]), [path.join(ws, 'a'), path.join(ws, 'group', 'b')]);
 });
 
+test('findProjects: a workspace folder with its own AGENTS.md is not one project, its child projects are listed', (t) => {
+  const home = tmp(t);
+  const ws = path.join(home, 'ws');
+  for (const p of ['one/.git', 'two/.git', 'group/three/.git', 'docs']) fs.mkdirSync(path.join(ws, p), { recursive: true });
+  write(path.join(ws, 'AGENTS.md'), ''); write(path.join(ws, 'one', 'AGENTS.md'), ''); write(path.join(ws, 'two', '.openwiki', 'x'), '');
+  write(path.join(ws, 'group', 'AGENTS.md'), ''); write(path.join(ws, 'group', 'three', 'AGENTS.md'), '');
+  assert.deepEqual(mi.findProjects([ws]), [path.join(ws, 'group', 'three'), path.join(ws, 'one'), path.join(ws, 'two')]);
+  // A git repo with AGENTS.md stays one project even when subfolders have their own AGENTS.md.
+  const repo = path.join(home, 'repo');
+  fs.mkdirSync(path.join(repo, '.git'), { recursive: true }); fs.mkdirSync(path.join(repo, 'sub'));
+  write(path.join(repo, 'AGENTS.md'), ''); write(path.join(repo, 'sub', 'AGENTS.md'), '');
+  assert.deepEqual(mi.findProjects([repo]), [repo]);
+  // A workspace with no child projects is still counted as one.
+  const lone = path.join(home, 'lone'); write(path.join(lone, 'AGENTS.md'), '');
+  assert.deepEqual(mi.findProjects([lone]), [lone]);
+});
+
 test('aos-memb-ingest: says how to add paths when empty, lists projects with --dry-run, off when memb is excluded', (t) => {
   const home = tmp(t);
   const ws = path.join(home, 'dev');
