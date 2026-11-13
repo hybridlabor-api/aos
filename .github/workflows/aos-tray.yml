@@ -63,7 +63,9 @@ jobs:
         run: npx --yes ${{ env.TAURI_CLI }} icon src-tauri/app-icon.png
 
       - name: Unit tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        # Pure modules only: a Windows test binary that links tauri can fail to load without
+        # the app manifest tauri-build embeds into the real executable.
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib
 
       - name: Build installers
         run: npx --yes ${{ env.TAURI_CLI }} build
@@ -77,6 +79,7 @@ jobs:
 
       # No Cargo.lock is committed yet (no local toolchain); keep the resolved one so it can be.
       - name: Upload resolved Cargo.lock
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cargo-lock-${{ matrix.os }}

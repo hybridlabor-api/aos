@@ -3,6 +3,7 @@
 //! backup under ~/.aos/backups/aos-tray/ (last KEEP kept), then replaces the file atomically.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub const KEEP: usize = 10;
@@ -33,6 +34,11 @@ pub struct Loaded {
 }
 
 pub fn load(file: &Path) -> Result<Loaded, String> {
+    if let Ok(m) = fs::metadata(file) {
+        if m.len() > MAX_BYTES as u64 {
+            return Err("AGENTS.md is larger than 1 MiB".into());
+        }
+    }
     let text = match fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -72,14 +78,30 @@ pub fn save(file: &Path, home: &Path, text: &str, expected_fingerprint: &str, no
         }
         backup = Some(b);
     }
-    let parent = file.parent().ok_or("no parent dir")?;
+    // A symlinked ~/AGENTS.md (dotfile setups) is written through to its real target, so the
+    // link survives.
+    let target = match fs::symlink_metadata(file) {
+        Ok(m) if m.file_type().is_symlink() => fs::canonicalize(file).map_err(|e| format!("cannot resolve AGENTS.md link ({})", e.kind()))?,
+        _ => file.to_path_buf(),
+    };
+    let parent = target.parent().ok_or("no parent dir")?;
     let tmp = parent.join(format!("AGENTS.md.{}.aos-tray.tmp", std::process::id()));
-    let res = fs::write(&tmp, text.as_bytes()).and_then(|_| fs::rename(&tmp, file));
+    // create_new: never follow or reuse a pre-existing path.
+    let f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp).map_err(|e| format!("cannot create temp file ({})", e.kind()))?;
+    let res = write_and_rename(f, text, &tmp, &target);
     if res.is_err() {
+        // Our own temp file, created above with create_new.
         let _ = fs::remove_file(&tmp);
     }
     res.map_err(|e| format!("cannot write AGENTS.md ({})", e.kind()))?;
     Ok(backup)
+}
+
+fn write_and_rename(mut f: fs::File, text: &str, tmp: &Path, target: &Path) -> std::io::Result<()> {
+    f.write_all(text.as_bytes())?;
+    f.sync_all()?;
+    drop(f);
+    fs::rename(tmp, target)
 }
 
 #[cfg(test)]
@@ -107,6 +129,20 @@ mod tests {
         // stale fingerprint is refused and nothing changes
         assert!(save(&file, home.path(), "newer", &l.fingerprint, 2).is_err());
         assert_eq!(fs::read_to_string(&file).unwrap(), "new");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_writes_through_symlink() {
+        let home = tempfile::tempdir().unwrap();
+        let real = home.path().join("dotfiles-AGENTS.md");
+        fs::write(&real, "old").unwrap();
+        let link = home.path().join("AGENTS.md");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let l = load(&link).unwrap();
+        save(&link, home.path(), "new", &l.fingerprint, 1).unwrap();
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(&real).unwrap(), "new");
     }
 
     #[test]

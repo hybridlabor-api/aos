@@ -241,19 +241,17 @@ pub fn run_program(program: &Path, args: &[String], home: &Path, timeout: Durati
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    // Own process group, so a timeout can kill node and everything it started.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     let mut child = cmd.spawn().map_err(|e| format!("cannot start {} ({})", program.display(), e.kind()))?;
-    let mut so = child.stdout.take().ok_or("no stdout")?;
-    let mut se = child.stderr.take().ok_or("no stderr")?;
-    let t_out = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = so.read_to_string(&mut s);
-        s
-    });
-    let t_err = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = se.read_to_string(&mut s);
-        s
-    });
+    let so = child.stdout.take().ok_or("no stdout")?;
+    let se = child.stderr.take().ok_or("no stderr")?;
+    let rx_out = reader(so);
+    let rx_err = reader(se);
     let start = Instant::now();
     let mut timed_out = false;
     let status = loop {
@@ -261,6 +259,7 @@ pub fn run_program(program: &Path, args: &[String], home: &Path, timeout: Durati
             Ok(Some(s)) => break Some(s),
             Ok(None) if start.elapsed() >= timeout => {
                 timed_out = true;
+                kill_tree(child.id());
                 let _ = child.kill();
                 break child.wait().ok();
             }
@@ -268,12 +267,44 @@ pub fn run_program(program: &Path, args: &[String], home: &Path, timeout: Durati
             Err(e) => return Err(format!("wait failed ({})", e.kind())),
         }
     };
+    // A detached grandchild (a service the CLI started) may keep the pipes open: never wait
+    // on the readers without a bound.
+    let grace = Duration::from_secs(5);
     Ok(Output {
         code: status.and_then(|s| s.code()),
-        stdout: t_out.join().unwrap_or_default(),
-        stderr: t_err.join().unwrap_or_default(),
+        stdout: rx_out.recv_timeout(grace).unwrap_or_default(),
+        stderr: rx_err.recv_timeout(grace).unwrap_or_default(),
         timed_out,
     })
+}
+
+fn reader<R: Read + Send + 'static>(mut r: R) -> std::sync::mpsc::Receiver<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = r.read_to_end(&mut buf);
+        let _ = tx.send(String::from_utf8_lossy(&buf).into_owned());
+    });
+    rx
+}
+
+#[cfg(windows)]
+fn kill_tree(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    let root = std::env::var_os("SystemRoot").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from("C:\\Windows"));
+    let _ = Command::new(root.join("System32").join("taskkill.exe"))
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x0800_0000)
+        .status();
+}
+
+#[cfg(unix)]
+fn kill_tree(pid: u32) {
+    // The child leads its own group (process_group(0) above): signal the whole group.
+    let _ = Command::new("/bin/kill").args(["-KILL", "--", &format!("-{pid}")]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
 }
 
 pub fn run(action: &Action, home: &Path) -> Result<Output, String> {
@@ -334,6 +365,26 @@ mod tests {
         assert!(verified_package_root(home.path()).is_none());
         std::fs::write(root.path().join("package.json"), r#"{"name":"@hybridlabor-api/aos"}"#).unwrap();
         assert_eq!(verified_package_root(home.path()).as_deref(), Some(root.path()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timeout_kills_and_returns() {
+        let home = tempfile::tempdir().unwrap();
+        let start = Instant::now();
+        let o = run_program(Path::new("/bin/sleep"), &["30".to_string()], home.path(), Duration::from_millis(500)).unwrap();
+        assert!(o.timed_out);
+        assert!(!o.ok());
+        assert!(start.elapsed() < Duration::from_secs(10));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn captures_output() {
+        let home = tempfile::tempdir().unwrap();
+        let o = run_program(Path::new("/bin/echo"), &["hello".to_string()], home.path(), Duration::from_secs(10)).unwrap();
+        assert!(o.ok());
+        assert_eq!(o.stdout.trim(), "hello");
     }
 
     #[test]

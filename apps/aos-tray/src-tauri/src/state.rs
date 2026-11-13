@@ -309,7 +309,8 @@ mod tests {
         assert!(!is_update_available("5.4.8", "unknown"));
         assert!(!is_update_available("5.4.8", "5.5.0-beta.1"));
         assert!(is_update_available("5.5.0-beta.1", "5.5.0"));
-        assert!(is_update_available("5.5.0-beta.1", "5.4.9"));
+        // Same as lib/update-check.js isNewer: an older stable is no update for a prerelease.
+        assert!(!is_update_available("5.5.0-beta.1", "5.4.9"));
     }
 
     #[test]

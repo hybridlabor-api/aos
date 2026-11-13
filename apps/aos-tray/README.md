@@ -46,8 +46,10 @@ argv, and the flags come from `docs/cli-reference.md`.
 | Read-only | `aos store packs`, `aos memory list`, `aos-router show --json`, `aos-hub open --tab services\|store` |
 
 The tray runs "aos" as `node <packageRoot>/installer.js`, and the other CLIs as
-`node <packageRoot>/bin/<cli>.mjs`. It does not use the npm shims, so no `cmd.exe` is involved
-on Windows. `packageRoot` comes from `~/.agents/lib/.aos-package-root.json`, which the
+`node <packageRoot>/bin/<cli>.mjs`. It does not use the npm shims, so these calls involve no
+`cmd.exe` on Windows. The exceptions are Install and Update: they run `npx`, which on Windows
+is `npx.cmd`. Rust starts a `.cmd` file through `cmd.exe`. Their arguments are constants, so no
+user input reaches that command line. `packageRoot` comes from `~/.agents/lib/.aos-package-root.json`, which the
 installer writes. The tray only trusts that path if `package.json` there is named
 `@hybridlabor-api/aos`.
 
@@ -64,7 +66,8 @@ The hub token in `~/.aos/hub/hub.json` is never read.
 ## Security model
 
 - **No shell, fixed argv.** Commands run through `std::process::Command` with constant
-  arguments. The only value from the UI that can reach an argv is a gateway server name, and it
+  arguments. The one shell on the path is `cmd.exe` for `npx.cmd` on Windows (Install and
+  Update), and its arguments are constants too. The only value from the UI that can reach an argv is a gateway server name, and it
   must be one of the shipped `GATEWAY_SERVERS` (`lib/gateway/config.js`). Every name in that
   list is checked against the list, so a leading `-` is impossible.
 - **Native confirmation for every change.** Install, update, repair, gateway add/remove,
@@ -77,17 +80,24 @@ The hub token in `~/.aos/hub/hub.json` is never read.
   `installMode: currentUser`).
 - **One action at a time.** A second change while one runs is refused. The background refresh
   skips while a change is running.
-- **Child processes:** stdin is `null` (so no hang on a prompt), each action has a timeout
-  (30 min for install/update/repair), and no console window opens on Windows.
+- **Child processes:**
+  - stdin is `null`, so a prompt cannot hang the tray.
+  - Each action has a timeout (30 min for install/update/repair). On timeout the whole process
+    tree is killed: `taskkill /T` on Windows, the process group on macOS.
+  - Output collection is bounded too, so a service the CLI leaves running cannot block the tray.
+  - No console window opens on Windows.
 - **Secrets:**
   - Values never go back to the UI. It only gets names and whether each has a value, so they are masked and cannot be revealed.
   - Values are never logged, and never appear in a dialog.
-  - Writes go to a new temp file (mode 600 on macOS) that is renamed over `secrets.env`. The `~/.aos` directory is created with mode 700.
+  - Writes go to a new temp file (mode 600 on macOS) that is renamed over `secrets.env`. The temp file is created exclusively, so a pre-existing path is never followed.
+  - If `~/.aos` is missing, it is created with mode 700. An existing directory keeps its mode.
   - On macOS a file readable by group or others is refused, as the CLI refuses it.
+  - A symlinked `secrets.env` is refused.
   - Values with line breaks are rejected. The file is capped at 64 KiB.
 - **AGENTS.md:** a save is refused if the file changed on disk since it was loaded, for example
   because an AOS update rewrote its managed blocks. Before each save the old file is copied to
-  `~/.aos/backups/aos-tray/`, and the last 10 copies are kept.
+  `~/.aos/backups/aos-tray/`, and the last 10 copies are kept. A symlinked `~/AGENTS.md` is
+  written through to its target, so the link stays.
 - **No telemetry, no network** of its own. The web UI uses a strict CSP and only `core:default`
   Tauri permissions; all data is rendered with `textContent`.
 
@@ -103,7 +113,7 @@ Commands, from `apps/aos-tray/`:
 
 ```sh
 npx --yes @tauri-apps/cli@2.12.4 icon src-tauri/app-icon.png   # generates src-tauri/icons/
-cargo test --manifest-path src-tauri/Cargo.toml                # unit tests
+cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --lib   # unit tests (no Tauri)
 npx --yes @tauri-apps/cli@2.12.4 build                         # installers in src-tauri/target/release/bundle/
 ```
 

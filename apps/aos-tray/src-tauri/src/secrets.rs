@@ -155,6 +155,12 @@ pub fn entries(text: &str) -> Vec<SecretEntry> {
 }
 
 pub fn read_text(file: &Path) -> Result<String, String> {
+    // A rename would replace a link and leave its target stale, so a symlink is refused.
+    if let Ok(m) = fs::symlink_metadata(file) {
+        if m.file_type().is_symlink() {
+            return Err("~/.aos/secrets.env is a symlink; the tray only edits a regular file".into());
+        }
+    }
     match fs::metadata(file) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
         Err(e) => return Err(format!("cannot read secrets file ({})", e.kind())),
@@ -189,8 +195,9 @@ pub fn write_text(file: &Path, text: &str) -> Result<(), String> {
     let dir = file.parent().ok_or("secrets path has no parent directory")?;
     create_private_dir(dir)?;
     let tmp = dir.join(format!("secrets.env.{}.aos-tray.tmp", std::process::id()));
+    // Fails if the temp path exists: nothing pre-placed is followed or deleted.
+    let mut f = open_private_new(&tmp).map_err(|e| format!("cannot create temp file ({})", e.kind()))?;
     let result = (|| -> std::io::Result<()> {
-        let mut f = open_private_new(&tmp)?;
         f.write_all(text.as_bytes())?;
         f.sync_all()?;
         drop(f);
@@ -257,13 +264,15 @@ mod tests {
 
     #[test]
     fn parses_like_the_cli() {
-        let text = "# comment\nexport A=1\nB = \"x\\\"y\\\\z\"\nC='lit \"q\"'\n  D=raw value \r\nbad-name=1\nE=\nA=2\n";
+        let text = "# comment\nexport A=1\nB=\"x\\\"y\\\\z\"\nS = \"spaced\"\nC='lit \"q\"'\n  D=raw value \r\nbad-name=1\nE=\nA=2\n";
         let p = parse(text);
         assert_eq!(
             p,
             vec![
                 ("A".into(), "2".into()),
                 ("B".into(), "x\"y\\z".into()),
+                // a space after `=` keeps the value verbatim, as in parseEnvText
+                ("S".into(), " \"spaced\"".into()),
                 ("C".into(), "lit \"q\"".into()),
                 ("D".into(), "raw value ".into()),
                 ("E".into(), "".into()),
@@ -348,6 +357,17 @@ mod tests {
         fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
         assert!(read_text(&file).is_err());
         assert!(set_or_remove(&file, "B", Some("2")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.env");
+        fs::write(&real, "A=1\n").unwrap();
+        let link = dir.path().join("secrets.env");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(read_text(&link).is_err());
     }
 
     #[test]

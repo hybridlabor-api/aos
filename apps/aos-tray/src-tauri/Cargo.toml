@@ -11,12 +11,22 @@ publish = false
 name = "aos_tray_lib"
 crate-type = ["rlib"]
 
+[[bin]]
+name = "aos-tray"
+path = "src/main.rs"
+required-features = ["app"]
+
+[features]
+default = ["app"]
+# The tray and window glue. Without it only the pure, unit-tested modules build.
+app = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-build"]
+
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-dialog = "2"
+tauri = { version = "2", features = ["tray-icon"], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
