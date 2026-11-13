@@ -138,6 +138,14 @@ test('a failing step reports the manual commands and does not throw', () => {
   assert.match(r.lines.join('\n'), /FAILED \(boom\)[\s\S]*run: codex plugin add bdb-aos@bdb-aos/);
 });
 
+test('Codex failing to load its own configuration gets a pointer to the config file', () => {
+  const run = () => ({ status: 1, stdout: '', stderr: 'Error: failed to load configuration' });
+  const r = go({ run });
+  assert.equal(r.ok, false);
+  const text = r.lines.join(' ');
+  assert.ok(text.includes('failed to load configuration') && text.includes('config.toml'), text);
+});
+
 test('check mode and dryRun never mutate or write state', () => {
   for (const extra of [{ mode: 'check' }, { dryRun: true }]) {
     const h = home(); const f = fakeCodex();
