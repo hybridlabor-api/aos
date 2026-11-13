@@ -169,3 +169,20 @@ test('aos-memb-ingest: says how to add paths when empty, lists projects with --d
   write(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['memb'], memoryIngest: { paths: [ws] } }));
   assert.match(run().stdout, /off/);
 });
+
+test('nightly job on win32: schtasks daily task at the chosen time, removed with /Delete; a failing schtasks reports no file', async (t) => {
+  const home = tmp(t);
+  const calls = [];
+  const run = async (cmd, args) => { calls.push([cmd, ...args]); };
+  const job = await nightly.install({ home, platform: 'win32', node: 'C:/node/node.exe', run, hour: 4, minute: 5 });
+  assert.equal(job.file, nightly.WIN_TASK);
+  assert.deepEqual(calls[0].slice(0, 7), ['schtasks', '/Create', '/F', '/SC', 'DAILY', '/TN', nightly.WIN_TASK]);
+  assert.equal(calls[0][calls[0].indexOf('/ST') + 1], '04:05');
+  const tr = calls[0][calls[0].indexOf('/TR') + 1];
+  assert.ok(tr.startsWith('"C:/node/node.exe" "') && tr.endsWith('aos-memb-ingest.mjs"'), tr);
+  assert.equal((await nightly.remove({ home, platform: 'win32', run })).removed, true);
+  assert.deepEqual(calls[1], ['schtasks', '/Delete', '/TN', nightly.WIN_TASK, '/F']);
+  const bad = await nightly.install({ home, platform: 'win32', run: async () => { throw new Error('Access is denied'); } });
+  assert.equal(bad.file, null);
+  assert.match(bad.error, /denied/);
+});
