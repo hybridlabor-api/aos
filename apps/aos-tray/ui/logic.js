@@ -68,7 +68,26 @@ export function secretRows(list = []) {
   return list.map((s) => ({ name: String(s.name), set: Boolean(s.has_value) }));
 }
 
-export const SCREENS = ['home', 'store', 'services', 'router', 'projects', 'secrets', 'settings'];
+export const SCREENS = ['home', 'store', 'services', 'router', 'awake', 'projects', 'secrets', 'settings'];
+
+/** Always on: label key, tone and remaining whole minutes (timer only) for the current mode. */
+export function awakeStatus(view) {
+  if (!view || !view.supported) return { key: 'awake.unsupported', tone: 'muted', minutes: 0 };
+  const m = view.mode || { kind: 'off' };
+  if (m.kind === 'on') return { key: 'awake.on', tone: 'ok', minutes: 0 };
+  if (m.kind === 'until') {
+    const left = Math.max(0, Math.ceil((m.until - view.now) / 60));
+    return left > 0 ? { key: 'awake.timer', tone: 'ok', minutes: left } : { key: 'awake.off', tone: 'muted', minutes: 0 };
+  }
+  return { key: 'awake.off', tone: 'muted', minutes: 0 };
+}
+
+/** Codenotch card: which state key and which actions make sense. */
+export function codenotchState(info) {
+  if (!info || !info.supported) return { key: 'codenotch.unsupported', tone: 'muted', canStart: false, canInstall: false };
+  if (!info.installed) return { key: 'codenotch.notInstalled', tone: 'warn', canStart: false, canInstall: true };
+  return { key: info.running ? 'codenotch.running' : 'codenotch.stopped', tone: info.running ? 'ok' : 'muted', canStart: !info.running, canInstall: true };
+}
 
 /** Router editor: add a target at the end of the list, or remove it when already present. */
 export function toggleTarget(list, name) {

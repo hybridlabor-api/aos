@@ -2,7 +2,9 @@
 //! runs them on any OS; the tray and window glue needs the default `app` feature.
 
 pub mod agents_md;
+pub mod awake;
 pub mod cli;
+pub mod codenotch;
 pub mod elevation;
 pub mod hub;
 pub mod projects;

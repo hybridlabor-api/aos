@@ -73,3 +73,21 @@ test('router editor: rows carry targets and source with defaults', () => {
   assert.deepEqual(rows, [{ role: 'builder', targets: ['claude'], source: 'user' }, { role: 'scout', targets: [], source: 'shipped' }]);
   assert.deepEqual(routerRows(null), []);
 });
+
+import { awakeStatus, codenotchState } from '../ui/logic.js';
+
+test('always on: status from the view', () => {
+  assert.equal(awakeStatus(null).key, 'awake.unsupported');
+  assert.equal(awakeStatus({ supported: false, mode: { kind: 'on' }, now: 0 }).key, 'awake.unsupported');
+  assert.equal(awakeStatus({ supported: true, mode: { kind: 'off' }, now: 0 }).key, 'awake.off');
+  assert.equal(awakeStatus({ supported: true, mode: { kind: 'on' }, now: 0 }).key, 'awake.on');
+  assert.deepEqual(awakeStatus({ supported: true, mode: { kind: 'until', until: 1000 + 61 }, now: 1000 }), { key: 'awake.timer', tone: 'ok', minutes: 2 });
+  assert.equal(awakeStatus({ supported: true, mode: { kind: 'until', until: 900 }, now: 1000 }).key, 'awake.off');
+});
+
+test('codenotch: state decides the actions', () => {
+  assert.equal(codenotchState(null).canInstall, false);
+  assert.deepEqual(codenotchState({ supported: true, installed: false, running: false }), { key: 'codenotch.notInstalled', tone: 'warn', canStart: false, canInstall: true });
+  assert.equal(codenotchState({ supported: true, installed: true, running: false }).canStart, true);
+  assert.equal(codenotchState({ supported: true, installed: true, running: true }).canStart, false);
+});

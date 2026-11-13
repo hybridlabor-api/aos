@@ -48,6 +48,9 @@ pub enum Action {
     /// `npx -y @hybridlabor-api/aos@latest update --yes`: `aos update` alone re-runs the
     /// installed package, so the newer version has to come from npm.
     Update,
+    /// `npx -y @hybridlabor-api/aos@latest update --yes --codenotch`: the AOS installer fetches
+    /// the Codenotch release, verifies its SHA-256 and runs the per-user installer.
+    CodenotchInstall,
     /// `aos repair --yes`
     Repair,
     /// `aos version`
@@ -95,7 +98,7 @@ pub fn valid_server(name: &str) -> bool {
 
 impl Action {
     pub fn changes_state(&self) -> bool {
-        matches!(self, Action::Install | Action::Update | Action::Repair | Action::GatewayAdd(_) | Action::GatewayRemove(_) | Action::ServiceRestart(_) | Action::RouterSet(..))
+        matches!(self, Action::Install | Action::Update | Action::CodenotchInstall | Action::Repair | Action::GatewayAdd(_) | Action::GatewayRemove(_) | Action::ServiceRestart(_) | Action::RouterSet(..))
     }
 
     /// Text of the native confirmation dialog, built here and never from webview input.
@@ -103,6 +106,7 @@ impl Action {
         Some(match self {
             Action::Install => "Install AOS for this user with `npx -y @hybridlabor-api/aos@latest --yes`? This downloads the package from npm and writes skills, hooks and MCP configs into your home directory.".into(),
             Action::Update => "Update AOS to the latest npm release (`npx -y @hybridlabor-api/aos@latest update --yes`)? Installed files are rewritten; the installer keeps backups.".into(),
+            Action::CodenotchInstall => "Install or update Codenotch through the AOS installer? It downloads the release, checks its SHA-256 and runs the per-user installer. The installer is not code-signed.".into(),
             Action::Repair => "Repair the installed AOS (`aos repair --yes`)? Installed files that drifted are rewritten.".into(),
             Action::GatewayAdd(s) => format!("Add `{s}` to the MCP gateway selection? The gateway service restarts."),
             Action::GatewayRemove(s) => format!("Remove `{s}` from the MCP gateway selection? The gateway service restarts; it disappears from harnesses on the next update."),
@@ -115,7 +119,7 @@ impl Action {
     /// Timeout: installs can take many minutes, probes must not hang the tray.
     pub fn timeout(&self) -> Duration {
         match self {
-            Action::Install | Action::Update | Action::Repair => Duration::from_secs(30 * 60),
+            Action::Install | Action::Update | Action::CodenotchInstall | Action::Repair => Duration::from_secs(30 * 60),
             Action::GatewayAdd(_) | Action::GatewayRemove(_) | Action::ServiceRestart(_) => Duration::from_secs(5 * 60),
             Action::Doctor => Duration::from_secs(3 * 60),
             _ => Duration::from_secs(60),
@@ -124,7 +128,7 @@ impl Action {
 
     pub fn program(&self) -> Program {
         match self {
-            Action::Install | Action::Update => Program::Npx,
+            Action::Install | Action::Update | Action::CodenotchInstall => Program::Npx,
             Action::Repair | Action::Version | Action::ServicesStatus | Action::Doctor | Action::StorePacks | Action::MemoryList | Action::ServiceRestart(_) => Program::Script("installer.js"),
             Action::GatewayStatus | Action::GatewayAdd(_) | Action::GatewayRemove(_) => Program::Script("bin/aos-gateway.mjs"),
             Action::RouterShow | Action::RouterSet(..) => Program::Script("bin/aos-router.mjs"),
@@ -138,6 +142,7 @@ impl Action {
         Ok(match self {
             Action::Install => v(&["-y", NPX_PACKAGE, "--yes"]),
             Action::Update => v(&["-y", NPX_PACKAGE, "update", "--yes"]),
+            Action::CodenotchInstall => v(&["-y", NPX_PACKAGE, "update", "--yes", "--codenotch"]),
             Action::Repair => v(&["repair", "--yes"]),
             Action::Version => v(&["version"]),
             Action::ServicesStatus => v(&["services", "status", "--json"]),

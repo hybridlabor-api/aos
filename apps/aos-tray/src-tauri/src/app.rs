@@ -2,7 +2,7 @@
 //! this file wires it to the tray menu, the main app window ("main"), the hub window ("hub",
 //! no IPC) and native dialogs.
 
-use crate::{agents_md, cli, elevation, hub, projects, secrets, state};
+use crate::{agents_md, awake, cli, codenotch, elevation, hub, projects, secrets, state};
 use crate::cli::{Action, HubTab};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -199,6 +199,96 @@ async fn router_set(app: AppHandle, role: String, targets: Vec<String>) -> Resul
     blocking(move || {
         let o = run_action(&app, Action::RouterSet(role, targets))?;
         let text = tail(&format!("{}{}", o.stdout, o.stderr), 2000);
+        if o.ok() { Ok(text) } else { Err(text) }
+    })
+    .await
+}
+
+// ------------------------------------------------------------------ always on (keep awake)
+
+/// The holder thread, the current mode and the tray menu item that shows it.
+struct AwakeState {
+    holder: awake::Holder,
+    mode: Mutex<awake::Mode>,
+    item: MenuItem<Wry>,
+}
+
+#[derive(Serialize)]
+struct AwakeView {
+    supported: bool,
+    mode: awake::Mode,
+    now: i64,
+}
+
+fn awake_label(mode: awake::Mode) -> &'static str {
+    match mode {
+        awake::Mode::Off => "Always on: off (click to turn on)",
+        awake::Mode::On => "Always on: on (click to turn off)",
+        awake::Mode::Until(_) => "Always on: timer running (click to turn off)",
+    }
+}
+
+fn awake_file() -> Result<PathBuf, String> {
+    Ok(home()?.join(".aos").join("tray-awake.json"))
+}
+
+/// Applies a mode: starts or releases the hold, updates the tray text, saves it for the next start.
+fn apply_awake(app: &AppHandle, mode: awake::Mode) -> Result<AwakeView, String> {
+    let st = app.state::<AwakeState>();
+    let mode = awake::normalize(mode, awake::now_unix());
+    st.holder.set(mode);
+    *st.mode.lock().map_err(|_| "state lock failed".to_string())? = mode;
+    let _ = st.item.set_text(awake_label(mode));
+    if let Ok(p) = awake_file() {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, serde_json::to_string(&mode).unwrap_or_default());
+    }
+    Ok(AwakeView { supported: awake::supported(), mode, now: awake::now_unix() })
+}
+
+#[tauri::command]
+async fn awake_get(app: AppHandle) -> Result<AwakeView, String> {
+    let st = app.state::<AwakeState>();
+    let now = awake::now_unix();
+    let mode = awake::normalize(*st.mode.lock().map_err(|_| "state lock failed".to_string())?, now);
+    Ok(AwakeView { supported: awake::supported(), mode, now })
+}
+
+/// `kind` is "off", "on" or "timer" (with `minutes`). Harmless, so no native confirmation.
+#[tauri::command]
+async fn awake_set(app: AppHandle, kind: String, minutes: Option<u32>) -> Result<AwakeView, String> {
+    if !awake::supported() {
+        return Err("Always on is available on Windows and macOS only".into());
+    }
+    let mode = match kind.as_str() {
+        "off" => awake::Mode::Off,
+        "on" => awake::Mode::On,
+        "timer" => awake::timer(awake::now_unix(), minutes.ok_or_else(|| "minutes is required".to_string())?)?,
+        _ => return Err("unknown mode".into()),
+    };
+    apply_awake(&app, mode)
+}
+
+// ------------------------------------------------------------------ codenotch
+
+#[tauri::command]
+async fn codenotch_info() -> Result<codenotch::Info, String> {
+    blocking(|| Ok(codenotch::detect(&home()?))).await
+}
+
+#[tauri::command]
+async fn codenotch_start() -> Result<(), String> {
+    blocking(|| codenotch::start(&home()?)).await
+}
+
+/// Install or update through the AOS installer (checksum verified there), after a native confirm.
+#[tauri::command]
+async fn codenotch_install(app: AppHandle) -> Result<String, String> {
+    blocking(move || {
+        let o = run_action(&app, Action::CodenotchInstall)?;
+        let text = tail(&format!("{}{}", o.stdout, o.stderr), 3000);
         if o.ok() { Ok(text) } else { Err(text) }
     })
     .await
@@ -528,7 +618,12 @@ pub fn run() {
             doctor_view,
             service_restart,
             projects_list,
-            open_store
+            open_store,
+            awake_get,
+            awake_set,
+            codenotch_info,
+            codenotch_start,
+            codenotch_install
         ])
         .on_window_event(|window, event| {
             // Closing the main window hides it (the tray stays); the hub window really closes.
@@ -550,15 +645,20 @@ pub fn run() {
             let hub = MenuItem::with_id(app, "store", "Open Store", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "open", "Open AOS...", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit AOS App (services keep running)", true, None::<&str>)?;
+            let awake_item = MenuItem::with_id(app, "awake", awake_label(awake::Mode::Off), awake::supported(), None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
             let sep3 = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(app, &[&version, &update_status, &services, &sep1, &install, &update, &doctor, &sep2, &hub, &settings, &sep3, &quit])?;
+            let menu = Menu::with_items(app, &[&version, &update_status, &services, &sep1, &install, &update, &doctor, &sep2, &hub, &settings, &awake_item, &sep3, &quit])?;
 
             let mut tray = TrayIconBuilder::with_id("aos").tooltip("AOS").menu(&menu).on_menu_event(|app, event| {
                 let id = event.id().as_ref().to_string();
                 match id.as_str() {
                     "open" => show_main(app),
+                    "awake" => {
+                        let on = !matches!(app.state::<AwakeState>().mode.lock().map(|m| *m).unwrap_or_default(), awake::Mode::Off);
+                        let _ = apply_awake(app, if on { awake::Mode::Off } else { awake::Mode::On });
+                    }
                     "quit" => app.exit(0),
                     _ => tray_action(app.clone(), id),
                 }
@@ -569,6 +669,13 @@ pub fn run() {
             tray.build(app)?;
 
             app.manage(TrayItems { version, update: update_status, services, install });
+
+            // Always on: restore the saved mode (an expired timer falls back to off).
+            app.manage(AwakeState { holder: awake::Holder::start(), mode: Mutex::new(awake::Mode::Off), item: awake_item });
+            if awake::supported() {
+                let saved = awake_file().ok().and_then(|p| std::fs::read_to_string(p).ok()).map(|t| awake::parse_saved(&t)).unwrap_or_default();
+                let _ = apply_awake(app.handle(), saved);
+            }
 
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {

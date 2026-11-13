@@ -1,7 +1,7 @@
 // AOS App main window. All data is rendered with textContent (never innerHTML). Every
 // state-changing call goes to a Rust command that shows its own native confirmation.
 import { t as translate, detectLang } from './i18n.js';
-import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows, routerRows, toggleTarget, moveTarget } from './logic.js';
+import { SCREENS, screenFromHash, servicesSummary, serviceState, doctorSummary, detailText, upstreamRows, restartConfirmed, gitBadge, projectName, secretRows, routerRows, toggleTarget, moveTarget, awakeStatus, codenotchState } from './logic.js';
 
 const invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args);
 const $ = (id) => document.getElementById(id);
@@ -268,6 +268,55 @@ function routerRow(r, known) {
   };
   return li;
 }
+
+// ---------------------------------------------------------------- always on + codenotch
+let awakeView = null;
+function renderAwake(v) {
+  awakeView = v;
+  const s = awakeStatus(v);
+  const box = $('awake-state'); box.textContent = '';
+  box.append(el('div', t(s.key, { n: s.minutes }), `metric ${s.tone}`));
+  const toggle = $('awake-toggle');
+  const on = v && v.supported && v.mode && v.mode.kind !== 'off' && s.key !== 'awake.off';
+  toggle.textContent = t(on ? 'awake.turnOff' : 'awake.turnOn');
+  toggle.disabled = !(v && v.supported);
+  $('awake-timer').querySelectorAll('input,button').forEach((n) => { n.disabled = !(v && v.supported); });
+}
+async function awakeSet(kind, minutes) {
+  try { renderAwake(await invoke('awake_set', { kind, minutes })); }
+  catch (e) { const box = $('awake-state'); box.textContent = ''; errorRow(box, e); }
+}
+loaders.awake = async () => {
+  skeleton($('awake-state'), 1); skeleton($('codenotch-state'), 1);
+  try { renderAwake(await invoke('awake_get')); } catch (e) { $('awake-state').textContent = ''; errorRow($('awake-state'), e, loaders.awake); }
+  loadCodenotch();
+};
+$('awake-refresh').onclick = () => loaders.awake();
+$('awake-toggle').onclick = () => busy($('awake-toggle'), () => awakeSet(awakeStatus(awakeView).key === 'awake.off' ? 'on' : 'off'));
+$('awake-timer').addEventListener('submit', (ev) => { ev.preventDefault(); const n = Number($('awake-minutes').value); awakeSet('timer', Number.isInteger(n) && n > 0 ? n : 60); });
+
+async function loadCodenotch() {
+  const box = $('codenotch-state');
+  try {
+    const info = await invoke('codenotch_info');
+    const s = codenotchState(info);
+    box.textContent = '';
+    box.append(el('div', t(s.key), `metric ${s.tone}`));
+    if (info.path) box.append(el('p', info.path, 'note mono'));
+    $('codenotch-start').disabled = !s.canStart;
+    $('codenotch-install').disabled = !s.canInstall;
+  } catch (e) { box.textContent = ''; errorRow(box, e, loadCodenotch); }
+}
+$('codenotch-start').onclick = () => busy($('codenotch-start'), async () => {
+  try { await invoke('codenotch_start'); $('codenotch-msg').textContent = t('codenotch.started'); setTimeout(loadCodenotch, 1500); }
+  catch (e) { $('codenotch-msg').textContent = t('common.failed', { e: errText(e) }); }
+});
+$('codenotch-install').onclick = () => busy($('codenotch-install'), async () => {
+  $('codenotch-msg').textContent = t('codenotch.working');
+  try { $('codenotch-msg').textContent = await invoke('codenotch_install'); }
+  catch (e) { $('codenotch-msg').textContent = quiet(e) ? t('common.cancelled') : t('common.failed', { e: errText(e) }); }
+  loadCodenotch();
+});
 
 // ---------------------------------------------------------------- projects
 loaders.projects = async () => {
