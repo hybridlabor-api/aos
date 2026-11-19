@@ -13,6 +13,7 @@ import {
   parseV5Settings,
   parseWorktrees,
   redactSession,
+  resolveHome,
   renderErrorText,
   roleHint,
   tokenEstimate,
@@ -641,4 +642,12 @@ test('a stale failed probe does not evict a newer entry', async () => {
   await first.catch(() => undefined)
   expect(await cache.get('k', 21, async () => 3)).toBe(2)
   expect(await second).toBe(2)
+})
+
+test('resolveHome falls back to USERPROFILE when HOME is empty', () => {
+  expect(resolveHome('C:\\Users\\x', 'C:\\Users\\y')).toBe('C:\\Users\\x')
+  expect(resolveHome('', 'C:\\Users\\y')).toBe('C:\\Users\\y')
+  expect(resolveHome(undefined, undefined)).toBe('')
+  expect(resolveHome({ value: 'C:\\Users\\x' }, { value: 'C:\\Users\\y' })).toBe('C:\\Users\\x')
+  expect(resolveHome({ value: '' }, { value: 'C:\\Users\\y' })).toBe('C:\\Users\\y')
 })
