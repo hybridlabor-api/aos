@@ -6,6 +6,7 @@ risk: safe
 tools:
 - claude-code
 - opencode
+- antigravity
 ---
 
 # gogate
@@ -22,6 +23,7 @@ grants are set by the human typing a plain message, see below.
   `node .claude/hooks/go-grant.mjs --status`) and show the output as is.
   When the human typed `gogate status`, the status is already in your context
   from the hook. Show that.
+- On Antigravity do NOT run go-grant.mjs --status. The gate blocks it as an unscoped command and it shows a stale mode. Judge a mode change by the result of the next guarded command.
 - **You never change a mode or create a grant.** You do not type, echo, relay
   or schedule a gogate command, and you do not write anything under
   `~/.aos/gate/` or `~/.aos/go/` (the hooks block it). It would not work anyway:
@@ -121,3 +123,16 @@ merge`) is not a GO.
   ways an agent could post one (see above; any non-GET network call to the OpenCode server's own loopback port counts, whatever the path), honours `off` and `soft` as on Claude
   (plain form only; `off` and grants expire as on Claude), but a
   prompt injected by other means would count.
+
+## On Antigravity
+
+On Antigravity, go-gate.mjs reads plain typed gogate ... messages from the
+agy transcript at the next tool call (agyGogateCommands, keyed by
+conversationId). A mode "off" lets commands through. No hook writes into the
+agent context, so no confirmation appears after the human types gogate off;
+missing confirmation is not a failure. To check, run a guarded command and read
+the gate message. The agent never sets a mode or grant itself.
+Note: go-grant.mjs --status does not read the agy transcript and shows a
+stale mode; do not use it to check a mode change. Judge by the result of the
+next guarded command. Until the gate fix is installed, the first message of a
+conversation can carry a settings block that prevents recognition.
