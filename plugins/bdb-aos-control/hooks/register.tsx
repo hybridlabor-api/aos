@@ -241,7 +241,7 @@ async function loadFleet($: EngineInterface) {
     await update($, fleet_, () => demoFleet())
     return
   }
-  const home = await $.env.get('HOME')
+  const home = resolveHome(await $.env.get('HOME'), await $.env.get('USERPROFILE'))
   const dir = `${home}/.aos/fleet`
   if (!(await $.fs.exists(dir))) return
   const now = await $.clock.now()
@@ -306,7 +306,7 @@ async function loadGate($: EngineInterface) {
     await update($, gate_, () => ({ mode: 'soft', grants: [{ scope: 'push-feature', minutesLeft: 74 }], raw: 'AOS go-gate, session demo: mode soft' }))
     return
   }
-  const home = await $.env.get('HOME')
+  const home = resolveHome(await $.env.get('HOME'), await $.env.get('USERPROFILE'))
   let next: GateState
   try {
     const r = await $.process.run(['node', `${home}/.claude/hooks/go-grant.mjs`, '--status', '--session', await $.session.id()])
@@ -370,7 +370,7 @@ async function loadProfile($: EngineInterface) {
     await update($, profile_, () => ({ profile: 'work', minutesLeft: 187 }))
     return
   }
-  const home = await $.env.get('HOME')
+  const home = resolveHome(await $.env.get('HOME'), await $.env.get('USERPROFILE'))
   let found: GateProfile | null = null
   for (const cmd of [['aos-gate', 'status'], ['node', `${home}/.agents/bin/aos-gate.mjs`, 'status']]) {
     try {
@@ -385,7 +385,7 @@ async function loadProfile($: EngineInterface) {
 }
 
 async function loadProfiles($: EngineInterface) {
-  const home = await $.env.get('HOME')
+  const home = resolveHome(await $.env.get('HOME'), await $.env.get('USERPROFILE'))
   const text = await $.fs.read(`${home}/.aos/v5-settings.json`).catch(() => '{}')
   const { installProfile, contextProfile } = parseV5Settings(text)
   await update($, installProfile_, () => installProfile)
@@ -399,7 +399,7 @@ async function loadServices($: EngineInterface) {
     await update($, services_, () => KNOWN_SERVICES.map(s => ({ ...s, status: 'running' as const })))
     return
   }
-  const home = await $.env.get('HOME')
+  const home = resolveHome(await $.env.get('HOME'), await $.env.get('USERPROFILE'))
   const hub = await $.http.fetch(`http://127.0.0.1:7900/api/services`).catch(() => null)
   if (hub?.ok) {
     const list = parseServices(hub.text)
@@ -968,4 +968,10 @@ export const register: Register = on => {
       return errorBox($, e, err)
     }
   })
+}
+
+export function resolveHome(home: unknown, userprofile: unknown): string {
+  const h = typeof home === 'string' ? home : (home as { value?: string } | null)?.value ?? ''
+  const u = typeof userprofile === 'string' ? userprofile : (userprofile as { value?: string } | null)?.value ?? ''
+  return h.trim() ? h : u.trim() ? u : ''
 }
