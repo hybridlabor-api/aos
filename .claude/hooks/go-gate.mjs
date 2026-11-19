@@ -2834,8 +2834,8 @@ export function agyGogateCommands(transcriptPath, key, now = Date.now()) {
       const text = extractAgyText(e.content);
       const parsed = parseGogate(text);
       if (!parsed || parsed.error) continue;
-      const rawTs = Date.parse(e.timestamp ?? e.createdAt ?? e.time);
-      const eid = e.id ?? e.stepIdx ?? e.index ?? null;
+      const rawTs = Date.parse(e.timestamp ?? e.createdAt ?? e.time ?? e.created_at);
+      const eid = e.id ?? e.stepIdx ?? e.index ?? e.step_index ?? null;
       out.push({ id: null, ts: Number.isFinite(rawTs) ? Math.min(rawTs, now) : NaN, hash: textHash(text), parsed, strict: parsed.form === "plain", eid, last: turns });
     }
     for (const c of out) c.fresh = c.last === turns;
