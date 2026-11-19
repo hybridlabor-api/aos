@@ -2482,10 +2482,10 @@ function extractClaudeText(content) {
   return "";
 }
 
-function extractAgyText(rawContent) {
+export function extractAgyText(rawContent) {
   if (!rawContent || typeof rawContent !== "string") return "";
   // Strip metadata tags if present
-  const text = rawContent.replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/gi, "");
+  const text = rawContent.replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/gi, "").replace(/<USER_SETTINGS_CHANGE>[\s\S]*?<\/USER_SETTINGS_CHANGE>/gi, "");
   if (!/<USER_REQUEST>/i.test(text)) return text.trim();
   // The wrapper counts only around the whole content, once: a quoted or doubled one inside longer text is not the user's request.
   if ((text.match(/<USER_REQUEST>/gi) || []).length > 1 || (text.match(/<\/USER_REQUEST>/gi) || []).length > 1) return "";
